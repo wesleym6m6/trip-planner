@@ -5,8 +5,8 @@
 目前 checkpoint：Phase 3A 排程核心、Phase 3B safe staging、Phase 3C
 solver decision gate、Phase 4.0 facts/policy foundation、Phase 4.1A
 trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
-revision wiring 已完成；下一個 bounded slice 是 Phase 4.2 minimal Places
-identity
+revision wiring、Phase 4.2 minimal Places identity 已完成；下一個 bounded
+slice 是 Phase 4.3 Routes end-to-end
 
 ## 產品目標
 
@@ -287,7 +287,11 @@ Exit gate：
 - stage / commit前會重新compose；post-commit evidence drift保留已知canonical
   outcome並回`WAITING_EXTERNAL`，不沿用舊score；
 - provider-derived values與live attribution不進safe repr、review serialization、
-  receipt或history；下一個slice不跨越Phase 4.2 minimal Places identity邊界。
+  receipt或history；
+- Phase 4.2已建立snapshot-bound Places identity request、bounded candidate
+  review、hard geographic/type gates、30分鐘promotion clock、ID-only refresh
+  與fresh route-endpoint extraction；既有ID若改變必須人工複核，只有place ID
+  可進EvidenceStore。下一個slice不跨越Phase 4.3 Routes end-to-end邊界。
 
 ### Phase 5 — Product Interface and Skill
 
@@ -578,6 +582,31 @@ Exit gate：
   對能在不遵守advisory lock下rename data directory的同uid actor，完整防護需
   dirfd / `openat`架構調整。此項保留為Phase 6 security/operations工作，不在
   本次bounded post-review修正中擴張。
+
+### 2026-07-28 — Phase 4.2 minimal Places identity 完成
+
+- 新增pure/offline Places identity boundary；trusted EvidenceSnapshot、
+  exact policy、minimal field mask、`pageSize=5`、match scope與既有LKG basis
+  共同綁入request fingerprint，不呼叫HTTP或付費provider。
+- Candidate不取第一筆；country、locality、primary type與hard radius先
+  fail closed。排序與digest不受response順序影響；pagination截斷、非exact
+  token-boundary name、多候選或existing-ID rebind都要求exact human grant。
+- Review grant由host authority簽發，promotion使用host-stamped clock、30分鐘expiry與current
+  store/evidence revision；過期或drift不可重播。Ephemeral候選payload附Google
+  Maps attribution，display name、address、coordinates、types與page token
+  不進safe binding、EvidenceStore、receipt或history。
+- ID-only refresh必須從trusted existing LKG建立；不同ID回`PENDING_REVIEW`，
+  且持鎖merge會對basis observation/value做CAS，舊refresh不會覆蓋已reviewed
+  rebind。Routes前置endpoint只接受fresh、unconflicted identity，並以
+  observation/value/snapshot/endpoint digest綁定而不在safe view輸出raw
+  provider ID。
+- 兩輪低成本獨立review指出的arbitrary refresh、expired review、existing-ID
+  silent rebind、name normalization collision與attribution缺口均已修正並加入
+  regression。Phase 4.2專項16個、facts/identity共88個、全套432個offline
+  tests、三個real-trip validators與Python compile全過；29個trip files hash
+  aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### 2026-07-27 — Phase 0 exit gate 達成
 

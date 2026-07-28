@@ -154,6 +154,54 @@ def place_identity_key(
     )
 
 
+def google_identity_request(
+    policies: ProviderPolicyRegistry,
+    key: FactKey,
+    *,
+    operation: str = "resolve-place",
+    query_scope: tuple[tuple[str, object], ...] = (),
+) -> ProviderRequest:
+    policy = policies.policy("google-place-id-v1")
+    return ProviderRequest(
+        provider_id="google-places",
+        adapter_id="google-places",
+        adapter_version="v1",
+        operation=operation,
+        fact_keys=(key,),
+        policy_id=policy.policy_id,
+        policy_digest=policy.policy_digest,
+        query_scope=query_scope,
+    )
+
+
+def google_identity_observation(
+    policies: ProviderPolicyRegistry,
+    request: ProviderRequest,
+    key: FactKey,
+) -> FactObservation:
+    policy = policies.policy("google-place-id-v1")
+    return FactObservation(
+        key=key,
+        value=FactValue.from_payload(
+            FactKind.PLACE_IDENTITY,
+            {"provider_place_id": "place-123"},
+        ),
+        provenance=ProviderProvenance(
+            provider_id="google-places",
+            adapter_id="google-places",
+            adapter_version="v1",
+            request_fingerprint=request.request_fingerprint,
+            retention_policy_id=policy.policy_id,
+            provider_record_id="place-123",
+            attributions=(("Google Maps", None),),
+        ),
+        retrieved_at=NOW,
+        valid_until=NOW + timedelta(days=365),
+        purge_at=None,
+        confidence=1,
+    )
+
+
 def place_profile_key(
     *,
     location_id: str = "loc-place",
@@ -1048,10 +1096,29 @@ class FactContractTests(unittest.TestCase):
             GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
         )
         by_id = {item.policy_id: item for item in policies.policies}
+        identity_policy = by_id["google-place-id-v1"]
 
         self.assertEqual(
             EvidencePersistence.INDEFINITE_ID,
-            by_id["google-place-id-v1"].persistence,
+            identity_policy.persistence,
+        )
+        self.assertEqual(
+            ("refresh-place-id", "resolve-place"),
+            identity_policy.allowed_operations,
+        )
+        self.assertTrue(
+            {
+                "basis_observation_id",
+                "basis_provider_place_id",
+                "basis_snapshot_id",
+                "basis_value_digest",
+                "expected_locality",
+                "expected_name",
+                "expected_primary_types",
+                "field_mask",
+                "page_size",
+                "provider_place_id",
+            }.issubset(identity_policy.allowed_query_fields)
         )
         for policy_id in (
             "google-place-profile-runtime-v1",
@@ -1075,6 +1142,163 @@ class FactContractTests(unittest.TestCase):
         self.assert_contract_error(
             "INVALID_PROVIDER_REQUEST",
             lambda: google_maps_policy_registry("unknown-region"),
+        )
+
+    def test_google_place_identity_search_and_refresh_requests_are_exact(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        policy = policies.policy("google-place-id-v1")
+        key = place_identity_key()
+        search = google_identity_request(
+            policies,
+            key,
+            query_scope=(
+                ("field_mask", "places.id"),
+                ("text_query", "National Palace Museum"),
+                ("expected_name", "National Palace Museum"),
+                ("expected_locality", "Taipei"),
+                ("expected_primary_types", "museum"),
+                ("language_code", "zh-TW"),
+                ("region_code", "TW"),
+                ("latitude", 25.1024),
+                ("longitude", 121.5485),
+                ("page_size", 5),
+                ("radius_m", 5000),
+            ),
+        )
+        refresh = google_identity_request(
+            policies,
+            key,
+            operation="refresh-place-id",
+            query_scope=(
+                ("basis_observation_id", "1" * 64),
+                ("basis_provider_place_id", "place-123"),
+                ("basis_snapshot_id", "2" * 64),
+                ("basis_value_digest", "3" * 64),
+                ("field_mask", "id"),
+                ("provider_place_id", "place-123"),
+            ),
+        )
+
+        self.assertEqual((key.key_id,), search.requested_key_ids)
+        self.assertEqual((key.key_id,), refresh.requested_key_ids)
+        self.assertEqual(policy.policy_digest, search.policy_digest)
+        self.assertEqual(policy.policy_digest, refresh.policy_digest)
+        self.assertEqual(
+            tuple(sorted(search.query_scope)),
+            search.query_scope,
+        )
+        self.assertEqual(
+            tuple(sorted(refresh.query_scope)),
+            refresh.query_scope,
+        )
+        self.assertNotEqual(
+            search.request_fingerprint,
+            refresh.request_fingerprint,
+        )
+        for exact_request in (search, refresh):
+            item = google_identity_observation(
+                policies,
+                exact_request,
+                key,
+            )
+            result = provider_result(
+                request=exact_request,
+                status=ProviderResultStatus.SUCCESS,
+                observations=(item,),
+            )
+
+            authorized = authorize_provider_result(
+                exact_request,
+                result,
+                policies,
+            )
+            self.assertEqual(exact_request, authorized.request)
+
+    def test_google_place_identity_unknown_match_field_fails_promotion(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        key = place_identity_key()
+        request = google_identity_request(
+            policies,
+            key,
+            query_scope=(("unreviewed_match_hint", "trust-first-result"),),
+        )
+        result = provider_result(
+            request=request,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    key,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: authorize_provider_result(request, result, policies),
+        )
+
+    def test_google_place_identity_match_scope_changes_fingerprint(self) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        key = place_identity_key()
+
+        def request(
+            query_scope: tuple[tuple[str, object], ...],
+        ) -> ProviderRequest:
+            return google_identity_request(
+                policies,
+                key,
+                query_scope=query_scope,
+            )
+
+        baseline = request(
+            (
+                ("field_mask", "places.id"),
+                ("expected_name", "National Palace Museum"),
+                ("expected_locality", "Taipei"),
+                ("expected_primary_types", "museum"),
+                ("text_query", "National Palace Museum"),
+            )
+        )
+        changed_field_scope = request(
+            (
+                ("field_mask", "places.id,places.displayName"),
+                ("expected_name", "National Palace Museum"),
+                ("expected_locality", "Taipei"),
+                ("expected_primary_types", "museum"),
+                ("text_query", "National Palace Museum"),
+            )
+        )
+        changed_match_scope = request(
+            (
+                ("field_mask", "places.id"),
+                ("expected_name", "National Palace Museum"),
+                ("expected_locality", "New Taipei"),
+                ("expected_primary_types", "museum"),
+                ("text_query", "National Palace Museum"),
+            )
+        )
+
+        self.assertEqual(
+            3,
+            len(
+                {
+                    baseline.request_fingerprint,
+                    changed_field_scope.request_fingerprint,
+                    changed_match_scope.request_fingerprint,
+                }
+            ),
         )
 
     def test_policy_registry_rejects_overlapping_source_kind_slots(

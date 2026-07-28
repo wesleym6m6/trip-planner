@@ -1,8 +1,9 @@
 # Facts and Provider Contract
 
-狀態：Phase 4 implementation contract（4.0 foundation）
+狀態：Phase 4 implementation contract（4.2 minimal Places identity）
 契約版本：`fact-query/v1`、`fact-observation/v1`、
-`evidence-snapshot/v1`、`provider-result/v1`
+`evidence-snapshot/v1`、`provider-result/v1`、
+`place-identity-review/v1`
 
 ## 目的
 
@@ -447,7 +448,15 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
 
 - Search 不可默認取第一筆；name、city/country、type、geographic boundary與
   ambiguity policy 必須通過才可建立 identity fact。
+- Identity Text Search固定`pageSize=5`並綁exact minimal field mask；回應若有
+  `nextPageToken`、多個eligible candidate、非exact token-boundary name match，
+  或既有LKG將被換成不同place ID，一律進30分鐘human review，不得auto-promote。
+- display name、address、coordinates、types、locality與pagination token只存在
+  ephemeral review payload；review畫面固定附Google Maps attribution。Promotion
+  前要以host clock與目前evidence/store revision重新驗證。
 - `place_id` 可長期保存，但官方建議超過 12 個月刷新。
+- ID-only refresh只能從trusted EvidenceSnapshot中的既有fresh/stale Google
+  identity LKG建立；provider若回不同ID，必須重新走candidate search與review。
 - 標準policy只有lat/lng有明確30天disk TTL；hours、display name與business
   status採`MEMORY_ONLY`，不能因為設定`purge_at=30d`就落盤。
 - `currentOpeningHours` 只覆蓋 request day起算的 7 天，包含 special hours；
@@ -610,11 +619,27 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
 - Phase 4 facts/store/composition專項116個、全套400個離線tests與三個
   real-trip validators全過；未呼叫真實provider或修改`trips/`。
 
-### Phase 4.2 — Minimal Places identity
+### Phase 4.2 — Minimal Places identity（完成）
 
-- ambiguity / geographic match與candidate review；
-- exact provider identity key、minimal field mask與12個月refresh；
-- 先有合法長存的endpoint identity，再建立route request。
+- `PlaceIdentityIntent`與trusted EvidenceSnapshot共同建立exact
+  `resolve-place` request；field mask、`pageSize=5`、match scope與existing LKG
+  basis全部進request fingerprint。
+- candidate parser只接受bounded allowlist；country、locality、primary type與
+  hard radius不可由review grant覆寫，結果排序與candidate-set digest不受provider
+  回傳順序影響。
+- 只有無截斷、唯一eligible、token-boundary exact-name，且不會改綁既有ID時
+  可auto-promote；其他eligible結果需由host-clock authority簽發exact
+  candidate-set grant。Expired review、倒退clock或evidence/store revision
+  drift一律拒絕。
+- 只有reviewed `provider_place_id`進`FactValue`與EvidenceStore；其他Places
+  content、query、pagination token與座標不進disk、safe binding或receipt。
+- ID refresh綁trusted existing observation/value/snapshot；changed ID回
+  `PENDING_REVIEW`，且promotion在持鎖merge時再做basis CAS，舊refresh不能
+  覆蓋已reviewed的新ID。Routes前置端點只接受fresh、unconflicted Google
+  identity，safe binding只公開observation/value/endpoint digests。
+- 本slice不含HTTP transport；16個identity專項、88個facts/identity tests與
+  全套432個offline tests通過，三個real-trip validators通過，未呼叫provider
+  或修改`trips/`。
 
 ### Phase 4.3 — Routes end-to-end
 

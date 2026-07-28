@@ -598,14 +598,24 @@ def google_maps_policy_registry(
                 contract_region=contract_region,
                 allowed_fact_kinds=(FactKind.PLACE_IDENTITY,),
                 allowed_value_fields=("provider_place_id",),
-                allowed_operations=("resolve-place",),
+                allowed_operations=("refresh-place-id", "resolve-place"),
                 persistence=EvidencePersistence.INDEFINITE_ID,
                 max_validity_seconds=366 * day,
                 max_retention_seconds=None,
                 allowed_query_fields=(
+                    "basis_observation_id",
+                    "basis_provider_place_id",
+                    "basis_snapshot_id",
+                    "basis_value_digest",
+                    "expected_locality",
+                    "expected_name",
+                    "expected_primary_types",
+                    "field_mask",
                     "language_code",
                     "latitude",
                     "longitude",
+                    "page_size",
+                    "provider_place_id",
                     "radius_m",
                     "region_code",
                     "text_query",
@@ -2236,6 +2246,31 @@ def merge_provider_result(
             continue
         slot = observation.source_slot
         previous = slots.get(slot)
+        if (
+            previous is not None
+            and previous.observation_id == observation.observation_id
+        ):
+            ignored.append(observation.observation_id)
+            continue
+        if not _place_identity_basis_matches(
+            authorized_result.request,
+            observation,
+            previous,
+        ):
+            ignored.append(observation.observation_id)
+            generated_problems.append(
+                ProviderProblem(
+                    code=ProviderProblemCode.EVIDENCE_REVISION_CHANGED,
+                    message=(
+                        "Place identity changed after the provider request "
+                        "was bound to its last-known-good basis."
+                    ),
+                    retryable=False,
+                    next_action="review_current_identity",
+                    fact_key_ids=(observation.key.key_id,),
+                )
+            )
+            continue
         if previous is None:
             if result.status is ProviderResultStatus.CACHE_HIT:
                 raise FactContractError(
@@ -2244,9 +2279,6 @@ def merge_provider_result(
                 )
             slots[slot] = observation
             promoted.append(observation.observation_id)
-            continue
-        if previous.observation_id == observation.observation_id:
-            ignored.append(observation.observation_id)
             continue
         if result.status is ProviderResultStatus.CACHE_HIT:
             raise FactContractError(
@@ -2311,6 +2343,41 @@ def merge_provider_result(
         promoted_observation_ids=tuple(promoted),
         ignored_observation_ids=tuple(ignored),
         problems=tuple(result.problems) + tuple(generated_problems),
+    )
+
+
+def _place_identity_basis_matches(
+    request: ProviderRequest,
+    incoming: FactObservation,
+    previous: FactObservation | None,
+) -> bool:
+    if (
+        incoming.key.kind is not FactKind.PLACE_IDENTITY
+        or request.policy_id != "google-place-id-v1"
+        or request.operation not in {"refresh-place-id", "resolve-place"}
+    ):
+        return True
+    scope = dict(request.query_scope)
+    basis_fields = (
+        "basis_observation_id",
+        "basis_provider_place_id",
+        "basis_value_digest",
+    )
+    present = tuple(field in scope for field in basis_fields)
+    if any(present) and not all(present):
+        return False
+    if not any(present):
+        return (
+            request.operation == "resolve-place"
+            and previous is None
+        )
+    if previous is None:
+        return False
+    return (
+        scope["basis_observation_id"] == previous.observation_id
+        and scope["basis_provider_place_id"]
+        == previous.value.payload["provider_place_id"]
+        and scope["basis_value_digest"] == previous.value.value_digest
     )
 
 
