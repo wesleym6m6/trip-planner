@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from copy import deepcopy
@@ -12,11 +15,17 @@ from pathlib import Path
 from trip_planner.evidence_store import EvidenceStore
 from trip_planner.facts import (
     GOOGLE_MAPS_NON_EEA_POLICY_PROFILE,
+    AuthorizedProviderResult,
     EvidenceLedger,
     EvidenceSnapshot,
     FactContractError,
+    FactKind,
+    FactObservation,
+    FactValue,
+    ProviderProvenance,
     ProviderRequest,
     ProviderProblemCode,
+    ProviderResult,
     ProviderResultStatus,
     authorize_provider_result,
     google_maps_policy_registry,
@@ -26,8 +35,11 @@ from trip_planner.places_identity import (
     GOOGLE_PLACE_IDENTITY_FIELD_MASK,
     GOOGLE_PLACE_ID_REFRESH_FIELD_MASK,
     PlaceCandidateRejection,
+    PlaceEndpointIdentity,
+    PlaceIdentityCandidateAssessment,
     PlaceIdentityIntent,
     PlaceIdentityRequest,
+    PlaceIdentityReview,
     PlaceIdentityReviewAuthority,
     PlaceIdentityReviewGrant,
     PlaceIdentityReviewStatus,
@@ -138,8 +150,55 @@ def response(*candidates: dict[str, object]) -> dict[str, object]:
     return {"places": list(candidates)}
 
 
-def observation_payload(result) -> dict[str, object]:
-    return result.observations[0].value.payload
+def raw_result(authorized: AuthorizedProviderResult) -> ProviderResult:
+    if type(authorized) is not AuthorizedProviderResult:
+        raise AssertionError("identity finalizer must return authorized evidence")
+    return authorized.result
+
+
+def observation_payload(
+    authorized: AuthorizedProviderResult,
+) -> dict[str, object]:
+    return raw_result(authorized).observations[0].value.payload
+
+
+def unreviewed_identity_result(
+    request: ProviderRequest,
+    place_id: str,
+    *,
+    completed_at: datetime,
+) -> ProviderResult:
+    value = FactValue.from_payload(
+        FactKind.PLACE_IDENTITY,
+        {"provider_place_id": place_id},
+    )
+    observation = FactObservation(
+        key=request.fact_keys[0],
+        value=value,
+        provenance=ProviderProvenance(
+            provider_id=request.provider_id,
+            adapter_id=request.adapter_id,
+            adapter_version=request.adapter_version,
+            request_fingerprint=request.request_fingerprint,
+            retention_policy_id=request.policy_id,
+            provider_record_id=place_id,
+            response_id=None,
+            source_uri=None,
+            attributions=(("Google Maps", None),),
+        ),
+        retrieved_at=completed_at,
+        valid_until=completed_at + timedelta(days=365),
+        purge_at=None,
+        confidence=1.0,
+    )
+    return ProviderResult(
+        request_fingerprint=request.request_fingerprint,
+        status=ProviderResultStatus.SUCCESS,
+        observations=(observation,),
+        problems=(),
+        attempts_used=1,
+        completed_at=completed_at,
+    )
 
 
 class PlacesIdentityContractTests(unittest.TestCase):
@@ -269,6 +328,56 @@ class PlacesIdentityContractTests(unittest.TestCase):
         self.assertNotIn("Busan Museum Busan KR", safe)
         self.assertNotIn("35.1379", safe)
 
+    def test_generic_authorization_rejects_unreviewed_identity_seed(
+        self,
+    ) -> None:
+        request = self.build_request().provider_request
+        unreviewed = unreviewed_identity_result(
+            request,
+            "ChIJ-never-reviewed",
+            completed_at=NOW,
+        )
+
+        self.assert_contract_error(
+            "PENDING_REVIEW",
+            lambda: authorize_provider_result(
+                request,
+                unreviewed,
+                self.policies,
+            ),
+        )
+
+    def test_review_graph_cannot_be_minted_outside_the_evaluator(
+        self,
+    ) -> None:
+        reviewed = self.evaluate(response(candidate()))
+        assessment = reviewed.assessments[0]
+
+        self.assert_contract_error(
+            "UNTRUSTED_PROVENANCE",
+            lambda: PlaceIdentityCandidateAssessment(
+                candidate=assessment.candidate,
+                exact_name_match=True,
+                rejection_codes=(),
+                distance_m=assessment.distance_m,
+            ),
+        )
+        self.assert_contract_error(
+            "UNTRUSTED_PROVENANCE",
+            lambda: PlaceIdentityReview(
+                request=reviewed.request,
+                assessments=reviewed.assessments,
+                status=reviewed.status,
+                recommended_candidate_id=(
+                    reviewed.recommended_candidate_id
+                ),
+                completed_at=reviewed.completed_at,
+                expires_at=reviewed.expires_at,
+                attempts_used=reviewed.attempts_used,
+                results_truncated=reviewed.results_truncated,
+            ),
+        )
+
     def test_unique_exact_match_is_ready_even_when_not_first(self) -> None:
         wrong_first = candidate(
             place_id="ChIJ-wrong-country",
@@ -375,12 +484,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
             response(candidate()),
             completed_at=NOW,
         )
-        initial_result = self.finalize_review(initial_review)
-        authorized = authorize_provider_result(
-            initial_request.provider_request,
-            initial_result,
-            self.policies,
-        )
+        authorized = self.finalize_review(initial_review)
         merged = merge_provider_result(
             EvidenceLedger(self.policies),
             authorized,
@@ -422,7 +526,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
             selected.candidate.candidate_id,
             approved_at=NOW + timedelta(minutes=3),
         )
-        rebound = self.finalize_review(
+        rebound_authorized = self.finalize_review(
             review,
             grant,
             current_snapshot=snapshot,
@@ -430,12 +534,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {"provider_place_id": OTHER_PLACE_ID},
-            observation_payload(rebound),
-        )
-        rebound_authorized = authorize_provider_result(
-            request.provider_request,
-            rebound,
-            self.policies,
+            observation_payload(rebound_authorized),
         )
         advanced = merge_provider_result(
             merged.ledger,
@@ -456,16 +555,11 @@ class PlacesIdentityContractTests(unittest.TestCase):
                 promotion_at=NOW + timedelta(minutes=4),
             ),
         )
-        stale_refresh = finalize_google_place_identity_refresh(
+        stale_refresh_authorized = finalize_google_place_identity_refresh(
             snapshot,
             stale_refresh_request,
             {"id": PLACE_ID},
             completed_at=NOW + timedelta(minutes=4),
-        )
-        stale_refresh_authorized = authorize_provider_result(
-            stale_refresh_request,
-            stale_refresh,
-            self.policies,
         )
         stale_merge = merge_provider_result(
             advanced.ledger,
@@ -524,14 +618,9 @@ class PlacesIdentityContractTests(unittest.TestCase):
             response(candidate()),
             completed_at=NOW + timedelta(minutes=5),
         )
-        seed_result = self.finalize_review(
+        seed_authorized = self.finalize_review(
             seed_review,
             promotion_at=NOW + timedelta(minutes=5),
-        )
-        seed_authorized = authorize_provider_result(
-            seed_request.provider_request,
-            seed_result,
-            self.policies,
         )
         merged = merge_provider_result(
             EvidenceLedger(self.policies),
@@ -719,6 +808,37 @@ class PlacesIdentityContractTests(unittest.TestCase):
             [item.assessment_id for item in reverse.assessments],
         )
 
+    def test_locality_collision_digest_is_hash_seed_stable(self) -> None:
+        script = """
+from trip_planner.places_identity import PlaceIdentityCandidate
+candidate = PlaceIdentityCandidate(
+    provider_place_id="ChIJ-locality-order",
+    display_name="Busan Museum",
+    formatted_address="Busan, South Korea",
+    latitude=35.1379,
+    longitude=129.0915,
+    primary_type="museum",
+    types=("museum",),
+    country_code="KR",
+    locality_names=("Busan", "BUSAN", "Busan."),
+)
+print(candidate.candidate_id)
+"""
+        candidate_ids = set()
+        repository_root = Path(__file__).resolve().parents[1]
+        for seed in ("1", "2", "3", "11", "37"):
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=repository_root,
+                env={**os.environ, "PYTHONHASHSEED": seed},
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            candidate_ids.add(completed.stdout.strip())
+
+        self.assertEqual(1, len(candidate_ids))
+
     def test_empty_duplicate_oversized_malformed_and_extra_fields_fail_closed(
         self,
     ) -> None:
@@ -786,7 +906,8 @@ class PlacesIdentityContractTests(unittest.TestCase):
             response(raw),
             expected_name=SENTINEL_NAME,
         )
-        result = self.finalize_review(review)
+        authorized = self.finalize_review(review)
+        result = raw_result(authorized)
 
         self.assertIs(ProviderResultStatus.SUCCESS, result.status)
         self.assertEqual(1, result.attempts_used)
@@ -818,7 +939,8 @@ class PlacesIdentityContractTests(unittest.TestCase):
             {
                 "review_repr": repr(review),
                 "review_binding": review.to_binding_dict(),
-                "result_repr": repr(result),
+                "authorized_repr": repr(authorized),
+                "authorized_binding": authorized.to_binding_dict(),
                 "result": result.to_dict(),
             },
             ensure_ascii=False,
@@ -849,12 +971,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
             response(raw),
             completed_at=NOW,
         )
-        result = self.finalize_review(review)
-        authorized = authorize_provider_result(
-            request.provider_request,
-            result,
-            self.policies,
-        )
+        authorized = self.finalize_review(review)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -900,12 +1017,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
             response(candidate()),
             completed_at=NOW,
         )
-        initial_result = self.finalize_review(initial_review)
-        authorized = authorize_provider_result(
-            initial_request.provider_request,
-            initial_result,
-            self.policies,
-        )
+        authorized = self.finalize_review(initial_review)
         merged = merge_provider_result(
             EvidenceLedger(self.policies),
             authorized,
@@ -925,11 +1037,11 @@ class PlacesIdentityContractTests(unittest.TestCase):
         self.assertEqual(PLACE_ID, scope["provider_place_id"])
         self.assertEqual(PLACE_ID, scope["basis_provider_place_id"])
         self.assertEqual(
-            initial_result.observations[0].observation_id,
+            raw_result(authorized).observations[0].observation_id,
             scope["basis_observation_id"],
         )
         self.assertEqual(snapshot.snapshot_id, scope["basis_snapshot_id"])
-        same = finalize_google_place_identity_refresh(
+        same_authorized = finalize_google_place_identity_refresh(
             snapshot,
             request,
             {"id": PLACE_ID},
@@ -937,12 +1049,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {"provider_place_id": PLACE_ID},
-            observation_payload(same),
-        )
-        same_authorized = authorize_provider_result(
-            request,
-            same,
-            self.policies,
+            observation_payload(same_authorized),
         )
         refreshed = merge_provider_result(
             merged.ledger,
@@ -956,6 +1063,19 @@ class PlacesIdentityContractTests(unittest.TestCase):
             {problem.code for problem in refreshed.problems},
         )
 
+        forged_refresh = unreviewed_identity_result(
+            request,
+            OTHER_PLACE_ID,
+            completed_at=NOW + timedelta(minutes=2),
+        )
+        self.assert_contract_error(
+            "PENDING_REVIEW",
+            lambda: authorize_provider_result(
+                request,
+                forged_refresh,
+                self.policies,
+            ),
+        )
         self.assert_contract_error(
             "PENDING_REVIEW",
             lambda: finalize_google_place_identity_refresh(
@@ -996,11 +1116,20 @@ class PlacesIdentityContractTests(unittest.TestCase):
             response(candidate()),
             completed_at=NOW,
         )
-        result = self.finalize_review(review)
-        authorized = authorize_provider_result(
-            request.provider_request,
-            result,
-            self.policies,
+        authorized = self.finalize_review(review)
+        result = raw_result(authorized)
+        observation = result.observations[0]
+        self.assert_contract_error(
+            "UNTRUSTED_PROVENANCE",
+            lambda: PlaceEndpointIdentity(
+                location_id=LOCATION_ID,
+                provider_id="google-places",
+                provider_place_id=PLACE_ID,
+                observation_id=observation.observation_id,
+                value_digest=observation.value.value_digest,
+                valid_until=observation.valid_until,
+                snapshot_id=self.empty_snapshot.snapshot_id,
+            ),
         )
 
         with tempfile.TemporaryDirectory() as temporary:

@@ -6,6 +6,10 @@ observations whose current host policy explicitly permits disk persistence.
 Every public operation obtains the per-trip lock, samples one trusted clock
 instant, applies retention, and uses a same-directory atomic replace when the
 durable record set changes.
+
+Policy-registry upgrades are narrower than corruption recovery: the old file
+must first prove its own canonical bytes and store revision before surviving
+records are revalidated under the current registry and atomically rewritten.
 """
 
 from __future__ import annotations
@@ -270,6 +274,26 @@ class _StoredEvidence:
     store_revision: str
     store_epoch: str
     existed: bool
+    previous_revision: str | None = None
+    load_changed: bool = False
+    removed_observation_ids: tuple[str, ...] = ()
+    migration_observations: tuple[FactObservation, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _StoredRecord:
+    policy_id: str
+    policy_digest: str
+    observation: FactObservation
+
+
+@dataclass(frozen=True, slots=True)
+class _SelfValidatedDocument:
+    policy_registry_revision: str
+    generation: int
+    records: tuple[_StoredRecord, ...]
+    store_epoch: str
+    store_revision: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,7 +462,9 @@ class EvidenceStore:
             if isinstance(current_or_error, EvidenceStoreResult):
                 return current_or_error
             current = current_or_error
-            previous_revision = current.store_revision
+            previous_revision = (
+                current.previous_revision or current.store_revision
+            )
             store_epoch = current.store_epoch
             retained_current_ids = frozenset(
                 observation.observation_id
@@ -481,6 +507,11 @@ class EvidenceStore:
                         store_revision=candidate_revision,
                         store_epoch=store_epoch,
                         existed=True,
+                        previous_revision=current.previous_revision,
+                        load_changed=current.load_changed,
+                        removed_observation_ids=(
+                            current.removed_observation_ids
+                        ),
                     )
                 return EvidenceStoreResult(
                     success=False,
@@ -491,9 +522,10 @@ class EvidenceStore:
                     current_revision=current.store_revision,
                     generation=current.ledger.generation,
                     purge_checked_at=checked_at,
-                    changed=pruned.changed,
+                    changed=current.load_changed or pruned.changed,
                     purged_observation_ids=(
-                        pruned.purged_observation_ids
+                        current.removed_observation_ids
+                        + pruned.purged_observation_ids
                     ),
                     problems=(
                         EvidenceStoreProblem(
@@ -515,14 +547,18 @@ class EvidenceStore:
             if not merged.changed:
                 return EvidenceStoreResult(
                     success=True,
-                    status="no_op",
+                    status=(
+                        "migrated"
+                        if current.load_changed
+                        else "no_op"
+                    ),
                     action="merge",
                     ledger=current.ledger,
                     previous_revision=previous_revision,
-                    current_revision=previous_revision,
+                    current_revision=current.store_revision,
                     generation=current.ledger.generation,
                     purge_checked_at=checked_at,
-                    changed=False,
+                    changed=current.load_changed,
                     replayed=bool(
                         authorized_result.result.observations
                     )
@@ -534,7 +570,8 @@ class EvidenceStore:
                         in authorized_result.result.observations
                     ),
                     purged_observation_ids=(
-                        merged.purged_observation_ids
+                        current.removed_observation_ids
+                        + merged.purged_observation_ids
                     ),
                     promoted_observation_ids=(
                         merged.promoted_observation_ids
@@ -610,6 +647,9 @@ class EvidenceStore:
                     previous_revision=previous_revision,
                     expected_revision=candidate_revision,
                     outcome=outcome,
+                    committed_before_attempt=(
+                        current if current.load_changed else None
+                    ),
                 )
             return EvidenceStoreResult(
                 success=True,
@@ -621,7 +661,10 @@ class EvidenceStore:
                 generation=merged.ledger.generation,
                 purge_checked_at=checked_at,
                 changed=True,
-                purged_observation_ids=merged.purged_observation_ids,
+                purged_observation_ids=(
+                    current.removed_observation_ids
+                    + merged.purged_observation_ids
+                ),
                 promoted_observation_ids=(
                     merged.promoted_observation_ids
                 ),
@@ -645,18 +688,30 @@ class EvidenceStore:
                 status = (
                     "empty"
                     if not current.existed
-                    else ("no_op" if action == "cleanup" else "loaded")
+                    else (
+                        "migrated"
+                        if current.load_changed
+                        else ("no_op" if action == "cleanup" else "loaded")
+                    )
                 )
                 return EvidenceStoreResult(
                     success=True,
                     status=status,
                     action=action,
                     ledger=current.ledger,
+                    previous_revision=current.previous_revision,
                     current_revision=current.store_revision,
                     generation=current.ledger.generation,
                     purge_checked_at=checked_at,
+                    changed=current.load_changed,
+                    purged_observation_ids=(
+                        current.removed_observation_ids
+                    ),
                 )
 
+            previous_revision = (
+                current.previous_revision or current.store_revision
+            )
             candidate_revision = _store_revision(
                 self.trip_id,
                 self.policies,
@@ -672,7 +727,7 @@ class EvidenceStore:
                 return self._write_failure(
                     action=action,
                     checked_at=checked_at,
-                    previous_revision=current.store_revision,
+                    previous_revision=previous_revision,
                     expected_revision=candidate_revision,
                     outcome=outcome,
                 )
@@ -681,12 +736,15 @@ class EvidenceStore:
                 status="cleaned" if action == "cleanup" else "purged",
                 action=action,
                 ledger=pruned.ledger,
-                previous_revision=current.store_revision,
+                previous_revision=previous_revision,
                 current_revision=candidate_revision,
                 generation=pruned.ledger.generation,
                 purge_checked_at=checked_at,
                 changed=True,
-                purged_observation_ids=pruned.purged_observation_ids,
+                purged_observation_ids=(
+                    current.removed_observation_ids
+                    + pruned.purged_observation_ids
+                ),
             )
 
     def _load_locked(
@@ -727,14 +785,19 @@ class EvidenceStore:
                 expected_trip_id=self.trip_id,
                 policies=self.policies,
             )
+            clock_observations = (
+                stored.migration_observations
+                if stored.migration_observations
+                else stored.ledger.observations
+            )
             future = tuple(
                 observation
-                for observation in stored.ledger.observations
+                for observation in clock_observations
                 if observation.retrieved_at > checked_at
             )
             expired = tuple(
                 observation
-                for observation in stored.ledger.observations
+                for observation in clock_observations
                 if not observation.retained_at(checked_at)
             )
             if future and expired:
@@ -742,10 +805,13 @@ class EvidenceStore:
                     data,
                     action=action,
                     checked_at=checked_at,
-                    previous_revision=stored.store_revision,
+                    previous_revision=(
+                        stored.previous_revision
+                        or stored.store_revision
+                    ),
                     purged_observation_ids=tuple(
                         observation.observation_id
-                        for observation in stored.ledger.observations
+                        for observation in clock_observations
                     ),
                 )
             if future:
@@ -758,6 +824,43 @@ class EvidenceStore:
                         "after the trusted clock; it was not used or overwritten."
                     ),
                     checked_at=checked_at,
+                )
+            if stored.load_changed:
+                pruned = _prune_durable_evidence(
+                    stored.ledger,
+                    purge_now=checked_at,
+                )
+                migrated_ledger = pruned.ledger
+                migrated_revision = _store_revision(
+                    self.trip_id,
+                    self.policies,
+                    migrated_ledger,
+                    stored.store_epoch,
+                )
+                outcome = self._replace_ledger(
+                    migrated_ledger,
+                    migrated_revision,
+                    stored.store_epoch,
+                )
+                if outcome.problem_code is not None:
+                    return self._write_failure(
+                        action=action,
+                        checked_at=checked_at,
+                        previous_revision=stored.previous_revision,
+                        expected_revision=migrated_revision,
+                        outcome=outcome,
+                    )
+                return _StoredEvidence(
+                    ledger=migrated_ledger,
+                    store_revision=migrated_revision,
+                    store_epoch=stored.store_epoch,
+                    existed=True,
+                    previous_revision=stored.previous_revision,
+                    load_changed=True,
+                    removed_observation_ids=(
+                        stored.removed_observation_ids
+                        + pruned.purged_observation_ids
+                    ),
                 )
             return stored
         except _OversizedEvidenceCache as exc:
@@ -920,8 +1023,18 @@ class EvidenceStore:
         previous_revision: str | None,
         expected_revision: str,
         outcome: _WriteOutcome,
+        committed_before_attempt: _StoredEvidence | None = None,
     ) -> EvidenceStoreResult:
         code = outcome.problem_code or "CACHE_WRITE_FAILED"
+        confirmed = (
+            committed_before_attempt
+            if code == "CACHE_WRITE_FAILED"
+            else None
+        )
+        migration_changed = bool(
+            committed_before_attempt is not None
+            and committed_before_attempt.load_changed
+        )
         return EvidenceStoreResult(
             success=False,
             status=(
@@ -930,10 +1043,26 @@ class EvidenceStore:
                 else "write_failed"
             ),
             action=action,
+            ledger=confirmed.ledger if confirmed is not None else None,
             previous_revision=previous_revision,
+            current_revision=(
+                confirmed.store_revision
+                if confirmed is not None
+                else None
+            ),
             expected_revision=expected_revision,
+            generation=(
+                confirmed.ledger.generation
+                if confirmed is not None
+                else None
+            ),
             purge_checked_at=checked_at,
-            changed=outcome.replaced,
+            changed=outcome.replaced or migration_changed,
+            purged_observation_ids=(
+                committed_before_attempt.removed_observation_ids
+                if committed_before_attempt is not None
+                else ()
+            ),
             problems=(
                 EvidenceStoreProblem(
                     code=code,
@@ -1320,8 +1449,9 @@ def _decode_document_content(
     data: bytes,
     *,
     expected_trip_id: str,
-    policies: ProviderPolicyRegistry,
-) -> tuple[EvidenceLedger, str, str]:
+) -> _SelfValidatedDocument:
+    """Validate one file solely against its own immutable stored bindings."""
+
     value = _decode_json_object(data)
     _exact_fields(
         value,
@@ -1341,16 +1471,16 @@ def _decode_document_content(
             "CACHE_CORRUPTED",
             "Evidence cache schema version is unsupported.",
         )
-    if value["trip_id"] != expected_trip_id:
+    trip_id = _require_text_value(value["trip_id"], "trip_id")
+    if trip_id != expected_trip_id:
         raise FactContractError(
             "CACHE_CORRUPTED",
             "Evidence cache belongs to a different trip.",
         )
-    if value["policy_registry_revision"] != policies.revision:
-        raise FactContractError(
-            "CACHE_CORRUPTED",
-            "Evidence cache policy registry is no longer current.",
-        )
+    policy_registry_revision = _require_digest_value(
+        value["policy_registry_revision"],
+        "policy_registry_revision",
+    )
     generation = value["generation"]
     if (
         isinstance(generation, bool)
@@ -1371,7 +1501,7 @@ def _decode_document_content(
             "CACHE_CORRUPTED",
             "Evidence cache records exceed their bounded list contract.",
         )
-    observations: list[FactObservation] = []
+    records: list[_StoredRecord] = []
     for index, raw_record in enumerate(raw_records):
         record = _require_object(raw_record, f"records[{index}]")
         _exact_fields(
@@ -1386,17 +1516,6 @@ def _decode_document_content(
             record["policy_digest"],
             f"records[{index}].policy_digest",
         )
-        policy = policies.policy(policy_id)
-        if policy.policy_digest != policy_digest:
-            raise FactContractError(
-                "CACHE_CORRUPTED",
-                "Evidence record policy digest is no longer current.",
-            )
-        if policy.persistence is EvidencePersistence.MEMORY_ONLY:
-            raise FactContractError(
-                "CACHE_CORRUPTED",
-                "Memory-only provider content was found on disk.",
-            )
         observation = _decode_observation(
             record["observation"],
             path=f"records[{index}].observation",
@@ -1406,18 +1525,82 @@ def _decode_document_content(
                 "CACHE_CORRUPTED",
                 "Evidence record wrapper and provenance policy disagree.",
             )
-        policies.validate_observation(observation)
-        observations.append(observation)
-    ledger = _restore_durable_evidence_ledger(
-        policies=policies,
-        observations=tuple(observations),
-        generation=generation,
+        records.append(
+            _StoredRecord(
+                policy_id=policy_id,
+                policy_digest=policy_digest,
+                observation=observation,
+            )
+        )
+    normalized_records = tuple(
+        sorted(
+            records,
+            key=lambda item: (
+                item.observation.key.key_id,
+                item.observation.provenance.provider_id,
+                item.observation.observation_id,
+            ),
+        )
     )
+    source_slots = [
+        item.observation.source_slot for item in normalized_records
+    ]
+    if len(set(source_slots)) != len(source_slots):
+        raise FactContractError(
+            "CACHE_CORRUPTED",
+            "Evidence cache contains duplicate provider LKG slots.",
+        )
     stored_revision = _require_digest_value(
         value["store_revision"], "store_revision"
     )
     store_epoch = _require_digest_value(value["store_epoch"], "store_epoch")
-    return ledger, stored_revision, store_epoch
+    expected_revision = _store_revision_from_bindings(
+        trip_id=expected_trip_id,
+        policy_registry_revision=policy_registry_revision,
+        generation=generation,
+        store_epoch=store_epoch,
+        records=tuple(
+            (
+                item.observation.observation_id,
+                item.policy_id,
+                item.policy_digest,
+            )
+            for item in normalized_records
+        ),
+    )
+    if stored_revision != expected_revision:
+        raise FactContractError(
+            "CACHE_CORRUPTED",
+            "Evidence store revision does not match its records.",
+        )
+    canonical_document = {
+        "schema_version": EVIDENCE_STORE_VERSION,
+        "trip_id": expected_trip_id,
+        "policy_registry_revision": policy_registry_revision,
+        "generation": generation,
+        "records": [
+            {
+                "policy_id": item.policy_id,
+                "policy_digest": item.policy_digest,
+                "observation": _encode_observation(item.observation),
+            }
+            for item in normalized_records
+        ],
+        "store_epoch": store_epoch,
+        "store_revision": stored_revision,
+    }
+    if data != _canonical_json_bytes(canonical_document):
+        raise FactContractError(
+            "CACHE_CORRUPTED",
+            "Evidence cache is not in normalized canonical form.",
+        )
+    return _SelfValidatedDocument(
+        policy_registry_revision=policy_registry_revision,
+        generation=generation,
+        records=normalized_records,
+        store_epoch=store_epoch,
+        store_revision=stored_revision,
+    )
 
 
 def _decode_document(
@@ -1426,38 +1609,69 @@ def _decode_document(
     expected_trip_id: str,
     policies: ProviderPolicyRegistry,
 ) -> _StoredEvidence:
-    ledger, stored_revision, store_epoch = _decode_document_content(
+    document = _decode_document_content(
         data,
         expected_trip_id=expected_trip_id,
-        policies=policies,
     )
-    expected_revision = _store_revision(
+    migration_required = (
+        document.policy_registry_revision != policies.revision
+    )
+    retained: list[FactObservation] = []
+    removed: list[str] = []
+    for item in document.records:
+        try:
+            policy = policies.policy(item.policy_id)
+            if not migration_required and (
+                item.policy_digest != policy.policy_digest
+            ):
+                raise FactContractError(
+                    "CACHE_CORRUPTED",
+                    "Evidence record policy digest is no longer current.",
+                )
+            if policy.persistence is EvidencePersistence.MEMORY_ONLY:
+                raise FactContractError(
+                    "CACHE_CORRUPTED",
+                    "Memory-only provider content was found on disk.",
+                )
+            policies.validate_observation(item.observation)
+        except FactContractError:
+            if not migration_required:
+                raise
+            # The old file already passed its own canonical/digest checks.
+            # Current-policy rejection is therefore an authorization change,
+            # not permission to salvage malformed bytes as a migration.
+            removed.append(item.observation.observation_id)
+            continue
+        retained.append(item.observation)
+    generation = document.generation
+    if removed and generation < _MAX_GENERATION:
+        generation += 1
+    ledger = _restore_durable_evidence_ledger(
+        policies=policies,
+        observations=tuple(retained),
+        generation=generation,
+    )
+    current_revision = _store_revision(
         expected_trip_id,
         policies,
         ledger,
-        store_epoch,
+        document.store_epoch,
     )
-    if stored_revision != expected_revision:
-        raise FactContractError(
-            "CACHE_CORRUPTED",
-            "Evidence store revision does not match its records.",
-        )
-    if data != _encode_document(
-        trip_id=expected_trip_id,
-        policies=policies,
-        ledger=ledger,
-        store_revision=stored_revision,
-        store_epoch=store_epoch,
-    ):
-        raise FactContractError(
-            "CACHE_CORRUPTED",
-            "Evidence cache is not in normalized canonical form.",
-        )
     return _StoredEvidence(
         ledger=ledger,
-        store_revision=stored_revision,
-        store_epoch=store_epoch,
+        store_revision=current_revision,
+        store_epoch=document.store_epoch,
         existed=True,
+        previous_revision=(
+            document.store_revision if migration_required else None
+        ),
+        load_changed=migration_required,
+        removed_observation_ids=tuple(removed),
+        migration_observations=(
+            tuple(item.observation for item in document.records)
+            if migration_required
+            else ()
+        ),
     )
 
 
@@ -1813,24 +2027,50 @@ def _store_revision(
     ledger: EvidenceLedger,
     store_epoch: str,
 ) -> str:
+    return _store_revision_from_bindings(
+        trip_id=trip_id,
+        policy_registry_revision=policies.revision,
+        generation=ledger.generation,
+        store_epoch=store_epoch,
+        records=tuple(
+            (
+                observation.observation_id,
+                observation.provenance.retention_policy_id,
+                policies.policy(
+                    observation.provenance.retention_policy_id
+                ).policy_digest,
+            )
+            for observation in ledger.observations
+        ),
+    )
+
+
+def _store_revision_from_bindings(
+    *,
+    trip_id: str,
+    policy_registry_revision: str,
+    generation: int,
+    store_epoch: str,
+    records: tuple[tuple[str, str, str], ...],
+) -> str:
+    _require_digest_value(
+        policy_registry_revision,
+        "policy_registry_revision",
+    )
     _require_digest_value(store_epoch, "store_epoch")
     payload = {
         "schema_version": EVIDENCE_STORE_VERSION,
         "trip_id": trip_id,
-        "policy_registry_revision": policies.revision,
+        "policy_registry_revision": policy_registry_revision,
         "store_epoch": store_epoch,
-        "generation": ledger.generation,
+        "generation": generation,
         "records": [
             {
-                "observation_id": observation.observation_id,
-                "policy_id": (
-                    observation.provenance.retention_policy_id
-                ),
-                "policy_digest": policies.policy(
-                    observation.provenance.retention_policy_id
-                ).policy_digest,
+                "observation_id": observation_id,
+                "policy_id": policy_id,
+                "policy_digest": policy_digest,
             }
-            for observation in ledger.observations
+            for observation_id, policy_id, policy_digest in records
         ],
     }
     return hashlib.sha256(

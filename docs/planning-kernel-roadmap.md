@@ -594,15 +594,18 @@ Exit gate：
 - Review grant由host authority簽發，promotion使用host-stamped clock、30分鐘expiry與current
   store/evidence revision；過期或drift不可重播。Ephemeral候選payload附Google
   Maps attribution，display name、address、coordinates、types與page token
-  不進safe binding、EvidenceStore、receipt或history。
+  不進safe binding、EvidenceStore、receipt或history。Assessment與review只能
+  由strict evaluator mint；generic authorization不能替代review finalizer。
 - ID-only refresh必須從trusted existing LKG建立；不同ID回`PENDING_REVIEW`，
   且持鎖merge會對basis observation/value做CAS，舊refresh不會覆蓋已reviewed
   rebind。Routes前置endpoint只接受fresh、unconflicted identity，並以
-  observation/value/snapshot/endpoint digest綁定而不在safe view輸出raw
-  provider ID。
-- 兩輪低成本獨立review指出的arbitrary refresh、expired review、existing-ID
-  silent rebind、name normalization collision與attribution缺口均已修正並加入
-  regression。Phase 4.2專項16個、facts/identity共88個、全套432個offline
+  factory-only constructor與observation/value/snapshot/endpoint digest綁定，
+  不在safe view輸出raw provider ID。
+- 低成本獨立review指出的arbitrary refresh、expired review、existing-ID
+  silent rebind、generic/review-graph promotion bypass、name/locality
+  normalization collision、endpoint偽造、policy migration full reset與
+  two-stage write-result錯報均已修正並加入regression。Phase 4.2專項19個、
+  facts/identity共91個、全套441個offline
   tests、三個real-trip validators與Python compile全過；29個trip files hash
   aggregate維持
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。

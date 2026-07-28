@@ -93,10 +93,18 @@ def policy_registry(*, disk_retention_seconds: int = 3600) -> ProviderPolicyRegi
                 contract_region="test",
                 allowed_fact_kinds=(FactKind.PLACE_IDENTITY,),
                 allowed_value_fields=("provider_place_id",),
-                allowed_operations=("resolve-place",),
+                allowed_operations=("refresh-place-id", "resolve-place"),
                 persistence=EvidencePersistence.INDEFINITE_ID,
                 max_validity_seconds=366 * 24 * 60 * 60,
                 max_retention_seconds=None,
+                allowed_query_fields=(
+                    "basis_observation_id",
+                    "basis_provider_place_id",
+                    "basis_snapshot_id",
+                    "basis_value_digest",
+                    "field_mask",
+                    "provider_place_id",
+                ),
                 required_attribution_labels=("Google Maps",),
             ),
         )
@@ -213,23 +221,27 @@ def identity_observation(
     policies: ProviderPolicyRegistry,
     *,
     key: FactKey | None = None,
+    request: ProviderRequest | None = None,
+    place_id: str = "place-123",
     retrieved_at: datetime = NOW,
 ) -> FactObservation:
     exact_key = key or identity_key()
-    request = request_for(
-        policies, exact_key, provider_id="google-places"
+    exact_request = request or request_for(
+        policies,
+        exact_key,
+        provider_id="google-places",
     )
     return FactObservation(
         key=exact_key,
         value=FactValue.from_payload(
             FactKind.PLACE_IDENTITY,
-            {"provider_place_id": "place-123"},
+            {"provider_place_id": place_id},
         ),
         provenance=ProviderProvenance(
             provider_id="google-places",
             adapter_id="google-places",
             adapter_version="v1",
-            request_fingerprint=request.request_fingerprint,
+            request_fingerprint=exact_request.request_fingerprint,
             retention_policy_id="google-place-id-v1",
             attributions=(("Google Maps", None),),
         ),
@@ -257,7 +269,76 @@ def authorized_success(
         attempts_used=1,
         completed_at=observation.retrieved_at,
     )
+    if observation.key.kind is FactKind.PLACE_IDENTITY:
+        return facts_module._authorize_google_place_identity_result(
+            request,
+            result,
+            policies,
+            _token=(
+                facts_module._GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN
+            ),
+        )
     return authorize_provider_result(request, result, policies)
+
+
+def authorized_identity_success(
+    policies: ProviderPolicyRegistry,
+    request: ProviderRequest,
+    *,
+    place_id: str,
+    retrieved_at: datetime,
+) -> object:
+    observation = identity_observation(
+        policies,
+        key=request.fact_keys[0],
+        request=request,
+        place_id=place_id,
+        retrieved_at=retrieved_at,
+    )
+    result = ProviderResult(
+        request_fingerprint=request.request_fingerprint,
+        status=ProviderResultStatus.SUCCESS,
+        observations=(observation,),
+        problems=(),
+        attempts_used=1,
+        completed_at=retrieved_at,
+    )
+    return facts_module._authorize_google_place_identity_result(
+        request,
+        result,
+        policies,
+        _token=facts_module._GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
+    )
+
+
+def identity_basis_request(
+    policies: ProviderPolicyRegistry,
+    basis: FactObservation,
+    *,
+    operation: str,
+) -> ProviderRequest:
+    policy = policies.policy("google-place-id-v1")
+    place_id = basis.value.payload["provider_place_id"]
+    return ProviderRequest(
+        provider_id="google-places",
+        adapter_id="google-places",
+        adapter_version="v1",
+        operation=operation,
+        fact_keys=(basis.key,),
+        policy_id=policy.policy_id,
+        policy_digest=policy.policy_digest,
+        query_scope=(
+            ("basis_observation_id", basis.observation_id),
+            ("basis_provider_place_id", place_id),
+            ("basis_snapshot_id", "1" * 64),
+            ("basis_value_digest", basis.value.value_digest),
+            (
+                "field_mask",
+                "id" if operation == "refresh-place-id" else "places.id",
+            ),
+            ("provider_place_id", place_id),
+        ),
+    )
 
 
 def authorized_failure(
@@ -998,11 +1079,14 @@ class EvidenceStoreTests(unittest.TestCase):
                     expected_epoch=self.expected_corrupt_epoch(payload)
                 )
 
-    def test_policy_drift_clears_but_trip_file_transplant_is_preserved(
+    def test_policy_drift_migrates_valid_records_but_trip_transplant_is_preserved(
         self,
     ) -> None:
-        item = route_observation(self.policies, route_key())
-        self.store().merge(authorized_success(self.policies, item))
+        route = route_observation(self.policies, route_key())
+        identity = identity_observation(self.policies)
+        store = self.store()
+        store.merge(authorized_success(self.policies, route))
+        store.merge(authorized_success(self.policies, identity))
         before = self.cache_path.read_bytes()
         changed_policies = policy_registry(
             disk_retention_seconds=1800
@@ -1025,11 +1109,181 @@ class EvidenceStoreTests(unittest.TestCase):
         self.assert_problem(transplanted, "CACHE_CORRUPTED")
         self.assertFalse(transplanted.changed)
         self.assertEqual(before, after_transplant)
-        self.assertFalse(drift.success)
-        self.assert_problem(drift, "CACHE_CORRUPTED")
+        self.assertTrue(drift.success, drift.to_dict())
+        self.assertEqual("migrated", drift.status)
         self.assertTrue(drift.changed)
+        self.assertEqual((identity,), drift.ledger.observations)
+        self.assertEqual(
+            (route.observation_id,),
+            drift.purged_observation_ids,
+        )
         self.assertNotEqual(before, self.cache_path.read_bytes())
-        self.assert_empty_reset_document(policies=changed_policies)
+        migrated = json.loads(self.cache_path.read_text("utf-8"))
+        self.assertEqual(
+            changed_policies.revision,
+            migrated["policy_registry_revision"],
+        )
+        self.assertEqual(1, len(migrated["records"]))
+        self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_policy_expansion_revalidates_and_retains_changed_policy_record(
+        self,
+    ) -> None:
+        route = route_observation(self.policies, route_key())
+        identity = identity_observation(self.policies)
+        store = self.store()
+        store.merge(authorized_success(self.policies, route))
+        store.merge(authorized_success(self.policies, identity))
+        before = self.cache_path.read_bytes()
+        expanded_policies = policy_registry(
+            disk_retention_seconds=7200
+        )
+
+        migrated = self.store(
+            clock=MutableClock(),
+            policies=expanded_policies,
+        ).load()
+        reloaded = self.store(
+            clock=MutableClock(),
+            policies=expanded_policies,
+        ).load()
+
+        self.assertTrue(migrated.success, migrated.to_dict())
+        self.assertEqual("migrated", migrated.status)
+        self.assertTrue(migrated.changed)
+        self.assertEqual({route, identity}, set(migrated.ledger.observations))
+        self.assertEqual((), migrated.purged_observation_ids)
+        self.assertNotEqual(before, self.cache_path.read_bytes())
+        self.assertTrue(reloaded.success, reloaded.to_dict())
+        self.assertEqual("loaded", reloaded.status)
+        self.assertFalse(reloaded.changed)
+        self.assertEqual(
+            migrated.current_revision,
+            reloaded.current_revision,
+        )
+        self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_policy_drift_does_not_migrate_a_tampered_store_revision(
+        self,
+    ) -> None:
+        route = route_observation(self.policies, route_key())
+        self.store().merge(authorized_success(self.policies, route))
+        document = json.loads(self.cache_path.read_text("utf-8"))
+        document["store_revision"] = "0" * 64
+        tampered = json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.cache_path.write_bytes(tampered)
+        expanded_policies = policy_registry(
+            disk_retention_seconds=7200
+        )
+
+        result = self.store(
+            clock=MutableClock(),
+            policies=expanded_policies,
+        ).load()
+
+        self.assertFalse(result.success)
+        self.assert_problem(result, "CACHE_CORRUPTED")
+        self.assertTrue(result.changed)
+        self.assert_empty_reset_document(
+            policies=expanded_policies,
+            expected_epoch=self.expected_corrupt_epoch(tampered),
+        )
+
+    def test_policy_migration_write_failure_preserves_old_canonical_file(
+        self,
+    ) -> None:
+        route = route_observation(self.policies, route_key())
+        self.store().merge(authorized_success(self.policies, route))
+        before = self.cache_path.read_bytes()
+        expanded_policies = policy_registry(
+            disk_retention_seconds=7200
+        )
+
+        failed = self.store(
+            clock=MutableClock(),
+            policies=expanded_policies,
+            fault_stage="before_replace",
+        ).load()
+
+        self.assertFalse(failed.success)
+        self.assert_problem(failed, "CACHE_WRITE_FAILED")
+        self.assertEqual(before, self.cache_path.read_bytes())
+        self.assertEqual(0, self.reset_nonces.calls)
+
+        retried = self.store(
+            clock=MutableClock(),
+            policies=expanded_policies,
+        ).load()
+        self.assertTrue(retried.success, retried.to_dict())
+        self.assertEqual("migrated", retried.status)
+        self.assertEqual((route,), retried.ledger.observations)
+
+    def test_provider_write_failure_reports_committed_policy_migration(
+        self,
+    ) -> None:
+        route = route_observation(self.policies, route_key())
+        identity = identity_observation(self.policies)
+        seeded = self.store()
+        seeded.merge(authorized_success(self.policies, route))
+        before = seeded.merge(
+            authorized_success(self.policies, identity)
+        )
+        tightened = policy_registry(disk_retention_seconds=1800)
+        incoming = route_observation(
+            tightened,
+            route_key("loc-new-a", "loc-new-b"),
+            purge_at=NOW + timedelta(minutes=20),
+            source_suffix="after-migration",
+        )
+        replace_attempts = 0
+
+        def fail_second_replace(stage: str) -> None:
+            nonlocal replace_attempts
+            if stage == "before_replace":
+                replace_attempts += 1
+                if replace_attempts == 2:
+                    raise InjectedFault(stage)
+
+        store = EvidenceStore(
+            self.trips_root,
+            self.slug,
+            TRIP_ID,
+            tightened,
+            clock=MutableClock(),
+            fault_hook=fail_second_replace,
+            reset_nonce_source=self.reset_nonces,
+        )
+
+        failed = store.merge(authorized_success(tightened, incoming))
+        reloaded = self.store(
+            clock=MutableClock(),
+            policies=tightened,
+        ).load()
+
+        self.assertFalse(failed.success)
+        self.assertEqual("write_failed", failed.status)
+        self.assert_problem(failed, "CACHE_WRITE_FAILED")
+        self.assertEqual(2, replace_attempts)
+        self.assertTrue(failed.changed)
+        self.assertEqual(before.current_revision, failed.previous_revision)
+        self.assertIsNotNone(failed.current_revision)
+        self.assertNotEqual(
+            failed.current_revision,
+            failed.expected_revision,
+        )
+        self.assertEqual((identity,), failed.ledger.observations)
+        self.assertEqual(
+            (route.observation_id,),
+            failed.purged_observation_ids,
+        )
+        self.assertTrue(reloaded.success, reloaded.to_dict())
+        self.assertEqual(failed.current_revision, reloaded.current_revision)
+        self.assertEqual((identity,), reloaded.ledger.observations)
 
     def test_future_record_after_cross_process_clock_rollback_is_corrupt(
         self,
@@ -1430,6 +1684,145 @@ class EvidenceStoreTests(unittest.TestCase):
 
         self.assertTrue(all(result.success for result in results))
         self.assertEqual({first, second}, set(loaded.ledger.observations))
+
+    def test_concurrent_identity_rebind_and_refresh_share_one_basis_winner(
+        self,
+    ) -> None:
+        initial = identity_observation(self.policies)
+        seeded = self.store().merge(
+            authorized_success(self.policies, initial)
+        )
+        basis = seeded.ledger.observations[0]
+        rebind_request = identity_basis_request(
+            self.policies,
+            basis,
+            operation="resolve-place",
+        )
+        refresh_request = identity_basis_request(
+            self.policies,
+            basis,
+            operation="refresh-place-id",
+        )
+        contenders = (
+            authorized_identity_success(
+                self.policies,
+                rebind_request,
+                place_id="place-rebound",
+                retrieved_at=NOW + timedelta(minutes=1),
+            ),
+            authorized_identity_success(
+                self.policies,
+                refresh_request,
+                place_id="place-123",
+                retrieved_at=NOW + timedelta(minutes=1),
+            ),
+        )
+        barrier = threading.Barrier(2)
+
+        def merge(contender):
+            barrier.wait(timeout=5)
+            return self.store(
+                clock=MutableClock(NOW + timedelta(minutes=2))
+            ).merge(contender)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = [
+                future.result(timeout=15)
+                for future in (
+                    executor.submit(merge, contenders[0]),
+                    executor.submit(merge, contenders[1]),
+                )
+            ]
+        loaded = self.store(
+            clock=MutableClock(NOW + timedelta(minutes=2))
+        ).load()
+
+        winners = [result for result in results if result.changed]
+        losers = [result for result in results if not result.changed]
+        self.assertTrue(all(result.success for result in results))
+        self.assertEqual(1, len(winners))
+        self.assertEqual(1, len(losers))
+        self.assertEqual("merged", winners[0].status)
+        self.assertEqual("no_op", losers[0].status)
+        self.assertEqual(1, len(winners[0].promoted_observation_ids))
+        self.assertIn(
+            ProviderProblemCode.EVIDENCE_REVISION_CHANGED,
+            {item.code for item in losers[0].provider_problems},
+        )
+        self.assertEqual(1, len(loaded.ledger.observations))
+        self.assertIn(
+            loaded.ledger.observations[0].value.payload[
+                "provider_place_id"
+            ],
+            {"place-123", "place-rebound"},
+        )
+
+    def test_concurrent_identity_rebinds_share_one_basis_winner(self) -> None:
+        initial = identity_observation(self.policies)
+        seeded = self.store().merge(
+            authorized_success(self.policies, initial)
+        )
+        basis = seeded.ledger.observations[0]
+        requests = tuple(
+            identity_basis_request(
+                self.policies,
+                basis,
+                operation="resolve-place",
+            )
+            for _index in range(2)
+        )
+        contenders = tuple(
+            authorized_identity_success(
+                self.policies,
+                request,
+                place_id=place_id,
+                retrieved_at=NOW + timedelta(minutes=1),
+            )
+            for request, place_id in zip(
+                requests,
+                ("place-rebound-a", "place-rebound-b"),
+                strict=True,
+            )
+        )
+        barrier = threading.Barrier(2)
+
+        def merge(contender):
+            barrier.wait(timeout=5)
+            return self.store(
+                clock=MutableClock(NOW + timedelta(minutes=2))
+            ).merge(contender)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = [
+                future.result(timeout=15)
+                for future in (
+                    executor.submit(merge, contenders[0]),
+                    executor.submit(merge, contenders[1]),
+                )
+            ]
+        loaded = self.store(
+            clock=MutableClock(NOW + timedelta(minutes=2))
+        ).load()
+
+        winners = [result for result in results if result.changed]
+        losers = [result for result in results if not result.changed]
+        self.assertTrue(all(result.success for result in results))
+        self.assertEqual(1, len(winners))
+        self.assertEqual(1, len(losers))
+        self.assertEqual("merged", winners[0].status)
+        self.assertEqual("no_op", losers[0].status)
+        self.assertEqual(1, len(winners[0].promoted_observation_ids))
+        self.assertIn(
+            ProviderProblemCode.EVIDENCE_REVISION_CHANGED,
+            {item.code for item in losers[0].provider_problems},
+        )
+        self.assertEqual(1, len(loaded.ledger.observations))
+        self.assertIn(
+            loaded.ledger.observations[0].value.payload[
+                "provider_place_id"
+            ],
+            {"place-rebound-a", "place-rebound-b"},
+        )
 
     def test_older_same_slot_cannot_overwrite_newer_lkg(self) -> None:
         key = route_key()

@@ -1686,6 +1686,9 @@ class ProviderResult:
 
 
 _AUTHORIZATION_TOKEN = object()
+_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN = object()
+_GENERIC_AUTHORIZATION_GATE = "provider-policy"
+_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_GATE = "google-place-identity"
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -1734,8 +1737,66 @@ def authorize_provider_result(
     result: ProviderResult,
     policies: ProviderPolicyRegistry,
 ) -> AuthorizedProviderResult:
-    """Validate exact request coverage, source, storage and attribution policy."""
+    """Validate a generic provider result.
 
+    Google place identity is deliberately excluded: only the dedicated
+    review/refresh finalizers may mint an authorized identity result.
+    """
+
+    return _authorize_provider_result(
+        request,
+        result,
+        policies,
+        authorization_gate=_GENERIC_AUTHORIZATION_GATE,
+    )
+
+
+def _authorize_google_place_identity_result(
+    request: ProviderRequest,
+    result: ProviderResult,
+    policies: ProviderPolicyRegistry,
+    *,
+    _token: object,
+) -> AuthorizedProviderResult:
+    """Authorize one identity result minted by the dedicated boundary."""
+
+    if _token is not _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN:
+        raise FactContractError(
+            "PENDING_REVIEW",
+            "Google place identity authorization requires a trusted finalizer.",
+        )
+    if not _is_google_place_identity_promotion(request):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Dedicated identity authorization received a non-identity request.",
+        )
+    return _authorize_provider_result(
+        request,
+        result,
+        policies,
+        authorization_gate=_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_GATE,
+        _identity_token=_token,
+    )
+
+
+def _authorize_provider_result(
+    request: ProviderRequest,
+    result: ProviderResult,
+    policies: ProviderPolicyRegistry,
+    *,
+    authorization_gate: str,
+    _identity_token: object | None = None,
+) -> AuthorizedProviderResult:
+    """Shared exact policy validation behind token-separated host gates."""
+
+    if (
+        authorization_gate == _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_GATE
+        and _identity_token is not _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN
+    ):
+        raise FactContractError(
+            "PENDING_REVIEW",
+            "Google place identity authorization requires a trusted finalizer.",
+        )
     if (
         type(request) is not ProviderRequest
         or type(result) is not ProviderResult
@@ -1850,9 +1911,21 @@ def authorize_provider_result(
             "EVIDENCE_BINDING_MISMATCH",
             "ProviderResult does not exactly cover its requested fact keys.",
         )
+    if (
+        authorization_gate == _GENERIC_AUTHORIZATION_GATE
+        and _is_google_place_identity_promotion(request)
+    ):
+        raise FactContractError(
+            "PENDING_REVIEW",
+            (
+                "Google place identity requires the dedicated reviewed "
+                "promotion boundary."
+            ),
+        )
 
     authorization_id = _digest(
         {
+            "authorization_gate": authorization_gate,
             "request_fingerprint": request.request_fingerprint,
             "result_id": result.result_id,
             "policy_digest": policy.policy_digest,
@@ -1866,6 +1939,21 @@ def authorize_provider_result(
         policy_registry_revision=policies.revision,
         authorization_id=authorization_id,
         _token=_AUTHORIZATION_TOKEN,
+    )
+
+
+def _is_google_place_identity_promotion(
+    request: object,
+) -> bool:
+    return bool(
+        type(request) is ProviderRequest
+        and request.provider_id == "google-places"
+        and request.policy_id == "google-place-id-v1"
+        and request.operation in {"refresh-place-id", "resolve-place"}
+        and any(
+            key.kind is FactKind.PLACE_IDENTITY
+            for key in request.fact_keys
+        )
     )
 
 
@@ -2196,11 +2284,19 @@ def merge_provider_result(
             "UNTRUSTED_PROVENANCE",
             "Provider result was authorized under a different policy revision.",
         )
-    reauthorized = authorize_provider_result(
-        authorized_result.request,
-        authorized_result.result,
-        ledger.policies,
-    )
+    if _is_google_place_identity_promotion(authorized_result.request):
+        reauthorized = _authorize_google_place_identity_result(
+            authorized_result.request,
+            authorized_result.result,
+            ledger.policies,
+            _token=_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
+        )
+    else:
+        reauthorized = authorize_provider_result(
+            authorized_result.request,
+            authorized_result.result,
+            ledger.policies,
+        )
     if (
         reauthorized.authorization_id
         != authorized_result.authorization_id

@@ -13,12 +13,13 @@ import json
 import math
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Mapping
 
 from .facts import (
+    AuthorizedProviderResult,
     EvidencePersistence,
     EvidenceSnapshot,
     FactContractError,
@@ -30,6 +31,8 @@ from .facts import (
     ProviderRequest,
     ProviderResult,
     ProviderResultStatus,
+    _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
+    _authorize_google_place_identity_result,
 )
 from .models import EvidenceState
 
@@ -465,7 +468,7 @@ class PlaceIdentityCandidate:
                     _text(item, "candidate locality", maximum=256)
                     for item in self.locality_names
                 },
-                key=_match_text,
+                key=lambda item: (_match_text(item), item),
             )
         )
         if any(not _match_text(item) for item in localities):
@@ -527,6 +530,9 @@ class PlaceIdentityCandidate:
         }
 
 
+_PLACE_IDENTITY_EVALUATOR_TOKEN = object()
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class PlaceIdentityCandidateAssessment:
     """Hard gates and name-match status for one candidate."""
@@ -536,8 +542,14 @@ class PlaceIdentityCandidateAssessment:
     rejection_codes: tuple[PlaceCandidateRejection, ...] = ()
     distance_m: float | None = field(default=None, repr=False)
     assessment_id: str = ""
+    _token: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _PLACE_IDENTITY_EVALUATOR_TOKEN:
+            raise FactContractError(
+                "UNTRUSTED_PROVENANCE",
+                "Candidate assessments must be minted by the trusted evaluator.",
+            )
         if type(self.candidate) is not PlaceIdentityCandidate:
             raise FactContractError(
                 "INVALID_PROVIDER_RESPONSE",
@@ -636,8 +648,14 @@ class PlaceIdentityReview:
     candidate_set_digest: str = ""
     review_id: str = ""
     contract_version: str = PLACE_IDENTITY_REVIEW_VERSION
+    _token: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _PLACE_IDENTITY_EVALUATOR_TOKEN:
+            raise FactContractError(
+                "UNTRUSTED_PROVENANCE",
+                "Place identity reviews must be minted by the trusted evaluator.",
+            )
         if self.contract_version != PLACE_IDENTITY_REVIEW_VERSION:
             raise FactContractError(
                 "UNSUPPORTED_VERSION",
@@ -964,7 +982,10 @@ class PlaceIdentityReviewAuthority:
         )
 
 
-@dataclass(frozen=True, slots=True, repr=False)
+_PLACE_ENDPOINT_TOKEN = object()
+
+
+@dataclass(frozen=True, slots=True, init=False, repr=False)
 class PlaceEndpointIdentity:
     """Fresh provider endpoint binding for the later Routes slice."""
 
@@ -976,6 +997,41 @@ class PlaceEndpointIdentity:
     valid_until: datetime
     snapshot_id: str
     endpoint_id: str = ""
+
+    def __init__(
+        self,
+        *,
+        location_id: str,
+        provider_id: str,
+        provider_place_id: str,
+        observation_id: str,
+        value_digest: str,
+        valid_until: datetime,
+        snapshot_id: str,
+        endpoint_id: str = "",
+        _token: object | None = None,
+    ) -> None:
+        if _token is not _PLACE_ENDPOINT_TOKEN:
+            raise FactContractError(
+                "UNTRUSTED_PROVENANCE",
+                (
+                    "Place endpoints can only be extracted from a fresh "
+                    "trusted evidence snapshot."
+                ),
+            )
+        object.__setattr__(self, "location_id", location_id)
+        object.__setattr__(self, "provider_id", provider_id)
+        object.__setattr__(
+            self,
+            "provider_place_id",
+            provider_place_id,
+        )
+        object.__setattr__(self, "observation_id", observation_id)
+        object.__setattr__(self, "value_digest", value_digest)
+        object.__setattr__(self, "valid_until", valid_until)
+        object.__setattr__(self, "snapshot_id", snapshot_id)
+        object.__setattr__(self, "endpoint_id", endpoint_id)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         location_id = _text(self.location_id, "location_id", maximum=256)
@@ -989,12 +1045,17 @@ class PlaceEndpointIdentity:
             "provider_place_id",
             maximum=512,
         )
-        FactValue.from_payload(
+        value = FactValue.from_payload(
             FactKind.PLACE_IDENTITY,
             {"provider_place_id": place_id},
         )
         _require_digest(self.observation_id, "observation_id")
         _require_digest(self.value_digest, "value_digest")
+        if self.value_digest != value.value_digest:
+            raise FactContractError(
+                "EVIDENCE_BINDING_MISMATCH",
+                "Endpoint value digest differs from its provider place ID.",
+            )
         _require_digest(self.snapshot_id, "snapshot_id")
         valid_until = _utc_datetime(self.valid_until, "valid_until")
         endpoint_id = _digest(
@@ -1130,6 +1191,7 @@ def evaluate_google_place_identity_candidates(
         expires_at=completed + _REVIEW_LIFETIME,
         attempts_used=attempts,
         results_truncated=results_truncated,
+        _token=_PLACE_IDENTITY_EVALUATOR_TOKEN,
     )
 
 
@@ -1138,8 +1200,8 @@ def finalize_google_place_identity_review(
     current_snapshot: EvidenceSnapshot,
     authority: PlaceIdentityReviewAuthority,
     grant: PlaceIdentityReviewGrant | None = None,
-) -> ProviderResult:
-    """Create an ID-only result after auto-safe or exact reviewed selection."""
+) -> AuthorizedProviderResult:
+    """Authorize an ID-only result after auto-safe or reviewed selection."""
 
     if (
         type(review) is not PlaceIdentityReview
@@ -1242,11 +1304,17 @@ def finalize_google_place_identity_review(
             "OUT_OF_SCOPE_RESULT",
             "Review grant selected a missing or hard-rejected candidate.",
         )
-    return _identity_provider_result(
+    result = _identity_provider_result(
         request=review.request.provider_request,
         provider_place_id=selected.candidate.provider_place_id,
         completed_at=review.completed_at,
         attempts_used=review.attempts_used,
+    )
+    return _authorize_google_place_identity_result(
+        review.request.provider_request,
+        result,
+        current_snapshot.policies,
+        _token=_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
     )
 
 
@@ -1303,8 +1371,8 @@ def finalize_google_place_identity_refresh(
     *,
     completed_at: datetime,
     attempts_used: int = 1,
-) -> ProviderResult:
-    """Normalize one successful ID-only refresh response."""
+) -> AuthorizedProviderResult:
+    """Normalize and authorize one successful ID-only refresh response."""
 
     if (
         type(snapshot) is not EvidenceSnapshot
@@ -1378,11 +1446,17 @@ def finalize_google_place_identity_refresh(
                 "ID-only refresh cannot silently rebind a location."
             ),
         )
-    return _identity_provider_result(
+    result = _identity_provider_result(
         request=request,
         provider_place_id=returned,
         completed_at=completed,
         attempts_used=_attempts(attempts_used),
+    )
+    return _authorize_google_place_identity_result(
+        request,
+        result,
+        snapshot.policies,
+        _token=_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
     )
 
 
@@ -1444,6 +1518,7 @@ def extract_fresh_google_place_endpoint(
         value_digest=selected.value.value_digest,
         valid_until=selected.valid_until,
         snapshot_id=snapshot.snapshot_id,
+        _token=_PLACE_ENDPOINT_TOKEN,
     )
 
 
@@ -1844,6 +1919,7 @@ def _assess_candidate(
         ),
         rejection_codes=tuple(rejections),
         distance_m=distance_m,
+        _token=_PLACE_IDENTITY_EVALUATOR_TOKEN,
     )
 
 

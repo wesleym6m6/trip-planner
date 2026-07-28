@@ -293,7 +293,12 @@ Raw result不能直接merge。`authorize_provider_result()`先驗：
 - provenance source、fingerprint、policy完全相同；
 - validity、retention、persistence與attribution符合static policy。
 
-只有`AuthorizedProviderResult`可進`merge_provider_result()`。
+Google place identity是更窄的例外：generic
+`authorize_provider_result()`一律拒絕`resolve-place`與`refresh-place-id`；
+candidate assessment與review只能由strict evaluator mint，review／refresh
+finalizer再直接產生gate-bound `AuthorizedProviderResult`。Merge時仍以同一
+specialized gate重驗。只有`AuthorizedProviderResult`可進
+`merge_provider_result()`。
 
 ## EvidenceStore current-state boundary
 
@@ -315,8 +320,12 @@ trips/{slug}/data/.trip-planner-evidence.json
   比對`expected_revision`；
 - process在replace前死亡留下的reserved temp，下一個lock owner會驗證為regular
   file、刪除並fsync directory，避免TTL bytes脫離retention lifecycle；
-- strict decoder要求目前trip ID、policy registry、policy digest、record/value
-  digest、normalized order與canonical UTC bytes完全一致；
+- strict decoder先要求目前trip ID、stored policy registry / policy digest、
+  record/value digest、normalized order與canonical UTC bytes自洽；registry
+  revision升級時，只有通過舊文件自身canonical bytes與store revision驗證的
+  records才可逐筆接受目前policy重新授權。仍合法的records保留，不再合法的
+  records刪除，並在同一把lock內atomic rewrite；格式、trip/schema或digest
+  真正損毀時不得偽裝成migration；
 - cache schema `evidence-store/v2`加入256-bit `store_epoch`。正常merge與purge
   保持epoch；目前trip的每一次corruption reset都由CSPRNG取得新的256-bit nonce，
   並與domain-separated raw-content digest綁成新epoch（oversize時raw digest只
@@ -630,15 +639,17 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
 - 只有無截斷、唯一eligible、token-boundary exact-name，且不會改綁既有ID時
   可auto-promote；其他eligible結果需由host-clock authority簽發exact
   candidate-set grant。Expired review、倒退clock或evidence/store revision
-  drift一律拒絕。
+  drift一律拒絕；assessment/review皆為evaluator-only factory values，caller
+  不能自行組裝match結果後繞過review gate。
 - 只有reviewed `provider_place_id`進`FactValue`與EvidenceStore；其他Places
   content、query、pagination token與座標不進disk、safe binding或receipt。
 - ID refresh綁trusted existing observation/value/snapshot；changed ID回
   `PENDING_REVIEW`，且promotion在持鎖merge時再做basis CAS，舊refresh不能
   覆蓋已reviewed的新ID。Routes前置端點只接受fresh、unconflicted Google
-  identity，safe binding只公開observation/value/endpoint digests。
-- 本slice不含HTTP transport；16個identity專項、88個facts/identity tests與
-  全套432個offline tests通過，三個real-trip validators通過，未呼叫provider
+  identity，factory-only endpoint再綁provider ID/value digest；safe binding
+  只公開observation/value/endpoint digests。
+- 本slice不含HTTP transport；19個identity專項、91個facts/identity tests與
+  全套441個offline tests通過，三個real-trip validators通過，未呼叫provider
   或修改`trips/`。
 
 ### Phase 4.3 — Routes end-to-end

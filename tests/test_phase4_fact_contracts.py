@@ -1211,12 +1211,16 @@ class FactContractTests(unittest.TestCase):
                 observations=(item,),
             )
 
-            authorized = authorize_provider_result(
-                exact_request,
-                result,
-                policies,
+            self.assert_contract_error(
+                "PENDING_REVIEW",
+                lambda exact_request=exact_request, result=result: (
+                    authorize_provider_result(
+                        exact_request,
+                        result,
+                        policies,
+                    )
+                ),
             )
-            self.assertEqual(exact_request, authorized.request)
 
     def test_google_place_identity_unknown_match_field_fails_promotion(
         self,
@@ -1483,9 +1487,9 @@ class FactContractTests(unittest.TestCase):
             purge_at=None,
             confidence=1,
         )
-        self.assertEqual(
-            (identity,),
-            ledger(identity).durable_observations(purge_now=NOW),
+        self.assertIs(
+            EvidencePersistence.INDEFINITE_ID,
+            POLICIES.persistence_for(identity),
         )
 
     def test_indefinite_identity_rejects_dynamic_provenance(self) -> None:
