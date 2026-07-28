@@ -37,6 +37,9 @@ def load_json_optional(path):
 
 
 def main():
+    if len(sys.argv) < 2:
+        print("Usage: python3 scripts/render_trip.py trips/{slug}", file=sys.stderr)
+        sys.exit(2)
     trip_dir = pathlib.Path(sys.argv[1])
 
     sys.path.insert(0, str(pathlib.Path(__file__).parent))

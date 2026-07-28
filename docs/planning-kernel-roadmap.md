@@ -553,6 +553,32 @@ Exit gate：
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 
+### 2026-07-28 — Phase 4.1B post-review hardening
+
+- `ScheduleStager`的runtime guard已與公開`EvidenceSource.load()`契約一致；
+  真實`EvidenceStore`不再因source本身沒有`snapshot()`而被constructor拒絕。
+- EvidenceStore只在bounded probe確認oversized cache屬於目前trip時重置；
+  foreign或ownership unknown保留且不消耗reset nonce。Cache必須由目前uid擁有
+  且mode為`0600`，並在decode、probe或reset前以實際opened fd metadata
+  fail closed。
+- Oversized判斷統一由單一`O_NOFOLLOW` fd實讀最多16 MiB + 1 byte決定，
+  不再受`lstat()`與`open()`間的size replacement race影響。
+- Legacy validator要求完整七檔；canonical validator要求`plan.json`與五個
+  sidecar。明確overnight window可接受合法跨午夜順序，但一般或window外倒序
+  仍拒絕。三個常用CLI的空輸入改為stable usage + exit 2。
+- README、repo skill與已安裝Codex skill已標示legacy為完整user-facing流程、
+  canonical為developer preview；舊writer不得繞過`TripStore` / typed
+  `PlanPatch`直接修改`plan.json`，完整`tripctl`仍留在Phase 5。
+- 兩輪低成本獨立review找出的P1均已加入回歸並複驗關閉。全套413個離線tests、
+  三個real-trip validators與Python compile全過；29個trip files hash
+  aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  未呼叫provider、未render、未deploy、未修改`trips/`。
+- 已知後續hardening：same-directory temp與`os.replace()`仍以pathname操作；
+  對能在不遵守advisory lock下rename data directory的同uid actor，完整防護需
+  dirfd / `openat`架構調整。此項保留為Phase 6 security/operations工作，不在
+  本次bounded post-review修正中擴張。
+
 ### 2026-07-27 — Phase 0 exit gate 達成
 
 - 建立 immutable `TripState`、typed constraints、read-only legacy loader、

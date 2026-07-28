@@ -628,11 +628,9 @@ class ScheduleStager:
         if expected_solver is not None:
             _require_text(expected_solver, "expected_solver")
         if evidence_source is not None and not callable(
-            getattr(evidence_source, "snapshot", None)
+            getattr(evidence_source, "load", None)
         ):
-            raise TypeError(
-                "evidence_source must provide snapshot(evaluation_at=...)"
-            )
+            raise TypeError("evidence_source must provide load() or be None")
         self._repository = repository
         self._evidence_source = evidence_source
         self.run_id = run_id

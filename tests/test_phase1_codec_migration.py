@@ -1082,6 +1082,109 @@ class Phase1CodecMigrationTests(unittest.TestCase):
             built = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual("Museum", built["days"][0]["places"][0]["title"])
 
+    def test_validator_accepts_overnight_legacy_times_and_requires_sidecars(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            trip_dir, _trip, itinerary = _write_legacy_trip(Path(temporary))
+            itinerary["days"][0]["available_start"] = "22:00"
+            itinerary["days"][0]["available_end"] = "02:00"
+            itinerary["days"][0]["places"][0]["time"] = "23:50"
+            itinerary["days"][0]["places"][1]["time"] = "00:10"
+            (trip_dir / "data" / "itinerary.json").write_bytes(
+                _json_bytes(itinerary)
+            )
+            self.assertEqual([], validate(trip_dir))
+
+            (trip_dir / "data" / "places_cache.json").unlink()
+            errors = validate(trip_dir)
+            self.assertIn(
+                "Missing required file: places_cache.json (places cache)", errors
+            )
+
+    def test_validator_rejects_backwards_times_without_overnight_window(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            trip_dir, _trip, itinerary = _write_legacy_trip(Path(temporary))
+            itinerary["days"][0]["places"][0]["time"] = "10:00"
+            itinerary["days"][0]["places"][1]["time"] = "09:00"
+            (trip_dir / "data" / "itinerary.json").write_bytes(
+                _json_bytes(itinerary)
+            )
+            errors = validate(trip_dir)
+            self.assertTrue(
+                any("time not ascending" in error for error in errors), errors
+            )
+
+    def test_validator_rejects_backwards_times_outside_overnight_window(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            trip_dir, _trip, itinerary = _write_legacy_trip(Path(temporary))
+            itinerary["days"][0]["available_start"] = "22:00"
+            itinerary["days"][0]["available_end"] = "02:00"
+            itinerary["days"][0]["places"][0]["time"] = "10:00"
+            itinerary["days"][0]["places"][1]["time"] = "09:00"
+            (trip_dir / "data" / "itinerary.json").write_bytes(
+                _json_bytes(itinerary)
+            )
+            errors = validate(trip_dir)
+            self.assertTrue(
+                any("time not ascending" in error for error in errors), errors
+            )
+
+    def test_validator_requires_canonical_sidecars(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            trip_dir, _trip, _itinerary = _write_legacy_trip(Path(temporary))
+            preview = preview_legacy_migration(trip_dir)
+            (trip_dir / "data" / "plan.json").write_bytes(preview.candidate_bytes)
+            (trip_dir / "data" / "todo.json").unlink()
+            errors = validate(trip_dir)
+            self.assertIn(
+                "Missing required file: todo.json (pre-trip checklist)", errors
+            )
+
+    def test_user_facing_clis_report_usage_without_input(self) -> None:
+        commands = (
+            [sys.executable, "scripts/build_itinerary.py"],
+            [sys.executable, "scripts/enrich_itinerary.py"],
+            [sys.executable, "scripts/render_trip.py"],
+        )
+        for command in commands:
+            with self.subTest(script=command[1]):
+                result = subprocess.run(
+                    command,
+                    cwd=REPO_ROOT,
+                    input="",
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn("Usage:", result.stderr)
+
+    def test_build_itinerary_reports_missing_required_stdin_fields(self) -> None:
+        payloads = (
+            ({}, "cache_path, days"),
+            ({"cache_path": "missing.json"}, "days"),
+            ({"days": []}, "cache_path"),
+        )
+        for payload, missing in payloads:
+            with self.subTest(payload=payload):
+                result = subprocess.run(
+                    [sys.executable, "scripts/build_itinerary.py"],
+                    cwd=REPO_ROOT,
+                    input=json.dumps(payload),
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn("missing required stdin field", result.stderr)
+                self.assertIn(missing, result.stderr)
+                self.assertIn("Usage:", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

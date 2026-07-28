@@ -69,6 +69,7 @@ _MAX_CACHE_BYTES = 16 * 1024 * 1024
 _MAX_RECORDS = 4096
 _MAX_ORPHAN_TEMPS = 4096
 _MAX_GENERATION = 2**63 - 1
+_MAX_OWNERSHIP_PROBE_BYTES = 4096
 _O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _O_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 _O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
@@ -278,7 +279,14 @@ class _WriteOutcome:
 
 
 class _OversizedEvidenceCache(FactContractError):
-    def __init__(self, raw_digest: bytes) -> None:
+    def __init__(
+        self,
+        raw_digest: bytes,
+        *,
+        probed_trip_id: str | None,
+        owner_uid: int,
+        mode: int,
+    ) -> None:
         super().__init__(
             "CACHE_CORRUPTED",
             "Evidence cache exceeds its size limit.",
@@ -288,6 +296,16 @@ class _OversizedEvidenceCache(FactContractError):
                 "Oversized evidence digest must contain exactly 256 bits."
             )
         self.raw_digest = raw_digest
+        self.probed_trip_id = probed_trip_id
+        self.owner_uid = owner_uid
+        self.mode = mode
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadEvidenceCache:
+    data: bytes
+    owner_uid: int
+    mode: int
 
 
 class _TrustedUtcClock:
@@ -678,11 +696,11 @@ class EvidenceStore:
     ) -> _StoredEvidence | EvidenceStoreResult:
         data: bytes | None = None
         try:
-            data = self._read_regular_bytes(
+            cache = self._read_regular_bytes(
                 self.cache_path,
                 required=False,
             )
-            if data is None:
+            if cache is None:
                 ledger = EvidenceLedger(policies=self.policies)
                 store_epoch = _initial_store_epoch(
                     self.trip_id,
@@ -699,6 +717,11 @@ class EvidenceStore:
                     store_epoch=store_epoch,
                     existed=False,
                 )
+            data = cache.data
+            self._require_private_cache_metadata(
+                owner_uid=cache.owner_uid,
+                mode=cache.mode,
+            )
             stored = _decode_document(
                 data,
                 expected_trip_id=self.trip_id,
@@ -738,12 +761,29 @@ class EvidenceStore:
                 )
             return stored
         except _OversizedEvidenceCache as exc:
+            self._require_private_cache_metadata(
+                owner_uid=exc.owner_uid,
+                mode=exc.mode,
+            )
+            if exc.probed_trip_id != self.trip_id:
+                return self._failed(
+                    action=action,
+                    status="corrupted",
+                    code="CACHE_CORRUPTED",
+                    message=(
+                        "Oversized evidence cache ownership could not be "
+                        "confirmed; it was not used or overwritten."
+                    ),
+                    checked_at=checked_at,
+                )
             return self._reset_corrupt_cache_locked(
                 None,
                 action=action,
                 checked_at=checked_at,
                 oversized_raw_digest=exc.raw_digest,
             )
+        except EvidenceStoreError:
+            raise
         except FactContractError:
             if data is not None:
                 document = _probe_corrupt_document(data)
@@ -1073,9 +1113,12 @@ class EvidenceStore:
         path: Path,
         *,
         required: bool,
-    ) -> bytes | None:
+    ) -> _ReadEvidenceCache | None:
         try:
-            info = path.lstat()
+            descriptor = os.open(
+                path,
+                os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW,
+            )
         except FileNotFoundError:
             if required:
                 raise EvidenceStoreError(
@@ -1083,19 +1126,11 @@ class EvidenceStore:
                     "Evidence cache does not exist.",
                 )
             return None
-        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        except OSError as exc:
             raise EvidenceStoreError(
                 "UNSAFE_EVIDENCE_PATH",
-                "Evidence cache must be a non-symlink regular file.",
-            )
-        if info.st_size > _MAX_CACHE_BYTES:
-            raise _OversizedEvidenceCache(
-                self._oversized_corrupt_raw_digest(path, info.st_size)
-            )
-        descriptor = os.open(
-            path,
-            os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW,
-        )
+                "Evidence cache could not be opened safely.",
+            ) from exc
         try:
             opened = os.fstat(descriptor)
             if not stat.S_ISREG(opened.st_mode):
@@ -1103,57 +1138,68 @@ class EvidenceStore:
                     "UNSAFE_EVIDENCE_PATH",
                     "Opened evidence cache is not a regular file.",
                 )
+            self._require_private_cache_metadata(
+                owner_uid=opened.st_uid,
+                mode=stat.S_IMODE(opened.st_mode),
+            )
             chunks: list[bytes] = []
-            total = 0
-            while True:
-                chunk = os.read(descriptor, 1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > _MAX_CACHE_BYTES:
-                    raise _OversizedEvidenceCache(
-                        _oversized_corrupt_raw_digest(
-                            b"".join(chunks) + chunk,
-                            opened.st_size,
-                        )
-                    )
-                chunks.append(chunk)
-            return b"".join(chunks)
-        finally:
-            os.close(descriptor)
-
-    def _oversized_corrupt_raw_digest(
-        self,
-        path: Path,
-        expected_size: int,
-    ) -> bytes:
-        """Bind a bounded prefix and size without reading an unbounded file."""
-
-        descriptor = os.open(
-            path,
-            os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW,
-        )
-        try:
-            opened = os.fstat(descriptor)
-            if not stat.S_ISREG(opened.st_mode):
-                raise EvidenceStoreError(
-                    "UNSAFE_EVIDENCE_PATH",
-                    "Opened evidence cache is not a regular file.",
-                )
-            prefix = bytearray()
             remaining = _MAX_CACHE_BYTES + 1
             while remaining:
-                chunk = os.read(descriptor, min(1024 * 1024, remaining))
+                chunk = os.read(
+                    descriptor,
+                    min(1024 * 1024, remaining),
+                )
                 if not chunk:
                     break
-                prefix.extend(chunk)
+                chunks.append(chunk)
                 remaining -= len(chunk)
-            return _oversized_corrupt_raw_digest(
-                bytes(prefix),
-                expected_size,
+            data = b"".join(chunks)
+            if len(data) > _MAX_CACHE_BYTES:
+                current = os.fstat(descriptor)
+                current_size = max(current.st_size, len(data))
+                suffix = self._read_oversized_suffix(
+                    descriptor,
+                    current_size,
+                )
+                raise _OversizedEvidenceCache(
+                    _oversized_corrupt_raw_digest(data, current_size),
+                    probed_trip_id=_probe_oversized_trip_id(data, suffix),
+                    owner_uid=opened.st_uid,
+                    mode=stat.S_IMODE(opened.st_mode),
+                )
+            return _ReadEvidenceCache(
+                data=data,
+                owner_uid=opened.st_uid,
+                mode=stat.S_IMODE(opened.st_mode),
             )
         finally:
             os.close(descriptor)
+
+    def _read_oversized_suffix(
+        self, descriptor: int, size: int
+    ) -> bytes:
+        """Read a fixed-size suffix from an already no-follow-opened fd."""
+
+        os.lseek(
+            descriptor,
+            max(0, size - _MAX_OWNERSHIP_PROBE_BYTES),
+            os.SEEK_SET,
+        )
+        return os.read(descriptor, _MAX_OWNERSHIP_PROBE_BYTES)
+
+    def _require_private_cache_metadata(
+        self,
+        *,
+        owner_uid: int,
+        mode: int,
+    ) -> None:
+        """Reject durable evidence not owned exclusively by this user."""
+
+        if owner_uid != os.geteuid() or mode != 0o600:
+            raise EvidenceStoreError(
+                "UNSAFE_EVIDENCE_PERMISSIONS",
+                "Evidence cache must be owned by this user with mode 0600.",
+            )
 
     def _validate_layout(self) -> None:
         _require_directory(self.trip_dir, "trip directory")
@@ -1721,6 +1767,32 @@ def _probe_corrupt_document(data: bytes) -> dict[str, Any] | None:
     try:
         return _decode_json_object(data)
     except FactContractError:
+        return None
+
+
+def _probe_oversized_trip_id(prefix: bytes, suffix: bytes) -> str | None:
+    """Recognize only a bounded canonical prefix/suffix ownership envelope.
+
+    Oversized bytes are never decoded as a document.  A reset is permitted
+    only when this small probe recognizes the canonical top-level envelope and
+    reads its trailing ``trip_id`` without considering provider values.
+    """
+
+    try:
+        # Canonical JSON sorts keys: a valid evidence document starts with
+        # ``generation`` and ends with its top-level ``trip_id`` member.
+        if not prefix.startswith(b'{"generation":'):
+            return None
+        text = suffix.decode("utf-8")
+        match = re.search(r'(?:^|,)"trip_id":("(?:[^"\\]|\\.)*")}$', text)
+        if match is None:
+            return None
+        trip_id = json.loads(match.group(1))
+        _require_visible_text(
+            trip_id, "oversized cache trip_id", _MAX_TRIP_ID_LENGTH
+        )
+        return trip_id
+    except (FactContractError, UnicodeDecodeError, ValueError):
         return None
 
 

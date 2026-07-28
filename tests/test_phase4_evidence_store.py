@@ -336,6 +336,8 @@ class InjectedFault(RuntimeError):
 
 class EvidenceStoreTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._previous_umask = os.umask(0o077)
+        self.addCleanup(os.umask, self._previous_umask)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.trips_root = self.root / "trips"
@@ -1092,6 +1094,7 @@ class EvidenceStoreTests(unittest.TestCase):
             store_epoch=store_epoch,
         )
         self.cache_path.write_bytes(payload)
+        os.chmod(self.cache_path, 0o600)
 
         result = self.store(
             clock=MutableClock(NOW + timedelta(hours=1, minutes=30))
@@ -1581,47 +1584,143 @@ class EvidenceStoreTests(unittest.TestCase):
         self.assertFalse(rejected.changed)
         self.assertFalse(self.cache_path.exists())
 
-    def test_oversized_regular_cache_is_cleared_with_bounded_epoch(
+    def test_lstat_oversize_race_uses_small_opened_cache(self) -> None:
+        item = route_observation(self.policies, route_key())
+        store = self.store()
+        merged = store.merge(authorized_success(self.policies, item))
+        self.assertTrue(merged.success, merged.to_dict())
+        before = self.cache_path.read_bytes()
+        self.assertLess(len(before), evidence_store_module._MAX_CACHE_BYTES)
+        real_lstat = Path.lstat
+
+        def inflated_lstat(path: Path) -> os.stat_result:
+            info = real_lstat(path)
+            if path == self.cache_path:
+                values = list(info)
+                values[6] = evidence_store_module._MAX_CACHE_BYTES + 1
+                return os.stat_result(values)
+            return info
+
+        with patch.object(
+            Path,
+            "lstat",
+            autospec=True,
+            side_effect=inflated_lstat,
+        ):
+            loaded = store.load()
+
+        self.assertTrue(loaded.success, loaded.to_dict())
+        self.assertEqual("loaded", loaded.status)
+        self.assertEqual((item,), loaded.ledger.observations)
+        self.assertEqual(before, self.cache_path.read_bytes())
+        self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_oversized_cache_with_unknown_owner_is_preserved(
         self,
     ) -> None:
         payload = b"x" * 1025
         self.cache_path.write_bytes(payload)
+        os.chmod(self.cache_path, 0o600)
 
         with patch.object(
             evidence_store_module,
             "_MAX_CACHE_BYTES",
             1024,
         ):
-            first = self.store(clock=MutableClock()).load()
-            first_document = self.assert_empty_reset_document(
-                expected_epoch=self.expected_oversized_epoch(
-                    payload,
-                    len(payload),
-                )
-            )
-            self.cache_path.write_bytes(payload)
-            second = self.store(clock=MutableClock()).load()
+            result = self.store(clock=MutableClock()).load()
 
-        self.assertFalse(first.success)
-        self.assert_problem(first, "CACHE_CORRUPTED")
-        self.assertTrue(first.changed)
-        self.assertFalse(second.success)
-        self.assert_problem(second, "CACHE_CORRUPTED")
-        self.assertTrue(second.changed)
-        second_document = self.assert_empty_reset_document(
+        self.assertFalse(result.success)
+        self.assert_problem(result, "CACHE_CORRUPTED")
+        self.assertFalse(result.changed)
+        self.assertEqual(payload, self.cache_path.read_bytes())
+        self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_oversized_current_trip_envelope_is_cleared(self) -> None:
+        item = route_observation(self.policies, route_key())
+        self.store().merge(authorized_success(self.policies, item))
+        payload = self.cache_path.read_bytes()
+        self.assertGreater(len(payload), 1024)
+
+        with patch.object(
+            evidence_store_module,
+            "_MAX_CACHE_BYTES",
+            1024,
+        ):
+            result = self.store(clock=MutableClock()).load()
+
+        self.assertFalse(result.success)
+        self.assert_problem(result, "CACHE_CORRUPTED")
+        self.assertTrue(result.changed)
+        self.assert_empty_reset_document(
             expected_epoch=self.expected_oversized_epoch(
-                payload,
-                len(payload),
+                payload[:1025], len(payload)
             )
         )
-        self.assertNotEqual(
-            first_document["store_epoch"],
-            second_document["store_epoch"],
+
+    def test_oversized_foreign_trip_envelope_is_preserved(self) -> None:
+        item = route_observation(self.policies, route_key())
+        self.store().merge(authorized_success(self.policies, item))
+        payload = self.cache_path.read_bytes().replace(
+            TRIP_ID.encode("utf-8"), b"trip-other"
         )
-        self.assertNotEqual(
-            first.current_revision,
-            second.current_revision,
-        )
+        self.assertGreater(len(payload), 1024)
+        self.cache_path.write_bytes(payload)
+        os.chmod(self.cache_path, 0o600)
+
+        with patch.object(
+            evidence_store_module,
+            "_MAX_CACHE_BYTES",
+            1024,
+        ):
+            result = self.store(clock=MutableClock()).load()
+
+        self.assertFalse(result.success)
+        self.assert_problem(result, "CACHE_CORRUPTED")
+        self.assertFalse(result.changed)
+        self.assertEqual(payload, self.cache_path.read_bytes())
+        self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_oversized_permissive_cache_mode_fails_before_probe(self) -> None:
+        payload = b"x" * 1025
+        self.cache_path.write_bytes(payload)
+        os.chmod(self.cache_path, 0o644)
+
+        with patch.object(
+            evidence_store_module,
+            "_MAX_CACHE_BYTES",
+            1024,
+        ):
+            with self.assertRaises(EvidenceStoreError) as caught:
+                self.store(clock=MutableClock()).load()
+
+        self.assertEqual("UNSAFE_EVIDENCE_PERMISSIONS", caught.exception.code)
+        self.assertEqual(payload, self.cache_path.read_bytes())
+        self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_permissive_valid_cache_mode_fails_closed(self) -> None:
+        item = route_observation(self.policies, route_key())
+        self.store().merge(authorized_success(self.policies, item))
+        os.chmod(self.cache_path, 0o644)
+
+        with self.assertRaises(EvidenceStoreError) as caught:
+            self.store(clock=MutableClock()).load()
+
+        self.assertEqual("UNSAFE_EVIDENCE_PERMISSIONS", caught.exception.code)
+        self.assertEqual(0o644, stat.S_IMODE(self.cache_path.stat().st_mode))
+
+    def test_valid_cache_owned_by_another_user_fails_closed(self) -> None:
+        item = route_observation(self.policies, route_key())
+        self.store().merge(authorized_success(self.policies, item))
+
+        with patch.object(
+            evidence_store_module.os,
+            "geteuid",
+            return_value=os.geteuid() + 1,
+        ):
+            with self.assertRaises(EvidenceStoreError) as caught:
+                self.store(clock=MutableClock()).load()
+
+        self.assertEqual("UNSAFE_EVIDENCE_PERMISSIONS", caught.exception.code)
 
     def test_saturated_generation_still_performs_irreversible_purge(
         self,

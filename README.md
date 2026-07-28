@@ -69,6 +69,17 @@ cp skill/trip-planner.md ~/.claude/skills/trip-planner/SKILL.md
 
 在 Claude Code 裡輸入 `/trip-planner` 開始規劃，或直接描述你的旅行需求。
 
+### 資料模式護欄
+
+目前完整、可直接給使用者與 agent 操作的流程是 **legacy 模式**（七個核心檔案：
+`trip.json`、`itinerary.json`、`reservations.json`、`todo.json`、`info.json`、
+`packing.json`、`places_cache.json`）。`plan.json` canonical kernel 是 developer
+preview：它以 `plan.json` 加五個 sidecar（後五個檔案）取代前兩個檔案；現有
+renderer、validator 與部分讀取工具可相容讀取，但 legacy writer 會刻意拒絕修改
+已 migration 的 trip。不要直接編輯 canonical JSON；只能經已支援的 `TripStore` /
+`PlanPatch` 路徑操作。Phase 5 的 `tripctl` CLI 尚未提供，除非已明確接受 developer
+workflow，否則不要 migration 真實 trip。
+
 兩階段流程：
 1. **Scout** — 互動式規劃：收集需求 → 解析景點 → 用戶篩選 → 路線優化 → 驗證
 2. **Build** — 生成網站：組裝 JSON → 充實交通 → 驗證營業時間 → 渲染 HTML → 部署

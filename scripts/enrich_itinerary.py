@@ -127,7 +127,17 @@ def select_recommended_mode(modes, available_modes=None):
     return None
 
 
+def _usage() -> str:
+    return (
+        "Usage: python3 scripts/enrich_itinerary.py "
+        "<itinerary.json> [walking,driving] [+09:00]"
+    )
+
+
 def main():
+    if len(sys.argv) < 2:
+        print(_usage(), file=sys.stderr)
+        sys.exit(2)
     itinerary_path = pathlib.Path(sys.argv[1])
     try:
         refuse_canonical_write(

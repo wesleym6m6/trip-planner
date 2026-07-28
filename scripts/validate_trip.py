@@ -7,12 +7,23 @@ CLI: python scripts/validate_trip.py trips/{slug}
 """
 import json
 import sys
+from datetime import time as local_time
 from pathlib import Path
 
 if __package__:
-    from .plan_compat import PlanCodecError, has_canonical_plan, load_trip_views
+    from .plan_compat import (
+        PlanCodecError,
+        has_canonical_plan,
+        load_trip_views,
+        resolve_ordered_local_datetimes,
+    )
 else:
-    from plan_compat import PlanCodecError, has_canonical_plan, load_trip_views
+    from plan_compat import (
+        PlanCodecError,
+        has_canonical_plan,
+        load_trip_views,
+        resolve_ordered_local_datetimes,
+    )
 
 
 def _load_json(path):
@@ -29,6 +40,19 @@ def _check_keys(obj, required_keys, context):
     return errors
 
 
+def _parse_local_time(value):
+    if isinstance(value, local_time):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = local_time.fromisoformat(value)
+        except ValueError:
+            return None
+    else:
+        return None
+    return parsed if parsed.tzinfo is None else None
+
+
 def validate(trip_dir):
     """Validate trip data completeness. Returns list of error strings (empty = pass)."""
     trip_dir = Path(trip_dir)
@@ -37,8 +61,18 @@ def validate(trip_dir):
     canonical = has_canonical_plan(data_dir)
 
     # --- Required files ---
-    required_files = {"info.json": "practical info"}
-    if not canonical:
+    # A canonical plan replaces only trip.json and itinerary.json; the five
+    # renderer sidecars remain required in either supported data mode.
+    required_files = {
+        "reservations.json": "reservations",
+        "todo.json": "pre-trip checklist",
+        "info.json": "practical info",
+        "packing.json": "packing list",
+        "places_cache.json": "places cache",
+    }
+    if canonical:
+        required_files["plan.json"] = "canonical plan"
+    else:
         required_files.update(
             {
                 "trip.json": "trip metadata",
@@ -50,7 +84,7 @@ def validate(trip_dir):
             errors.append(f"Missing required file: {filename} ({desc})")
 
     # --- Optional files (warn only) ---
-    optional_files = ["reservations.json", "todo.json", "packing.json"]
+    optional_files = ["flights_cache.json", "hotels_cache.json"]
     for filename in optional_files:
         if not (data_dir / filename).exists():
             print(f"  ℹ Optional file missing: {filename}", file=sys.stderr)
@@ -61,7 +95,7 @@ def validate(trip_dir):
 
     try:
         trip, itinerary, _trip_id, _revision = load_trip_views(data_dir)
-    except PlanCodecError as exc:
+    except (OSError, PlanCodecError) as exc:
         errors.append(f"plan.json: {exc}")
         return errors
 
@@ -85,19 +119,48 @@ def validate(trip_dir):
                 errors.extend(_check_keys(place, ["type", "title", "time", "lat", "lng"],
                                            place_label))
 
-            # Check time ordering within a day
-            times = []
-            for place in day.get("places", []):
-                t = place.get("time")
-                if t:
-                    times.append(t)
-            for i in range(1, len(times)):
-                if times[i] < times[i - 1]:
-                    errors.append(
-                        f"{day_label}: time not ascending — "
-                        f"'{times[i-1]}' then '{times[i]}' "
-                        f"(places[{i-1}] → places[{i}])"
+            # Use the shared rollover resolver, but only permit a backwards
+            # wall clock when the day explicitly declares a valid overnight
+            # availability window.
+            places = day.get("places", [])
+            raw_times = tuple(place.get("time") for place in places)
+            resolved_times = resolve_ordered_local_datetimes(
+                day.get("date"),
+                raw_times,
+                available_start=day.get("available_start"),
+                available_end=day.get("available_end"),
+            )
+            available_start = _parse_local_time(day.get("available_start"))
+            available_end = _parse_local_time(day.get("available_end"))
+            overnight_window = (
+                available_start is not None
+                and available_end is not None
+                and available_end <= available_start
+            )
+            previous = None
+            for place_idx, (raw_time, resolved_time) in enumerate(
+                zip(raw_times, resolved_times)
+            ):
+                parsed_time = _parse_local_time(raw_time)
+                if parsed_time is None:
+                    continue
+                if previous is not None and parsed_time < previous[1]:
+                    rollover_resolved = (
+                        overnight_window
+                        and previous[1] >= available_start
+                        and parsed_time <= available_end
+                        and previous[2] is not None
+                        and resolved_time is not None
+                        and resolved_time > previous[2]
+                        and resolved_time.date() > previous[2].date()
                     )
+                    if not rollover_resolved:
+                        errors.append(
+                            f"{day_label}: time not ascending — "
+                            f"'{previous[0]}' then '{raw_time}' "
+                            f"(places[{previous[3]}] → places[{place_idx}])"
+                        )
+                previous = (raw_time, parsed_time, resolved_time, place_idx)
 
     # --- info.json ---
     info = _load_json(data_dir / "info.json")

@@ -9,6 +9,21 @@ description: 規劃旅行並生成完整旅遊網站。兩階段流程——Phas
 
 **專案根目錄：** 此 skill 所在 repo 的根目錄。以下所有指令用 `$REPO` 代表，agent 執行時替換為實際路徑（通常是 `git rev-parse --show-toplevel` 的結果）。
 
+## 資料模式護欄
+
+本 skill 的完整 user-facing 流程只適用 **legacy 模式**：`trip.json`、
+`itinerary.json`、`reservations.json`、`todo.json`、`info.json`、`packing.json`、
+`places_cache.json` 七個核心檔案。`plan.json` canonical kernel 目前是 developer
+preview；它以 `plan.json` 加 `reservations.json`、`todo.json`、`info.json`、
+`packing.json`、`places_cache.json` 五個 sidecar 取代前兩個檔案。renderer、validator
+與部分 reader 可相容讀取，但本 skill 的 legacy writer（例如
+`build_itinerary.py`、`enrich_itinerary.py`、`import_gmaps_list.py --merge`）會拒絕修改
+已 migration 的 trip。
+
+不要直接編輯 canonical JSON。只能使用已支援的 `TripStore` / `PlanPatch` 路徑；
+Phase 5 的 `tripctl` CLI 尚未提供。除非使用者已明確接受 developer workflow，否則
+不得 migration 真實 trip，並繼續使用下方 legacy 流程。
+
 ## 核心原則
 
 1. **API 資料一次快取，同一趟旅行不重複查詢。** 每個透過 Places API 解析的地點都寫入 `places_cache.json`。從行程刪除景點不會刪 cache——用戶可能會加回來。

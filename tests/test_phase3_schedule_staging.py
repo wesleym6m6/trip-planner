@@ -12,6 +12,7 @@ from typing import Any, Sequence
 
 from trip_planner.codec import build_plan, compute_revision, encode_plan
 from trip_planner.composition import compose_trip_state
+from trip_planner.evidence_store import EvidenceStore
 from trip_planner.facts import (
     EvidenceLedger,
     EvidenceSnapshot,
@@ -880,6 +881,45 @@ class Phase3ScheduleStagingTests(unittest.TestCase):
         self.assertEqual(ScheduleStageState.REJECTED, review.state)
         self.assertIn("EVIDENCE_SOURCE_REQUIRED", _problem_codes(review))
         self.assertEqual([], repository.preview_calls)
+
+    def test_evidence_store_source_uses_load_result_snapshot(self) -> None:
+        """The source itself need only implement EvidenceSource.load()."""
+
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        source = EvidenceStore(
+            self.trips_root,
+            self.slug,
+            "canonical-schedule-stage",
+            policies,
+            clock=lambda: EVALUATION_AT,
+        )
+        self.assertFalse(callable(getattr(source, "snapshot", None)))
+        plan = self._store().load_plan()
+        composed = compose_trip_state(
+            plan,
+            source.load().snapshot(evaluation_at=EVALUATION_AT),
+        )
+        problem = schedule_problem_from_composed(composed)
+        candidate = build_schedule_candidate(
+            problem,
+            (
+                ScheduleAssignment("activity-alpha", "day-1", 0, time(9)),
+                ScheduleAssignment("activity-beta", "day-1", 1, time(10)),
+            ),
+            solver=SOLVER_VERSION,
+        )
+
+        stager = ScheduleStager(
+            _RecordingRepository(self._store()),
+            run_id="schedule-evidence-store-source",
+            max_auto_changes=8,
+            evidence_source=source,
+        )
+        review = stager.stage_schedule_candidate(problem, candidate)
+
+        self.assertTrue(review.ready_to_commit, review.to_dict())
 
     def test_evidence_drift_clears_review_before_commit_write(self) -> None:
         source = _EvidenceSource("1" * 64, "1" * 64, "2" * 64)

@@ -144,8 +144,40 @@ def build_place_entry(place_input, by_exact_name, entries):
     }
 
 
+def _usage() -> str:
+    return "Usage: echo '<json>' | python3 scripts/build_itinerary.py"
+
+
 def main():
-    input_data = json.load(sys.stdin)
+    try:
+        input_data = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        print("ERROR: expected a JSON object on stdin.", file=sys.stderr)
+        print(_usage(), file=sys.stderr)
+        sys.exit(2)
+    if not isinstance(input_data, dict):
+        print("ERROR: expected a JSON object on stdin.", file=sys.stderr)
+        print(_usage(), file=sys.stderr)
+        sys.exit(2)
+    missing_fields = [
+        field for field in ("cache_path", "days") if field not in input_data
+    ]
+    if missing_fields:
+        print(
+            "ERROR: missing required stdin field(s): "
+            f"{', '.join(missing_fields)}.",
+            file=sys.stderr,
+        )
+        print(_usage(), file=sys.stderr)
+        sys.exit(2)
+    if not isinstance(input_data["cache_path"], str) or not input_data["cache_path"]:
+        print("ERROR: stdin field 'cache_path' must be a non-empty string.", file=sys.stderr)
+        print(_usage(), file=sys.stderr)
+        sys.exit(2)
+    if not isinstance(input_data["days"], list):
+        print("ERROR: stdin field 'days' must be an array.", file=sys.stderr)
+        print(_usage(), file=sys.stderr)
+        sys.exit(2)
     cache_path = input_data["cache_path"]
     output_path = input_data.get("output_path")
 
