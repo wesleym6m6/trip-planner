@@ -5,8 +5,9 @@
 目前 checkpoint：Phase 3A 排程核心、Phase 3B safe staging、Phase 3C
 solver decision gate、Phase 4.0 facts/policy foundation、Phase 4.1A
 trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
-revision wiring、Phase 4.2 minimal Places identity 已完成；下一個 bounded
-slice 是 Phase 4.3 Routes end-to-end
+revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
+exit gate 已完成；真實provider驗收尚待明確授權，下一個code slice不得越過
+Phase 4.4 Places profile / hours邊界
 
 ## 產品目標
 
@@ -291,7 +292,17 @@ Exit gate：
 - Phase 4.2已建立snapshot-bound Places identity request、bounded candidate
   review、hard geographic/type gates、30分鐘promotion clock、ID-only refresh
   與fresh route-endpoint extraction；既有ID若改變必須人工複核，只有place ID
-  可進EvidenceStore。下一個slice不跨越Phase 4.3 Routes end-to-end邊界。
+  可進EvidenceStore；
+- Phase 4.3已建立fixed-endpoint/minimal-field-mask Google Routes adapter、
+  injected transport、strict bounded decoder、typed HTTP/transport failure、
+  actual-attempt budget與exact transit-to-driving fallback；
+- reloadable EvidenceSession會將Routes維持run-scoped memory-only，durable
+  revision、endpoint、retention與provider outcome drift均綁入review identity；
+  per-mode partial failure保留LKG，fallback與provider warning一路投影到
+  runtime TravelEstimate及timeline disclosure；
+- canned-response E2E已涵蓋adapter → batch → session → composition →
+  timeline。本checkpoint完成offline exit gate但沒有呼叫真實provider；
+  下一個code slice不跨越Phase 4.4 Places profile / hours邊界。
 
 ### Phase 5 — Product Interface and Skill
 
@@ -610,6 +621,32 @@ Exit gate：
   aggregate維持
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
   未呼叫provider、未render、未deploy、未修改`trips/`。
+
+### 2026-07-28 — Phase 4.3 Routes offline exit gate 完成
+
+- 新增fixed `computeRoutes` endpoint、minimal field mask與Place ID waypoint
+  request；directed arc、mode、departure、endpoint observation/value、
+  evidence snapshot及durable store revision共同綁入exact fingerprint。
+- Transport由caller注入且自行持有credential；核心只處理bounded bytes。
+  Decoder拒絕oversize、duplicate key、NaN、過深/過多節點、unknown field與
+  多路線response，raw response、provider message、Place ID及自由文字warning
+  不進safe output。
+- 每個實際send都使用共享thread-safe attempt budget；預設不retry，opt-in
+  retry最多三次。Transit horizon與endpoint freshness在送出前重驗，
+  provider error映射為typed problem。
+- Transit只有在empty/not-found/unsupported時可建立exact driving fallback；
+  transit outcome保留typed`TRANSIT_UNAVAILABLE`，driving fact保留
+  `fallback_from_mode=transit`，timeline明確揭露且不冒充transit。
+- Reloadable EvidenceSession只合併memory-only result；durable revision變更
+  會rebase並拒絕舊response，retention/clock rollback fail closed，global與
+  multi-key provider problem維持原始identity並進`outcome_revision`。
+- 低成本獨立review指出的durable-drift stale response、problem identity改寫、
+  fallback缺typed outcome與E2E disclosure缺口均已補上回歸。最終test與trip
+  hash證據為472個offline tests、三個real-trip validators，以及29個trip
+  files aggregate
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
+  明確授權，Phase 5 CLI/interface不在本slice。
 
 ### 2026-07-27 — Phase 0 exit gate 達成
 

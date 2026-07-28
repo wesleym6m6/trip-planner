@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import unittest
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -24,6 +25,7 @@ from trip_planner import (
     ProviderRequest,
     ProviderResult,
     ProviderResultStatus,
+    TravelEstimate,
     authorize_provider_result,
     compose_trip_state,
     compute_revision,
@@ -58,7 +60,10 @@ def _policies(*providers: str) -> ProviderPolicyRegistry:
                     "departure_at",
                     "distance_km",
                     "duration_min",
+                    "fallback_from_mode",
                     "mode",
+                    "static_duration_min",
+                    "warning_codes",
                 ),
                 allowed_operations=("compute-route",),
                 persistence=EvidencePersistence.MEMORY_ONLY,
@@ -95,6 +100,7 @@ def _merge_routes(
     *,
     provider: str,
     specs: tuple[tuple[FactKey, float, datetime], ...],
+    payload_extras: dict[str, object] | None = None,
 ) -> tuple[EvidenceLedger, tuple[FactObservation, ...]]:
     policy = next(
         item
@@ -121,6 +127,8 @@ def _merge_routes(
             payload["departure_at"] = key.qualifier_map[
                 "departure_at"
             ]
+        if payload_extras is not None:
+            payload.update(payload_extras)
         observations.append(
             FactObservation(
                 key=key,
@@ -178,7 +186,7 @@ def _snapshot(
     )
 
 
-def _canonical_plan() -> dict[str, Any]:
+def _canonical_plan(*, route_mode: str = "walking") -> dict[str, Any]:
     return build_plan(
         trip_id="composition-trip",
         generation=1,
@@ -191,7 +199,9 @@ def _canonical_plan() -> dict[str, Any]:
                 "cities": ["Fixture City"],
             },
             "itinerary": {
-                "available_modes": ["walking", "transit"],
+                "available_modes": sorted(
+                    {"walking", "transit", route_mode}
+                ),
                 "days": [
                     {
                         "day_id": "day-1",
@@ -229,9 +239,9 @@ def _canonical_plan() -> dict[str, Any]:
                                 "from_activity_id": "activity-a",
                                 "to_activity_id": "activity-b",
                                 "source": "canonical-fixture",
-                                "recommended_mode": "walking",
+                                "recommended_mode": route_mode,
                                 "modes": {
-                                    "walking": {
+                                    route_mode: {
                                         "duration_min": 99,
                                         "buffer_min": 7,
                                         "distance_km": 9.9,
@@ -243,9 +253,9 @@ def _canonical_plan() -> dict[str, Any]:
                                 "from_activity_id": "activity-b",
                                 "to_activity_id": "activity-a",
                                 "source": "canonical-fixture",
-                                "recommended_mode": "walking",
+                                "recommended_mode": route_mode,
                                 "modes": {
-                                    "walking": {
+                                    route_mode: {
                                         "duration_min": 88,
                                         "buffer_min": 5,
                                         "distance_km": 8.8,
@@ -608,6 +618,113 @@ class Phase4CompositionTests(unittest.TestCase):
         self.assertEqual(
             f"fact:{observations[0].observation_id}", timed.source
         )
+
+    def test_route_runtime_metadata_projects_and_discloses_without_blocking(
+        self,
+    ) -> None:
+        policies = _policies("route-a")
+        ledger, _observations = _merge_routes(
+            EvidenceLedger(policies),
+            provider="route-a",
+            specs=(
+                (
+                    _route_key("loc-a", "loc-b", mode="driving"),
+                    31,
+                    NOW + timedelta(hours=4),
+                ),
+                (
+                    _route_key("loc-b", "loc-a", mode="driving"),
+                    42,
+                    NOW + timedelta(hours=4),
+                ),
+            ),
+            payload_extras={
+                "static_duration_min": 28,
+                "fallback_from_mode": "transit",
+                "warning_codes": [
+                    "beta_route",
+                    "route_token_missing",
+                ],
+            },
+        )
+
+        composed = compose_trip_state(
+            _canonical_plan(route_mode="driving"), _snapshot(ledger)
+        )
+        selected = next(
+            item
+            for item in composed.state.travel_estimates
+            if item.from_location_id == "loc-a"
+            and item.to_location_id == "loc-b"
+            and item.mode == "driving"
+        )
+        report = evaluate_timeline(
+            composed.state, now=EVALUATION_AT
+        )
+
+        self.assertEqual(28, selected.static_duration_min)
+        self.assertEqual("transit", selected.fallback_from_mode)
+        self.assertEqual(
+            ("beta_route", "route_token_missing"),
+            selected.warning_codes,
+        )
+        self.assertEqual("driving", selected.mode)
+        self.assertEqual(CheckStatus.FEASIBLE, report.status)
+        provider_warnings = [
+            issue
+            for issue in report.issues
+            if issue.code == "ROUTE_PROVIDER_WARNING"
+        ]
+        self.assertEqual(2, len(provider_warnings))
+        self.assertEqual(
+            {"beta_route", "route_token_missing"},
+            {
+                dict(issue.details)["warning_code"]
+                for issue in provider_warnings
+            },
+        )
+        self.assertTrue(
+            all(
+                issue.severity.value == "warning"
+                and dict(issue.details)["status_effect"] == "none"
+                for issue in provider_warnings
+            )
+        )
+        fallback = next(
+            issue
+            for issue in report.issues
+            if issue.code == "TRANSIT_FALLBACK_DISCLOSURE"
+        )
+        self.assertEqual("driving", dict(fallback.details)["mode"])
+        self.assertEqual(
+            "transit",
+            dict(fallback.details)["fallback_from_mode"],
+        )
+        self.assertEqual("none", dict(fallback.details)["status_effect"])
+
+    def test_route_runtime_metadata_validation_is_strict(self) -> None:
+        kwargs = {
+            "from_location_id": "loc-a",
+            "to_location_id": "loc-b",
+            "mode": "walking",
+            "duration_min": 10,
+        }
+        invalid_overrides = (
+            {"static_duration_min": -1},
+            {"static_duration_min": math.inf},
+            {"static_duration_min": math.nan},
+            {"static_duration_min": True},
+            {"fallback_from_mode": "walking"},
+            {"warning_codes": ["beta_route"]},
+            {"warning_codes": ("BetaRoute",)},
+            {"warning_codes": ("1_beta_route",)},
+            {"warning_codes": ("beta_route", "beta_route")},
+        )
+
+        for override in invalid_overrides:
+            with self.subTest(override=override):
+                with self.assertRaises((TypeError, ValueError)):
+                    TravelEstimate(**kwargs, **override)
 
     def test_missing_required_live_label_fails_closed(self) -> None:
         policies = _policies("route-a")

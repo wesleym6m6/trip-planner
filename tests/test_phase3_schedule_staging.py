@@ -15,6 +15,7 @@ from trip_planner.composition import compose_trip_state
 from trip_planner.evidence_store import EvidenceStore
 from trip_planner.facts import (
     EvidenceLedger,
+    EvidencePersistence,
     EvidenceSnapshot,
     FactKey,
     FactKind,
@@ -22,6 +23,8 @@ from trip_planner.facts import (
     FactValue,
     GOOGLE_MAPS_NON_EEA_POLICY_PROFILE,
     ProviderProvenance,
+    ProviderPolicy,
+    ProviderPolicyRegistry,
     ProviderRequest,
     ProviderResult,
     ProviderResultStatus,
@@ -113,18 +116,32 @@ def _route_snapshot(
     *,
     store_revision: str,
 ) -> EvidenceSnapshot:
-    policies = google_maps_policy_registry(
-        GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+    policies = ProviderPolicyRegistry(
+        policies=(
+            ProviderPolicy(
+                policy_id="schedule-route-runtime-v1",
+                provider_id="schedule-route",
+                adapter_id="schedule-route",
+                adapter_version="v1",
+                contract_region="test",
+                allowed_fact_kinds=(FactKind.ROUTE_ESTIMATE,),
+                allowed_value_fields=("duration_min", "mode"),
+                allowed_operations=("compute-route",),
+                persistence=EvidencePersistence.MEMORY_ONLY,
+                max_validity_seconds=2 * 60 * 60,
+                max_retention_seconds=3 * 60 * 60,
+            ),
+        )
     )
-    policy = policies.policy("google-route-runtime-v1")
+    policy = policies.policy("schedule-route-runtime-v1")
     key = FactKey(
         kind=FactKind.ROUTE_ESTIMATE,
         subject_ids=("location-alpha", "location-beta"),
         qualifiers=(("mode", "walking"),),
     )
     request = ProviderRequest(
-        provider_id="google-routes",
-        adapter_id="google-routes",
+        provider_id="schedule-route",
+        adapter_id="schedule-route",
         adapter_version="v1",
         operation="compute-route",
         fact_keys=(key,),
@@ -142,14 +159,14 @@ def _route_snapshot(
             },
         ),
         provenance=ProviderProvenance(
-            provider_id="google-routes",
-            adapter_id="google-routes",
+            provider_id="schedule-route",
+            adapter_id="schedule-route",
             adapter_version="v1",
             request_fingerprint=request.request_fingerprint,
             retention_policy_id=policy.policy_id,
             response_id="runtime-route-response",
             source_uri="https://example.test/runtime-route-source",
-            attributions=(("Google Maps", None),),
+            attributions=(),
         ),
         retrieved_at=retrieved_at,
         valid_until=EVALUATION_AT + timedelta(hours=1),

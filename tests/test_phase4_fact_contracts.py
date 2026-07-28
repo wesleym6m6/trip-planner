@@ -468,6 +468,84 @@ def provider_result(
     )
 
 
+def builtin_google_route_scope(
+    *,
+    fallback_from_mode: str | None = None,
+) -> tuple[tuple[str, object], ...]:
+    scope: list[tuple[str, object]] = [
+        ("basis_evidence_revision", "0" * 64),
+        ("basis_snapshot_id", "1" * 64),
+        ("basis_store_revision", "8" * 64),
+        ("destination_endpoint_id", "2" * 64),
+        ("destination_observation_id", "3" * 64),
+        ("destination_value_digest", "4" * 64),
+        (
+            "field_mask",
+            facts_module._GOOGLE_ROUTE_FIELD_MASK,
+        ),
+        ("origin_endpoint_id", "5" * 64),
+        ("origin_observation_id", "6" * 64),
+        ("origin_value_digest", "7" * 64),
+    ]
+    if fallback_from_mode is not None:
+        scope.append(("fallback_from_mode", fallback_from_mode))
+    return tuple(scope)
+
+
+def builtin_google_route_request(
+    policies: ProviderPolicyRegistry,
+    *keys: FactKey,
+    query_scope: tuple[tuple[str, object], ...] | None = None,
+) -> ProviderRequest:
+    policy = policies.policy("google-route-runtime-v1")
+    return ProviderRequest(
+        provider_id="google-routes",
+        adapter_id="google-routes",
+        adapter_version="v1",
+        operation="compute-route",
+        fact_keys=keys,
+        policy_id=policy.policy_id,
+        policy_digest=policy.policy_digest,
+        query_scope=(
+            builtin_google_route_scope()
+            if query_scope is None
+            else query_scope
+        ),
+    )
+
+
+def builtin_google_route_observation(
+    request: ProviderRequest,
+    *,
+    fallback_from_mode: str | None = None,
+) -> FactObservation:
+    key = request.fact_keys[0]
+    payload: dict[str, object] = {
+        "mode": key.qualifier_map["mode"],
+        "duration_min": 30,
+        "distance_km": 8.5,
+        "departure_at": key.qualifier_map["departure_at"],
+    }
+    if fallback_from_mode is not None:
+        payload["fallback_from_mode"] = fallback_from_mode
+    return FactObservation(
+        key=key,
+        value=FactValue.from_payload(FactKind.ROUTE_ESTIMATE, payload),
+        provenance=ProviderProvenance(
+            provider_id="google-routes",
+            adapter_id="google-routes",
+            adapter_version="v1",
+            request_fingerprint=request.request_fingerprint,
+            retention_policy_id="google-route-runtime-v1",
+            attributions=(("Google Maps", None),),
+        ),
+        retrieved_at=NOW,
+        valid_until=NOW + timedelta(days=1),
+        purge_at=NOW + timedelta(days=1),
+        confidence=1,
+    )
+
+
 def authorized_result(
     *,
     request: ProviderRequest,
@@ -1143,6 +1221,296 @@ class FactContractTests(unittest.TestCase):
             "INVALID_PROVIDER_REQUEST",
             lambda: google_maps_policy_registry("unknown-region"),
         )
+
+    def test_builtin_google_route_requires_dedicated_authorization(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        request = builtin_google_route_request(policies, route_key())
+        item = builtin_google_route_observation(request)
+        raw = provider_result(
+            request=request,
+            status=ProviderResultStatus.SUCCESS,
+            observations=(item,),
+        )
+
+        self.assert_contract_error(
+            "UNTRUSTED_PROVENANCE",
+            lambda: authorize_provider_result(request, raw, policies),
+        )
+        self.assert_contract_error(
+            "UNTRUSTED_PROVENANCE",
+            lambda: facts_module._authorize_google_route_result(
+                request,
+                raw,
+                policies,
+                _token=object(),
+            ),
+        )
+        authorized = facts_module._authorize_google_route_result(
+            request,
+            raw,
+            policies,
+            _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+        )
+        merged = merge_provider_result(
+            EvidenceLedger(policies),
+            authorized,
+            purge_now=NOW,
+        )
+
+        self.assertEqual((item,), merged.ledger.observations)
+
+    def test_builtin_google_route_scope_is_complete_and_single_key(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        key = route_key()
+        incomplete = builtin_google_route_request(
+            policies,
+            key,
+            query_scope=tuple(
+                item
+                for item in builtin_google_route_scope()
+                if item[0] != "field_mask"
+            ),
+        )
+        incomplete_raw = provider_result(
+            request=incomplete,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    key,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: facts_module._authorize_google_route_result(
+                incomplete,
+                incomplete_raw,
+                policies,
+                _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+            ),
+        )
+
+        for field, replacement in (
+            (
+                "field_mask",
+                (
+                    f"{facts_module._GOOGLE_ROUTE_FIELD_MASK},"
+                    "routes.polyline"
+                ),
+            ),
+            ("origin_endpoint_id", "not-a-digest"),
+        ):
+            with self.subTest(field=field):
+                malformed = builtin_google_route_request(
+                    policies,
+                    key,
+                    query_scope=tuple(
+                        (
+                            name,
+                            replacement if name == field else value,
+                        )
+                        for name, value in builtin_google_route_scope()
+                    ),
+                )
+                malformed_raw = provider_result(
+                    request=malformed,
+                    status=ProviderResultStatus.FAILED,
+                    problems=(
+                        problem(
+                            key,
+                            code=ProviderProblemCode.NOT_FOUND,
+                            retryable=False,
+                        ),
+                    ),
+                )
+                self.assert_contract_error(
+                    "INVALID_PROVIDER_REQUEST",
+                    lambda: facts_module._authorize_google_route_result(
+                        malformed,
+                        malformed_raw,
+                        policies,
+                        _token=(
+                            facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN
+                        ),
+                    ),
+                )
+
+        second = route_key(destination="loc-c")
+        batched = builtin_google_route_request(policies, key, second)
+        batched_raw = provider_result(
+            request=batched,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    key,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+                problem(
+                    second,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: facts_module._authorize_google_route_result(
+                batched,
+                batched_raw,
+                policies,
+                _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+            ),
+        )
+
+        untimed = route_key(mode="driving", departure_at=None)
+        untimed_request = builtin_google_route_request(policies, untimed)
+        untimed_raw = provider_result(
+            request=untimed_request,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    untimed,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: facts_module._authorize_google_route_result(
+                untimed_request,
+                untimed_raw,
+                policies,
+                _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+            ),
+        )
+
+    def test_builtin_google_route_fallback_is_exact_transit_to_driving(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        driving_key = route_key(mode="driving")
+        fallback_request = builtin_google_route_request(
+            policies,
+            driving_key,
+            query_scope=builtin_google_route_scope(
+                fallback_from_mode="transit"
+            ),
+        )
+        fallback_item = builtin_google_route_observation(
+            fallback_request,
+            fallback_from_mode="transit",
+        )
+        fallback_raw = provider_result(
+            request=fallback_request,
+            status=ProviderResultStatus.SUCCESS,
+            observations=(fallback_item,),
+        )
+        authorized = facts_module._authorize_google_route_result(
+            fallback_request,
+            fallback_raw,
+            policies,
+            _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+        )
+        self.assertEqual(
+            "driving",
+            authorized.result.observations[0].value.payload["mode"],
+        )
+
+        missing_fallback_item = builtin_google_route_observation(
+            fallback_request
+        )
+        missing_fallback_raw = provider_result(
+            request=fallback_request,
+            status=ProviderResultStatus.SUCCESS,
+            observations=(missing_fallback_item,),
+        )
+        self.assert_contract_error(
+            "EVIDENCE_BINDING_MISMATCH",
+            lambda: facts_module._authorize_google_route_result(
+                fallback_request,
+                missing_fallback_raw,
+                policies,
+                _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+            ),
+        )
+
+        transit_key = route_key(mode="transit")
+        masquerade_request = builtin_google_route_request(
+            policies,
+            transit_key,
+            query_scope=builtin_google_route_scope(
+                fallback_from_mode="transit"
+            ),
+        )
+        masquerade_raw = provider_result(
+            request=masquerade_request,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    transit_key,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: facts_module._authorize_google_route_result(
+                masquerade_request,
+                masquerade_raw,
+                policies,
+                _token=facts_module._GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+            ),
+        )
+
+    def test_route_value_only_accepts_transit_to_driving_fallback(
+        self,
+    ) -> None:
+        accepted = FactValue.from_payload(
+            FactKind.ROUTE_ESTIMATE,
+            {
+                "mode": "driving",
+                "duration_min": 30,
+                "fallback_from_mode": "transit",
+            },
+        )
+        self.assertEqual(
+            "transit", accepted.payload["fallback_from_mode"]
+        )
+        for mode, fallback in (
+            ("transit", "driving"),
+            ("walking", "transit"),
+            ("driving", "walking"),
+            ("driving", "bicycling"),
+        ):
+            with self.subTest(mode=mode, fallback=fallback):
+                self.assert_contract_error(
+                    "INVALID_PROVIDER_RESPONSE",
+                    lambda mode=mode, fallback=fallback: (
+                        FactValue.from_payload(
+                            FactKind.ROUTE_ESTIMATE,
+                            {
+                                "mode": mode,
+                                "duration_min": 30,
+                                "fallback_from_mode": fallback,
+                            },
+                        )
+                    ),
+                )
 
     def test_google_place_identity_search_and_refresh_requests_are_exact(
         self,

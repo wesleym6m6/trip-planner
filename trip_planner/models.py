@@ -8,6 +8,7 @@ simulation, and any AI-facing orchestration layer.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from enum import Enum
@@ -17,6 +18,7 @@ from typing import Mapping, TypeAlias
 
 Scalar: TypeAlias = str | int | float | bool | None
 Params: TypeAlias = tuple[tuple[str, Scalar], ...]
+_MACHINE_NAME_RE = re.compile(r"[a-z][a-z0-9._/-]{0,127}")
 
 
 class DecisionState(str, Enum):
@@ -245,6 +247,9 @@ class TravelEstimate:
     to_activity_id: str | None = None
     query_departure_at: datetime | None = None
     query_arrival_at: datetime | None = None
+    static_duration_min: float | None = None
+    fallback_from_mode: str | None = None
+    warning_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.from_location_id, "TravelEstimate.from_location_id")
@@ -260,6 +265,46 @@ class TravelEstimate:
             _non_negative_number(
                 self.distance_km, "TravelEstimate.distance_km", positive=False
             )
+        if self.static_duration_min is not None:
+            _non_negative_number(
+                self.static_duration_min,
+                "TravelEstimate.static_duration_min",
+                positive=False,
+            )
+        if self.fallback_from_mode is not None:
+            _require_text(
+                self.fallback_from_mode,
+                "TravelEstimate.fallback_from_mode",
+            )
+            if (
+                self.fallback_from_mode != "transit"
+                or self.mode != "driving"
+            ):
+                raise ValueError(
+                    "TravelEstimate fallback only supports transit to driving"
+                )
+        _require_tuple(self.warning_codes, "TravelEstimate.warning_codes")
+        seen_warning_codes: set[str] = set()
+        for warning_code in self.warning_codes:
+            if not isinstance(warning_code, str):
+                raise TypeError(
+                    "TravelEstimate.warning_codes items must be strings"
+                )
+            if _MACHINE_NAME_RE.fullmatch(warning_code) is None:
+                raise ValueError(
+                    "TravelEstimate.warning_codes items must be lowercase "
+                    "machine names"
+                )
+            if warning_code in seen_warning_codes:
+                raise ValueError(
+                    "TravelEstimate.warning_codes cannot contain duplicates"
+                )
+            seen_warning_codes.add(warning_code)
+        object.__setattr__(
+            self,
+            "warning_codes",
+            tuple(sorted(self.warning_codes)),
+        )
         if self.fresh_until is not None and not isinstance(self.fresh_until, datetime):
             raise TypeError("TravelEstimate.fresh_until must be datetime or None")
         if not isinstance(self.evidence_state, EvidenceState):

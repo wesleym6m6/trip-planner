@@ -42,6 +42,7 @@ class EvidenceBinding:
     used_observation_ids: tuple[str, ...] = ()
     required_attribution_labels: tuple[str, ...] = ()
     requires_live_attribution: bool = False
+    outcome_revision: str | None = None
     binding_digest: str = ""
     contract_version: str = COMPOSITION_VERSION
 
@@ -79,12 +80,18 @@ class EvidenceBinding:
             raise TypeError(
                 "EvidenceBinding.requires_live_attribution must be bool"
             )
+        if self.outcome_revision is not None:
+            _require_digest(
+                self.outcome_revision,
+                "EvidenceBinding.outcome_revision",
+            )
 
         expected = _binding_digest(
             policy_registry_revision=self.policy_registry_revision,
             store_revision=self.store_revision,
             evidence_revision=self.evidence_revision,
             evaluation_at=evaluation_at,
+            outcome_revision=self.outcome_revision,
         )
         if self.binding_digest and self.binding_digest != expected:
             raise ValueError(
@@ -96,7 +103,7 @@ class EvidenceBinding:
     def to_dict(self) -> dict[str, Any]:
         """Return only durable, redacted evidence identity."""
 
-        return {
+        result = {
             "contract_version": self.contract_version,
             "policy_registry_revision": self.policy_registry_revision,
             "store_revision": self.store_revision,
@@ -111,6 +118,9 @@ class EvidenceBinding:
             "requires_live_attribution": self.requires_live_attribution,
             "binding_digest": self.binding_digest,
         }
+        if self.outcome_revision is not None:
+            result["outcome_revision"] = self.outcome_revision
+        return result
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -344,6 +354,7 @@ def compose_trip_state(
         requires_live_attribution=bool(
             required_labels or live_attributions
         ),
+        outcome_revision=evidence_snapshot.outcome_revision,
     )
     return ComposedTripState(
         state=composed_state,
@@ -400,6 +411,9 @@ def _project_route(
             "mode": payload["mode"],
             "duration_min": payload["duration_min"],
             "distance_km": payload.get("distance_km"),
+            "static_duration_min": payload.get("static_duration_min"),
+            "fallback_from_mode": payload.get("fallback_from_mode"),
+            "warning_codes": tuple(payload.get("warning_codes", ())),
             "evidence_state": evidence_state,
             "fresh_until": observation.valid_until,
             "evidence_ref": fact_ref,
@@ -422,7 +436,13 @@ def _overlay_route(
         "evidence_ref": projected.evidence_ref,
         "source": projected.source,
     }
-    for name in ("query_departure_at", "query_arrival_at"):
+    for name in (
+        "query_departure_at",
+        "query_arrival_at",
+        "static_duration_min",
+        "fallback_from_mode",
+        "warning_codes",
+    ):
         if name in travel_field_names:
             changes[name] = getattr(projected, name)
     return replace(canonical, **changes)
@@ -528,6 +548,7 @@ def _binding_digest(
     store_revision: str,
     evidence_revision: str,
     evaluation_at: datetime,
+    outcome_revision: str | None = None,
 ) -> str:
     payload = {
         "policy_registry_revision": policy_registry_revision,
@@ -535,6 +556,8 @@ def _binding_digest(
         "evidence_revision": evidence_revision,
         "evaluation_at": _utc_iso(evaluation_at),
     }
+    if outcome_revision is not None:
+        payload["outcome_revision"] = outcome_revision
     encoded = json.dumps(
         {
             "prefix": "evidence-binding",

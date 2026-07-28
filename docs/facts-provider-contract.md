@@ -1,6 +1,6 @@
 # Facts and Provider Contract
 
-狀態：Phase 4 implementation contract（4.2 minimal Places identity）
+狀態：Phase 4 implementation contract（4.3 Routes offline exit gate）
 契約版本：`fact-query/v1`、`fact-observation/v1`、
 `evidence-snapshot/v1`、`provider-result/v1`、
 `place-identity-review/v1`
@@ -482,24 +482,45 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
 ### Google Routes
 
 - Route observation綁 exact directed arc、mode 與 departure context。
+- Adapter固定使用`POST /directions/v2:computeRoutes`、Place ID waypoint與
+  最小field mask；endpoint observation/value、evidence snapshot與durable
+  store revision全部進request fingerprint。API credential只由injected
+  transport持有，不進request model、safe binding或測試fixture。
+- Response先以64 KiB、JSON depth/node count、duplicate key、NaN與單一路線
+  邊界驗證，再轉成allowlisted normalized value；raw bytes、provider message、
+  Place ID與自由文字warning不進ledger、diagnostic或repr。
 - 標準policy的duration、distance、time與path採`MEMORY_ONLY`；跨process
   planning需refetch，redacted digest不是cache value。
+- `EvidenceSession`每次load/merge都重讀durable source；durable revision漂移
+  會清除run-scoped route LKG，舊response也因`basis_store_revision`不符而拒絕。
+  Observation revision與完整typed provider outcome分別綁入snapshot/review
+  identity，global或multi-key problem不被改寫。
+- 實際HTTP attempt使用獨立thread-safe budget，預設每個request只送一次；
+  opt-in retry每個send都計費且單request最多三次。Batch上限256個exact
+  requests，duplicate或evidence drift在送出前fail closed。
 - Transit query若沒指定時間，provider會使用 query執行當下，不可拿來驗證未來
   行程。
 - Transit schedule的官方 query horizon為目前時間前 7 天、後 100 天；超出
   horizon回 typed precondition，不浪費 API call。
 - Walking、bicycle與 two-wheeler route仍有官方 beta/path warning，delivery
   必須揭露。
-- Driving fallback只能建立 driving fact並附 `TRANSIT_UNAVAILABLE` 問題，
-  不得冒充 verified transit。
+- Driving fallback只能建立 driving fact並附typed
+  `TRANSIT_UNAVAILABLE`問題與runtime disclosure，不得冒充verified transit。
+  Google response的`fallbackInfo`只表示provider內部routing preference
+  fallback，不等同產品的transit-to-driving fallback。
 - Scooter proxy不是 Routes fact；若保留，只能是明確的 unverified derived
   estimate，不能把 bicycle duration乘 0.5後仍標 `source=api`。
 - Departure time來自 kernel timeline的實際離開時間，不是 activity start。
 
 參考：
 
+- [Compute Routes REST method](https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRoutes)
+- [Compute a route and field masks](https://developers.google.com/maps/documentation/routes/compute_route_directions)
+- [Waypoint Place ID contract](https://developers.google.com/maps/documentation/routes/reference/rest/v2/Waypoint)
 - [Transit route horizon and parameters](https://developers.google.com/maps/documentation/routes/transit-route)
 - [Routes travel modes and beta warnings](https://developers.google.com/maps/documentation/routes/reference/rest/v2/RouteTravelMode)
+- [Routes error handling](https://developers.google.com/maps/documentation/routes/handle-errors)
+- [Routes `FallbackInfo`](https://developers.google.com/maps/documentation/routes/reference/rest/v2/FallbackInfo)
 
 ### SerpApi flights / hotels
 
@@ -546,6 +567,7 @@ Semantic：
 - `EMPTY_RESPONSE`
 - `NOT_FOUND`
 - `UNSUPPORTED_MODE`
+- `TRANSIT_UNAVAILABLE`
 - `AMBIGUOUS_MATCH`
 - `OUT_OF_SCOPE_RESULT`
 - `PARTIAL_FAILURE`
@@ -652,13 +674,28 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   全套441個offline tests通過，三個real-trip validators通過，未呼叫provider
   或修改`trips/`。
 
-### Phase 4.3 — Routes end-to-end
+### Phase 4.3 — Routes end-to-end（offline exit gate完成）
 
-- injectable transport與 canned responses；
-- exact arc/mode/time fingerprint；
-- per-mode partial LKG、timeout、budget與 typed fallback；
-- run-scoped runtime TravelEstimate projection與 readiness；
-- 完成離線 exit gate後才用真實 API驗收。
+- injectable bytes transport；credential injection留在transport implementation，
+  核心沒有內建HTTP client，也沒有在測試呼叫真實provider；
+- fixed endpoint/minimal field mask、Place ID waypoint與
+  exact arc/mode/departure/evidence/store fingerprint；
+- bounded strict decoder、typed HTTP/transport/preflight failures、single-attempt
+  default、opt-in bounded retry與共享actual-attempt budget；
+- exact transit-to-driving fallback；driving observation保留
+  `fallback_from_mode=transit`，transit fact保留typed
+  `TRANSIT_UNAVAILABLE`problem；
+- reloadable `EvidenceSession`只在記憶體merge Routes facts；durable或outcome
+  drift、clock rollback與retention均fail closed，partial failure保留per-mode
+  LKG；
+- normalized duration/distance/static duration/fallback/warning metadata投影到
+  runtime `TravelEstimate`，timeline以non-blocking typed issue揭露provider
+  warnings與transit fallback；
+- 真正E2E regression涵蓋adapter → batch budget → session snapshot →
+  composition → timeline disclosure；
+- offline gate通過後才可在明確授權下做真實API驗收；本checkpoint未呼叫
+  provider、未render、未deploy，也未修改`trips/`。472個offline tests與
+  三個real-trip validators通過。
 
 ### Phase 4.4 — Places profile / hours
 

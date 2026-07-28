@@ -917,6 +917,46 @@ def _check_travel_evidence(
 ) -> None:
     activity_ids = (activity_id,) if activity_id is not None else ()
     refs = _evidence_refs(estimate)
+    disclosure_details = _travel_details(estimate) + (
+        ("status_effect", "none"),
+    )
+
+    for warning_code in estimate.warning_codes:
+        add_issue(
+            _issue(
+                "ROUTE_PROVIDER_WARNING",
+                IssueSeverity.WARNING,
+                (
+                    f"Route provider warning {warning_code!r} applies to the "
+                    f"selected {estimate.mode!r} estimate."
+                ),
+                activity_ids=activity_ids,
+                evidence_refs=refs,
+                details=disclosure_details
+                + (("warning_code", warning_code),),
+            )
+        )
+    if estimate.fallback_from_mode is not None:
+        add_issue(
+            _issue(
+                "TRANSIT_FALLBACK_DISCLOSURE",
+                IssueSeverity.WARNING,
+                (
+                    f"Route mode {estimate.fallback_from_mode!r} fell back to "
+                    f"{estimate.mode!r}; the estimate remains "
+                    f"{estimate.mode!r}."
+                ),
+                activity_ids=activity_ids,
+                evidence_refs=refs,
+                details=disclosure_details
+                + (
+                    (
+                        "fallback_from_mode",
+                        estimate.fallback_from_mode,
+                    ),
+                ),
+            )
+        )
 
     if estimate.evidence_state is EvidenceState.UNVERIFIED:
         add_issue(

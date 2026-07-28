@@ -30,6 +30,14 @@ PROVIDER_RESULT_VERSION = "provider-result/v1"
 GOOGLE_MAPS_NON_EEA_POLICY_PROFILE = (
     "google-maps-non-eea-2026-06-10"
 )
+_GOOGLE_ROUTE_FIELD_MASK = (
+    "routes.distanceMeters,"
+    "routes.duration,"
+    "routes.staticDuration,"
+    "routes.warnings,"
+    "fallbackInfo.routingMode,"
+    "fallbackInfo.reason"
+)
 
 Scalar: TypeAlias = str | int | float | bool | None
 
@@ -132,6 +140,7 @@ class ProviderProblemCode(str, Enum):
     PENDING_REVIEW = "PENDING_REVIEW"
     EVIDENCE_REVISION_CHANGED = "EVIDENCE_REVISION_CHANGED"
     OUTSIDE_PROVIDER_HORIZON = "OUTSIDE_PROVIDER_HORIZON"
+    TRANSIT_UNAVAILABLE = "TRANSIT_UNAVAILABLE"
     AUTH_FAILED = "AUTH_FAILED"
     QUOTA_EXHAUSTED = "QUOTA_EXHAUSTED"
     RATE_LIMITED = "RATE_LIMITED"
@@ -691,7 +700,18 @@ def google_maps_policy_registry(
                 max_validity_seconds=30 * day,
                 max_retention_seconds=day,
                 allowed_query_fields=(
+                    "basis_evidence_revision",
+                    "basis_snapshot_id",
+                    "basis_store_revision",
+                    "destination_endpoint_id",
+                    "destination_observation_id",
+                    "destination_value_digest",
+                    "fallback_from_mode",
+                    "field_mask",
                     "language_code",
+                    "origin_endpoint_id",
+                    "origin_observation_id",
+                    "origin_value_digest",
                     "region_code",
                     "units",
                 ),
@@ -1687,8 +1707,25 @@ class ProviderResult:
 
 _AUTHORIZATION_TOKEN = object()
 _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN = object()
+_GOOGLE_ROUTE_AUTHORIZATION_TOKEN = object()
 _GENERIC_AUTHORIZATION_GATE = "provider-policy"
 _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_GATE = "google-place-identity"
+_GOOGLE_ROUTE_AUTHORIZATION_GATE = "google-route"
+_GOOGLE_ROUTE_REQUIRED_QUERY_FIELDS = frozenset(
+    {
+        "basis_evidence_revision",
+        "basis_snapshot_id",
+        "basis_store_revision",
+        "destination_endpoint_id",
+        "destination_observation_id",
+        "destination_value_digest",
+        "field_mask",
+        "origin_endpoint_id",
+        "origin_observation_id",
+        "origin_value_digest",
+    }
+)
+_GOOGLE_ROUTE_OPTIONAL_QUERY_FIELDS = frozenset({"fallback_from_mode"})
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -1779,6 +1816,35 @@ def _authorize_google_place_identity_result(
     )
 
 
+def _authorize_google_route_result(
+    request: ProviderRequest,
+    result: ProviderResult,
+    policies: ProviderPolicyRegistry,
+    *,
+    _token: object,
+) -> AuthorizedProviderResult:
+    """Authorize one Google route result minted by the dedicated adapter."""
+
+    if _token is not _GOOGLE_ROUTE_AUTHORIZATION_TOKEN:
+        raise FactContractError(
+            "UNTRUSTED_PROVENANCE",
+            "Google route authorization requires the trusted route adapter.",
+        )
+    if not _is_google_route_promotion(request):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Dedicated route authorization received a non-route request.",
+        )
+    _validate_google_route_authorization_scope(request, result)
+    return _authorize_provider_result(
+        request,
+        result,
+        policies,
+        authorization_gate=_GOOGLE_ROUTE_AUTHORIZATION_GATE,
+        _route_token=_token,
+    )
+
+
 def _authorize_provider_result(
     request: ProviderRequest,
     result: ProviderResult,
@@ -1786,6 +1852,7 @@ def _authorize_provider_result(
     *,
     authorization_gate: str,
     _identity_token: object | None = None,
+    _route_token: object | None = None,
 ) -> AuthorizedProviderResult:
     """Shared exact policy validation behind token-separated host gates."""
 
@@ -1796,6 +1863,14 @@ def _authorize_provider_result(
         raise FactContractError(
             "PENDING_REVIEW",
             "Google place identity authorization requires a trusted finalizer.",
+        )
+    if (
+        authorization_gate == _GOOGLE_ROUTE_AUTHORIZATION_GATE
+        and _route_token is not _GOOGLE_ROUTE_AUTHORIZATION_TOKEN
+    ):
+        raise FactContractError(
+            "UNTRUSTED_PROVENANCE",
+            "Google route authorization requires the trusted route adapter.",
         )
     if (
         type(request) is not ProviderRequest
@@ -1922,6 +1997,17 @@ def _authorize_provider_result(
                 "promotion boundary."
             ),
         )
+    if (
+        authorization_gate == _GENERIC_AUTHORIZATION_GATE
+        and _is_google_route_promotion(request)
+    ):
+        raise FactContractError(
+            "UNTRUSTED_PROVENANCE",
+            (
+                "Google route evidence requires the dedicated adapter "
+                "promotion boundary."
+            ),
+        )
 
     authorization_id = _digest(
         {
@@ -1955,6 +2041,108 @@ def _is_google_place_identity_promotion(
             for key in request.fact_keys
         )
     )
+
+
+def _is_google_route_promotion(request: object) -> bool:
+    return bool(
+        type(request) is ProviderRequest
+        and request.provider_id == "google-routes"
+        and request.policy_id == "google-route-runtime-v1"
+        and request.operation == "compute-route"
+        and any(
+            key.kind is FactKind.ROUTE_ESTIMATE
+            for key in request.fact_keys
+        )
+    )
+
+
+def _validate_google_route_authorization_scope(
+    request: ProviderRequest,
+    result: ProviderResult,
+) -> None:
+    if (
+        len(request.fact_keys) != 1
+        or request.fact_keys[0].kind is not FactKind.ROUTE_ESTIMATE
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google route authorization requires exactly one route fact key.",
+        )
+    key = request.fact_keys[0]
+    if key.subject_ids[0] == key.subject_ids[1]:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google route endpoints must be distinct ordered locations.",
+        )
+    qualifiers = key.qualifier_map
+    if set(qualifiers) != {"departure_at", "mode"}:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            (
+                "Google route facts require exact mode and departure_at "
+                "qualifiers."
+            ),
+        )
+
+    scope = dict(request.query_scope)
+    scope_names = set(scope)
+    allowed_scope = (
+        _GOOGLE_ROUTE_REQUIRED_QUERY_FIELDS
+        | _GOOGLE_ROUTE_OPTIONAL_QUERY_FIELDS
+    )
+    if (
+        not _GOOGLE_ROUTE_REQUIRED_QUERY_FIELDS.issubset(scope_names)
+        or not scope_names.issubset(allowed_scope)
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            (
+                "Google route request scope must contain the exact endpoint, "
+                "evidence basis and field-mask bindings."
+            ),
+        )
+    for name in _GOOGLE_ROUTE_REQUIRED_QUERY_FIELDS - {"field_mask"}:
+        if (
+            not isinstance(scope[name], str)
+            or _HEX_DIGEST_RE.fullmatch(scope[name]) is None
+        ):
+            raise FactContractError(
+                "INVALID_PROVIDER_REQUEST",
+                (
+                    f"Google route scope {name} must be a lowercase "
+                    "SHA-256 digest."
+                ),
+            )
+    field_mask = scope["field_mask"]
+    if field_mask != _GOOGLE_ROUTE_FIELD_MASK:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google route field_mask must equal the fixed minimal field mask.",
+        )
+
+    mode = qualifiers["mode"]
+    fallback = scope.get("fallback_from_mode")
+    if fallback is not None and (
+        fallback != "transit" or mode != "driving"
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            (
+                "Only an exact transit-to-driving Google route fallback "
+                "is supported."
+            ),
+        )
+    for observation in result.observations:
+        payload = observation.value.payload
+        payload_fallback = payload.get("fallback_from_mode")
+        if payload["mode"] != mode or payload_fallback != fallback:
+            raise FactContractError(
+                "EVIDENCE_BINDING_MISMATCH",
+                (
+                    "Google route observation mode or fallback scope differs "
+                    "from its exact request."
+                ),
+            )
 
 
 _LEDGER_TOKEN = object()
@@ -2290,6 +2478,13 @@ def merge_provider_result(
             authorized_result.result,
             ledger.policies,
             _token=_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
+        )
+    elif _is_google_route_promotion(authorized_result.request):
+        reauthorized = _authorize_google_route_result(
+            authorized_result.request,
+            authorized_result.result,
+            ledger.policies,
+            _token=_GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
         )
     else:
         reauthorized = authorize_provider_result(
@@ -2678,6 +2873,7 @@ class EvidenceSnapshot:
     store_revision: str
     contract_version: str = EVIDENCE_SNAPSHOT_VERSION
     evidence_revision: str = ""
+    outcome_revision: str | None = None
     snapshot_id: str = ""
 
     def __init__(
@@ -2690,6 +2886,7 @@ class EvidenceSnapshot:
         store_revision: str,
         contract_version: str = EVIDENCE_SNAPSHOT_VERSION,
         evidence_revision: str = "",
+        outcome_revision: str | None = None,
         snapshot_id: str = "",
         _token: object | None = None,
     ) -> None:
@@ -2711,6 +2908,7 @@ class EvidenceSnapshot:
         object.__setattr__(
             self, "evidence_revision", evidence_revision
         )
+        object.__setattr__(self, "outcome_revision", outcome_revision)
         object.__setattr__(self, "snapshot_id", snapshot_id)
         self.__post_init__()
 
@@ -2746,6 +2944,11 @@ class EvidenceSnapshot:
         _require_digest(
             self.store_revision, "EvidenceSnapshot.store_revision"
         )
+        if self.outcome_revision is not None:
+            _require_digest(
+                self.outcome_revision,
+                "EvidenceSnapshot.outcome_revision",
+            )
         retained: list[FactObservation] = []
         slots: set[tuple[str, str]] = set()
         for observation in self.observations:
@@ -2797,15 +3000,18 @@ class EvidenceSnapshot:
                 "EvidenceSnapshot.evidence_revision does not match records.",
             )
         object.__setattr__(self, "evidence_revision", expected_revision)
+        snapshot_payload = {
+            "contract_version": self.contract_version,
+            "policy_registry_revision": self.policies.revision,
+            "store_revision": self.store_revision,
+            "evidence_revision": expected_revision,
+            "evaluation_at": _utc_iso(evaluation_at),
+            "purge_checked_at": _utc_iso(purge_checked_at),
+        }
+        if self.outcome_revision is not None:
+            snapshot_payload["outcome_revision"] = self.outcome_revision
         expected_snapshot_id = _digest(
-            {
-                "contract_version": self.contract_version,
-                "policy_registry_revision": self.policies.revision,
-                "store_revision": self.store_revision,
-                "evidence_revision": expected_revision,
-                "evaluation_at": _utc_iso(evaluation_at),
-                "purge_checked_at": _utc_iso(purge_checked_at),
-            },
+            snapshot_payload,
             prefix="evidence-snapshot",
         )
         if self.snapshot_id and self.snapshot_id != expected_snapshot_id:
@@ -2823,6 +3029,7 @@ class EvidenceSnapshot:
         evaluation_at: datetime,
         purge_now: datetime,
         store_revision: str | None = None,
+        outcome_revision: str | None = None,
     ) -> "EvidenceSnapshot":
         """Build a snapshot from one trusted ledger.
 
@@ -2852,6 +3059,7 @@ class EvidenceSnapshot:
                 if store_revision is None
                 else store_revision
             ),
+            outcome_revision=outcome_revision,
             _token=_SNAPSHOT_TOKEN,
         )
 
@@ -2932,7 +3140,7 @@ class EvidenceSnapshot:
     def to_dict(self) -> dict[str, Any]:
         """Return a redacted snapshot binding, never provider value bytes."""
 
-        return {
+        result = {
             "contract_version": self.contract_version,
             "policy_registry_revision": self.policies.revision,
             "evaluation_at": _utc_iso(self.evaluation_at),
@@ -2950,6 +3158,9 @@ class EvidenceSnapshot:
                 for observation in self.observations
             ],
         }
+        if self.outcome_revision is not None:
+            result["outcome_revision"] = self.outcome_revision
+        return result
 
 
 def _validate_result_shape(
@@ -3633,12 +3844,15 @@ def _normalize_route(payload: dict[str, Any]) -> dict[str, Any]:
         fallback = payload["fallback_from_mode"]
         if (
             not isinstance(fallback, str)
-            or fallback not in _TRAVEL_MODES
-            or fallback == mode
+            or fallback != "transit"
+            or mode != "driving"
         ):
             raise FactContractError(
                 "INVALID_PROVIDER_RESPONSE",
-                "fallback_from_mode must be a different known mode.",
+                (
+                    "fallback_from_mode only supports an exact "
+                    "transit-to-driving fallback."
+                ),
             )
         result["fallback_from_mode"] = fallback
     if "warning_codes" in payload:
