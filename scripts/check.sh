@@ -9,7 +9,10 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 echo "== trip-planner: python compile =="
-"$PYTHON" -m py_compile scripts/*.py
+"$PYTHON" -m py_compile scripts/*.py trip_planner/*.py
+
+echo "== trip-planner: offline unit tests =="
+"$PYTHON" -m unittest discover -s tests -p "test_*.py"
 
 if [ -d trips ]; then
   echo "== trip-planner: validate trips =="

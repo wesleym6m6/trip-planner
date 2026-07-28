@@ -9,6 +9,19 @@ import sys
 import pathlib
 from datetime import datetime, timedelta, timezone
 
+if __package__:
+    from .plan_compat import (
+        has_canonical_plan,
+        load_trip_views,
+        resolve_ordered_local_datetimes,
+    )
+else:
+    from plan_compat import (
+        has_canonical_plan,
+        load_trip_views,
+        resolve_ordered_local_datetimes,
+    )
+
 
 def ics_escape(s: str) -> str:
     """Escape text per RFC 5545 rules."""
@@ -89,8 +102,7 @@ def generate_ics(trip_dir: str | pathlib.Path) -> pathlib.Path:
     trip_dir = pathlib.Path(trip_dir)
     data_dir = trip_dir / "data"
 
-    trip = json.loads((data_dir / "trip.json").read_text())
-    itinerary = json.loads((data_dir / "itinerary.json").read_text())
+    trip, itinerary, _trip_id, _revision = load_trip_views(data_dir)
 
     slug = trip.get("slug", trip_dir.name)
     title = trip.get("title", slug)
@@ -129,31 +141,44 @@ def generate_ics(trip_dir: str | pathlib.Path) -> pathlib.Path:
         day_num = day["day"]
         day_title = day.get("title", f"Day {day_num}")
         day_date = start_date + timedelta(days=day_num - 1)
-        next_date = day_date + timedelta(days=1)
-        day_date_str = day_date.strftime("%Y%m%d")
-        next_date_str = next_date.strftime("%Y%m%d")
-
         places = day.get("places", [])
+        resolved_times = resolve_ordered_local_datetimes(
+            day_date,
+            (place.get("time") for place in places),
+            available_start=day.get("available_start"),
+            available_end=day.get("available_end"),
+        )
 
         # Per-place events (when time is available and timezone is known)
         if utc_offset_str:
             for i, place in enumerate(places):
-                t = place.get("time")
-                if not t:
+                start_dt = resolved_times[i]
+                if start_dt is None:
                     continue
                 p_title = place.get("title", "")
                 p_note = place.get("note", "")
-                hh, mm = t.split(":")
-                dt_start = f"{day_date_str}T{hh}{mm}00{utc_offset_str}"
+                dt_start = (
+                    f"{start_dt.strftime('%Y%m%dT%H%M%S')}"
+                    f"{utc_offset_str}"
+                )
 
                 # End time: use next place's time, or +1h default
-                if i + 1 < len(places) and places[i + 1].get("time"):
-                    nt = places[i + 1]["time"]
-                    nhh, nmm = nt.split(":")
-                    dt_end = f"{day_date_str}T{nhh}{nmm}00{utc_offset_str}"
+                next_time = (
+                    resolved_times[i + 1]
+                    if i + 1 < len(places)
+                    else None
+                )
+                if next_time is not None:
+                    dt_end = (
+                        f"{next_time.strftime('%Y%m%dT%H%M%S')}"
+                        f"{utc_offset_str}"
+                    )
                 else:
-                    end_dt = datetime.strptime(f"{day_date_str}{hh}{mm}", "%Y%m%d%H%M") + timedelta(hours=1)
-                    dt_end = f"{end_dt.strftime('%Y%m%dT%H%M')}00{utc_offset_str}"
+                    end_dt = start_dt + timedelta(hours=1)
+                    dt_end = (
+                        f"{end_dt.strftime('%Y%m%dT%H%M%S')}"
+                        f"{utc_offset_str}"
+                    )
 
                 summary = ics_escape(f"{p_title}")
                 description = ics_escape(p_note) if p_note else ""
@@ -204,8 +229,9 @@ def main():
         sys.exit(1)
 
     trip_dir = pathlib.Path(sys.argv[1])
-    if not (trip_dir / "data" / "trip.json").exists():
-        print(f"Error: {trip_dir / 'data' / 'trip.json'} not found")
+    data_dir = trip_dir / "data"
+    if not has_canonical_plan(data_dir) and not (data_dir / "trip.json").exists():
+        print(f"Error: no plan.json or trip.json found under {data_dir}")
         sys.exit(1)
 
     generate_ics(trip_dir)

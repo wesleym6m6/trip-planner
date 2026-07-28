@@ -28,6 +28,19 @@ import sys
 import pathlib
 import re
 
+if __package__:
+    from .plan_compat import (
+        CanonicalWriteRefused,
+        refuse_canonical_write,
+        resolve_ordered_local_datetimes,
+    )
+else:
+    from plan_compat import (
+        CanonicalWriteRefused,
+        refuse_canonical_write,
+        resolve_ordered_local_datetimes,
+    )
+
 
 # Distance-based mode selection thresholds (km)
 WALK_MAX_KM = 1.0       # <= 1 km: recommend walking
@@ -40,6 +53,24 @@ SCOOTER_MAX_KM = 5.0    # 1-5 km: recommend bicycling (scooter proxy)
 # - SCOOTER_SPEED_FACTOR corrects bicycling durations when used as scooter proxy
 # To use real scooter routing, add "two_wheeler" to available_modes instead.
 SCOOTER_SPEED_FACTOR = 0.5  # bicycling_time * 0.5 ≈ scooter_time
+
+
+def format_departure_time(
+    day_date: object, local_time_text: object, utc_offset: object
+) -> str | None:
+    """Build RFC 3339 departure text from a lossless local plan time."""
+
+    if not all(
+        isinstance(value, str) and value
+        for value in (day_date, local_time_text, utc_offset)
+    ):
+        return None
+    resolved = resolve_ordered_local_datetimes(
+        day_date, (local_time_text,)
+    )[0]
+    if resolved is None:
+        return None
+    return f"{resolved.isoformat()}{utc_offset}"
 
 
 def select_recommended_mode(modes, available_modes=None):
@@ -98,6 +129,14 @@ def select_recommended_mode(modes, available_modes=None):
 
 def main():
     itinerary_path = pathlib.Path(sys.argv[1])
+    try:
+        refuse_canonical_write(
+            itinerary_path.parent, operation="enrich_itinerary.py"
+        )
+    except CanonicalWriteRefused as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
+
     itinerary = json.loads(itinerary_path.read_text())
 
     # Parse available_modes from CLI arg or itinerary metadata
@@ -154,6 +193,12 @@ def main():
 
         # Routes between consecutive places within a day
         day_date = day.get("date")  # e.g. "2026-05-18"
+        resolved_times = resolve_ordered_local_datetimes(
+            day_date,
+            (place.get("time") for place in day["places"]),
+            available_start=day.get("available_start"),
+            available_end=day.get("available_end"),
+        )
         for i in range(len(day["places"]) - 1):
             route_entry = {
                 "from": place_index_map[(day_idx, i)],
@@ -162,10 +207,10 @@ def main():
             # Build departure_time from the "from" place's scheduled time.
             # This tells the Routes API: "I'm leaving place A at this time,
             # what transit should I take to reach place B?"
-            if utc_offset and day_date:
-                from_time = day["places"][i].get("time")  # e.g. "09:30"
-                if from_time:
-                    route_entry["departure_time"] = f"{day_date}T{from_time}:00{utc_offset}"
+            if utc_offset and resolved_times[i] is not None:
+                route_entry["departure_time"] = (
+                    f"{resolved_times[i].isoformat()}{utc_offset}"
+                )
             all_routes.append(route_entry)
 
     n_pre = len(pre_resolved)

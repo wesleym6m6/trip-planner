@@ -2,6 +2,17 @@
 
 用 Claude Code + Google Maps API 規劃旅行，自動生成靜態網站部署到 GitHub Pages。
 
+AI-native 自動排程的分階段改造、架構決策與驗收門檻記錄在
+[`docs/planning-kernel-roadmap.md`](docs/planning-kernel-roadmap.md)；canonical
+plan、PlanPatch、原子寫入與 rollback 的保證記錄在
+[`docs/safe-mutation-contract.md`](docs/safe-mutation-contract.md)；AI snapshot、
+proposal、budget、progress 與 human checkpoint 邊界記錄在
+[`docs/ai-repair-loop-contract.md`](docs/ai-repair-loop-contract.md)；Phase 3
+排程 problem、candidate、score、failure、safe staging 與 solver selection gate 記錄在
+[`docs/scheduling-contract.md`](docs/scheduling-contract.md)；provider request、
+static policy、memory/disk evidence分流、雙時鐘與promotion gate記錄在
+[`docs/facts-provider-contract.md`](docs/facts-provider-contract.md)。
+
 ## 功能
 
 - **互動式行程規劃** — AI agent 提案景點，你篩選、排序、加約束
@@ -66,6 +77,9 @@ cp skill/trip-planner.md ~/.claude/skills/trip-planner/SKILL.md
 
 ```
 trip-plan/
+├── trip_planner/          # deterministic kernel、canonical codec、mutation/store
+├── tests/                 # offline adversarial regression
+├── docs/                  # roadmap、ADR 與 correctness contracts
 ├── scripts/               # 所有腳本
 │   ├── build_places_cache.py   # 批次解析景點 → places_cache.json
 │   ├── build_itinerary.py      # 從簡化輸入 + cache → itinerary.json

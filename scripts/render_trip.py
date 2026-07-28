@@ -50,8 +50,9 @@ def main():
 
     data_dir = trip_dir / "data"
 
-    trip = load_json(data_dir / "trip.json")
-    itinerary = load_json(data_dir / "itinerary.json")
+    from plan_compat import load_trip_views
+
+    trip, itinerary, _trip_id, _revision = load_trip_views(data_dir)
     info = load_json(data_dir / "info.json")
     reservations = load_json_optional(data_dir / "reservations.json")
     packing = load_json_optional(data_dir / "packing.json")

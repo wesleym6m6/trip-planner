@@ -9,6 +9,11 @@ import json
 import sys
 from pathlib import Path
 
+if __package__:
+    from .plan_compat import PlanCodecError, has_canonical_plan, load_trip_views
+else:
+    from plan_compat import PlanCodecError, has_canonical_plan, load_trip_views
+
 
 def _load_json(path):
     with open(path, encoding="utf-8") as f:
@@ -29,13 +34,17 @@ def validate(trip_dir):
     trip_dir = Path(trip_dir)
     data_dir = trip_dir / "data"
     errors = []
+    canonical = has_canonical_plan(data_dir)
 
     # --- Required files ---
-    required_files = {
-        "trip.json": "trip metadata",
-        "itinerary.json": "daily itinerary",
-        "info.json": "practical info",
-    }
+    required_files = {"info.json": "practical info"}
+    if not canonical:
+        required_files.update(
+            {
+                "trip.json": "trip metadata",
+                "itinerary.json": "daily itinerary",
+            }
+        )
     for filename, desc in required_files.items():
         if not (data_dir / filename).exists():
             errors.append(f"Missing required file: {filename} ({desc})")
@@ -50,18 +59,27 @@ def validate(trip_dir):
     if errors:
         return errors
 
-    # --- trip.json ---
-    trip = _load_json(data_dir / "trip.json")
-    errors.extend(_check_keys(trip, ["title", "slug", "date_range", "cities", "icon"],
-                               "trip.json"))
+    try:
+        trip, itinerary, _trip_id, _revision = load_trip_views(data_dir)
+    except PlanCodecError as exc:
+        errors.append(f"plan.json: {exc}")
+        return errors
 
-    # --- itinerary.json ---
-    itinerary = _load_json(data_dir / "itinerary.json")
+    trip_label = "plan.json state.trip" if canonical else "trip.json"
+    itinerary_label = (
+        "plan.json state.itinerary" if canonical else "itinerary.json"
+    )
+
+    # --- trip metadata ---
+    errors.extend(_check_keys(trip, ["title", "slug", "date_range", "cities", "icon"],
+                               trip_label))
+
+    # --- itinerary ---
     if "days" not in itinerary:
-        errors.append("itinerary.json: missing 'days' array")
+        errors.append(f"{itinerary_label}: missing 'days' array")
     else:
         for day_idx, day in enumerate(itinerary["days"]):
-            day_label = f"itinerary.json day[{day_idx}]"
+            day_label = f"{itinerary_label} day[{day_idx}]"
             for place_idx, place in enumerate(day.get("places", [])):
                 place_label = f"{day_label}.places[{place_idx}]"
                 errors.extend(_check_keys(place, ["type", "title", "time", "lat", "lng"],

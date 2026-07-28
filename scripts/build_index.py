@@ -8,6 +8,11 @@ import json
 import pathlib
 from jinja2 import Environment, FileSystemLoader
 
+if __package__:
+    from .plan_compat import has_canonical_plan, load_trip_views
+else:
+    from plan_compat import has_canonical_plan, load_trip_views
+
 ROOT = pathlib.Path(__file__).parent.parent
 TEMPLATE_DIR = ROOT / "template"
 TRIPS_DIR = ROOT / "trips"
@@ -15,8 +20,14 @@ TRIPS_DIR = ROOT / "trips"
 
 def main():
     trips = []
-    for trip_json in sorted(TRIPS_DIR.glob("*/data/trip.json")):
-        data = json.loads(trip_json.read_text())
+    for data_dir in sorted(TRIPS_DIR.glob("*/data")):
+        if has_canonical_plan(data_dir):
+            data, _itinerary, _trip_id, _revision = load_trip_views(data_dir)
+        else:
+            trip_json = data_dir / "trip.json"
+            if not trip_json.is_file():
+                continue
+            data = json.loads(trip_json.read_text())
         if data.get("archived"):
             continue
         trips.append(data)

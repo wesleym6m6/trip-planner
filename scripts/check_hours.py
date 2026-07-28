@@ -20,8 +20,19 @@ Statuses:
 import json
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, time as local_time, timedelta
 from pathlib import Path
+
+if __package__:
+    from .plan_compat import (
+        load_trip_views,
+        resolve_ordered_local_datetimes,
+    )
+else:
+    from plan_compat import (
+        load_trip_views,
+        resolve_ordered_local_datetimes,
+    )
 
 OUTDOOR_TYPES = {
     "street", "park", "neighborhood", "natural_feature", "bridge",
@@ -91,10 +102,18 @@ def check_visit_time(periods, visit_time_str):
     if not visit_time_str or not periods:
         return None, None
 
-    parts = visit_time_str.split(":")
-    if len(parts) != 2:
+    try:
+        parsed = local_time.fromisoformat(visit_time_str)
+    except (TypeError, ValueError):
         return None, None
-    visit_min = int(parts[0]) * 60 + int(parts[1])
+    if parsed.tzinfo is not None:
+        return None, None
+    visit_min = (
+        parsed.hour * 60
+        + parsed.minute
+        + parsed.second / 60
+        + parsed.microsecond / 60_000_000
+    )
 
     # Check if visit falls in any period
     for open_min, close_min, open_str, close_str in periods:
@@ -220,8 +239,7 @@ def main():
     trip_dir = Path(sys.argv[1])
     data_dir = trip_dir / "data"
 
-    trip_json = json.loads((data_dir / "trip.json").read_text())
-    itinerary = json.loads((data_dir / "itinerary.json").read_text())
+    trip_json, itinerary, _trip_id, _revision = load_trip_views(data_dir)
     cache_path = data_dir / "places_cache.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
 
@@ -237,6 +255,13 @@ def main():
         day_num = day_data["day"]
         current_date = start_date + timedelta(days=day_num - 1)
         weekday_idx = current_date.weekday()
+        places = day_data.get("places", [])
+        resolved_times = resolve_ordered_local_datetimes(
+            current_date,
+            (place.get("time") for place in places),
+            available_start=day_data.get("available_start"),
+            available_end=day_data.get("available_end"),
+        )
 
         day_check = {
             "day": day_num,
@@ -246,15 +271,25 @@ def main():
             "places": [],
         }
 
-        for place in day_data.get("places", []):
-            result = check_place(place, cache, weekday_idx)
+        for place, resolved_at in zip(places, resolved_times):
+            place_weekday_idx = (
+                resolved_at.weekday()
+                if resolved_at is not None
+                else weekday_idx
+            )
+            result = check_place(place, cache, place_weekday_idx)
             if result is None:
                 continue
+            result["visit_date"] = (
+                resolved_at.date().isoformat()
+                if resolved_at is not None
+                else current_date.date().isoformat()
+            )
             day_check["places"].append(result)
 
             if result["status"] in ("⚠️", "❌"):
                 warnings.append(
-                    f"{result['status']} {result['title']} — Day {day_num}（{DOW_NAMES_ZH[weekday_idx]}）{result.get('note', '')}"
+                    f"{result['status']} {result['title']} — Day {day_num}（{DOW_NAMES_ZH[place_weekday_idx]}）{result.get('note', '')}"
                 )
 
         checks.append(day_check)

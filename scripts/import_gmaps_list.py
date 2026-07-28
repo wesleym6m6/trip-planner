@@ -19,9 +19,15 @@ import argparse
 import json
 import re
 import sys
+from pathlib import Path
 from urllib.parse import quote
 
 import requests
+
+if __package__:
+    from .plan_compat import CanonicalWriteRefused, refuse_canonical_write
+else:
+    from plan_compat import CanonicalWriteRefused, refuse_canonical_write
 
 # Google Maps internal API endpoint for fetching list data
 GETLIST_URL = (
@@ -219,7 +225,9 @@ def merge_into_itinerary(
     If target_day is given, append places to that day's places array.
     Otherwise, create a new day titled with the list name.
     """
-    itinerary_path = f"{trip_dir}/data/itinerary.json"
+    data_dir = Path(trip_dir) / "data"
+    refuse_canonical_write(data_dir, operation="import_gmaps_list.py --merge")
+    itinerary_path = data_dir / "itinerary.json"
     try:
         with open(itinerary_path, "r", encoding="utf-8") as f:
             itinerary = json.load(f)
@@ -316,6 +324,16 @@ def main():
         "If omitted, creates a new day.",
     )
     args = parser.parse_args()
+
+    if args.merge:
+        try:
+            refuse_canonical_write(
+                Path(args.merge) / "data",
+                operation="import_gmaps_list.py --merge",
+            )
+        except CanonicalWriteRefused as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            sys.exit(2)
 
     # Validate URL format
     if not args.url.startswith("http"):

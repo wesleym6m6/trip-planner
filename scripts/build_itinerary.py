@@ -40,6 +40,12 @@ Optional overrides:
 """
 import json
 import sys
+from pathlib import Path
+
+if __package__:
+    from .plan_compat import CanonicalWriteRefused, refuse_canonical_write
+else:
+    from plan_compat import CanonicalWriteRefused, refuse_canonical_write
 
 
 def load_cache(path):
@@ -142,6 +148,15 @@ def main():
     input_data = json.load(sys.stdin)
     cache_path = input_data["cache_path"]
     output_path = input_data.get("output_path")
+
+    if output_path:
+        try:
+            refuse_canonical_write(
+                Path(output_path).parent, operation="build_itinerary.py"
+            )
+        except CanonicalWriteRefused as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(2)
 
     cache = load_cache(cache_path)
     by_exact_name, entries = build_lookup(cache)
