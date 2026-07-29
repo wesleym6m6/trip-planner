@@ -30,6 +30,8 @@ Phase 5 的 `tripctl` CLI 尚未提供。除非使用者已明確接受 develope
 2. **用真實資料規劃。** 用戶在每個決策點看到的是實際交通時間和營業時間，不是估計值。
 3. **用戶掌控計畫。** Agent 提案，用戶決定——打分、刪除、重排、加約束。循環持續到用戶滿意為止。
 4. **⛔ 距離/位置資訊必須來自 API，禁止憑印象估算。** 任何涉及「A 離 B 多遠」「步行 X 分鐘」「在 Y 附近」的說法，都**必須**先透過 `build_places_cache.py` 取得真實座標，再用 haversine 或 `resolve_places.py` 計算。**在 cache 沒有座標之前，不得向用戶聲稱任何距離或步行時間。** 這條規則適用於所有 step，不只是 Step 5——包括 Step 2 推薦候選時如果要提到「離飯店近」「海灘旁」等位置描述，都必須先有座標佐證。違反此規則會導致用戶基於錯誤距離做出住宿和 coworking 的決策。
+5. **自然語言是介面，不是表單。** 從用戶已說的內容抽取內部 typed draft；未知欄位保持 unknown，只追問會阻塞下一個實際決策的最少問題，不要求逐欄填寫。
+6. **沒有住宿就不假裝有。** AI 可提出少量區域、住宿類型或物件候選並說明取捨，但建議永遠不是用戶的決定；只有用戶清楚說出的選擇、鎖定或已訂狀態才可如實記錄。
 
 ## 可用工具（不要自己寫，直接呼叫）
 
@@ -54,95 +56,32 @@ echo '{
 }' | direnv exec $REPO python3 scripts/build_places_cache.py
 ```
 
-### 機票與住宿搜尋
+### 固定交通與住宿候選
 
-| 用途 | 腳本 | 輸入 | 輸出 |
-|------|------|------|------|
-| 機票搜尋 | `search_flights.py` | stdin JSON | 寫入 `flights_cache.json` + stdout 摘要 |
-| 飯店搜尋 | `search_hotels.py` | stdin JSON | 寫入 `hotels_cache.json` + stdout 摘要 |
-| 查看快取內特定項目完整資料 | `cache_detail.py` | CLI args | stdout 完整 JSON |
+交通只收使用者明確提供的抵達／離開時間或時間範圍與地點（機票、渡輪、鐵路、租車
+或其他）；依原話記成 fixed 或 tentative boundary，不補猜班次或精確時間。它們不是
+本 skill 的搜尋目標。`search_flights.py` 與 `flights_cache.json` 為 legacy、後續
+quarantine 的相容資料，正常規劃不可呼叫或採納。
 
-**`search_flights.py` 必填：** `departure_id`, `arrival_id`, `outbound_date`, `cache_path`（`return_date` 在 type=1 時必填）
-**`search_hotels.py` 必填：** `q`, `check_in_date`, `check_out_date`, `cache_path`
+住宿可由使用者輸入飯店、民宿、Airbnb、地址、座標或概略區域；目前 runtime draft
+只記錄已知的住宿類型、位置提示、涵蓋夜晚與可選預算。入住／退房時段、住客／房間、
+取消期限與房態若尚未有專用欄位，就保持 unknown，不塞進其他欄位。沒有住宿時，先
+追問真正必要的偏好或以 `💡 推薦` 提出候選，不能捏造住宿或把推薦當成已訂。
 
-Optional 參數詳見 `docs/serpapi-flights-params.md` / `docs/serpapi-hotels-params.md`。
+`search_hotels.py` 與 `hotels_cache.json` 若使用，僅為 provider-specific candidate
+discovery；須與手動輸入同等看待，不能代表房態、價格有效、可訂或已訂。候選位置可用
+`build_places_cache.py` 驗證；只有已驗證的座標／route 才可聲稱相對距離或便利性。
 
-#### 兩層存取模式
+狀態規則：
 
-SerpApi cache 單檔可達 50K+ tokens，直接 Read 會爆 context。搜尋腳本採兩層設計：
-
-**快速通道（stdout 摘要）** — 搜尋完畢 stdout 直接輸出每筆的 key fields，agent 從 Bash output 讀取，零額外 tool call。
-
-Hotels 摘要欄位：`index`, `name`, `rate`（每晚最低價）, `total`（全住宿期總價）, `rating`, `reviews`, `class`, `amenities`(前6), `nearby`(前3, name+duration), `check_in_time`, `check_out_time`, `lat`, `lng`, `deal`
-
-Flights 摘要欄位：`index`, `airline`, `flight_number`, `departure`, `arrival`, `duration`, `price`, `is_lcc`, `aircraft`, `legroom`, `often_delayed`, `stops`, `departure_token`
-
-**深入通道（`cache_detail.py`）** — 用 index 或名稱從 cache 提取**單筆完整 JSON**（含 description、所有 OTA 報價、detailed nearby transportations、reviews breakdown 等）。
-
-```bash
-# 用 index（從 stdout 摘要的 index 欄位）
-direnv exec $REPO python3 scripts/cache_detail.py trips/{slug}/data/hotels_cache.json 3
-
-# 用名稱（case-insensitive 子字串匹配）
-direnv exec $REPO python3 scripts/cache_detail.py trips/{slug}/data/hotels_cache.json "Nesta"
-
-# Flights 也通用
-direnv exec $REPO python3 scripts/cache_detail.py trips/{slug}/data/flights_cache.json "虎航"
-```
-
-#### 搜尋範例
-
-```bash
-# 機票搜尋
-echo '{
-  "departure_id": "TPE",
-  "arrival_id": "DAD",
-  "outbound_date": "2026-10-08",
-  "return_date": "2026-10-12",
-  "cache_path": "trips/danang-2026-10/data/flights_cache.json"
-}' | direnv exec $REPO python3 scripts/search_flights.py
-
-# 飯店搜尋（gl 必須設為目的地國碼）
-echo '{
-  "q": "Da Nang beach area",
-  "gl": "vn",
-  "check_in_date": "2026-10-08",
-  "check_out_date": "2026-10-12",
-  "cache_path": "trips/danang-2026-10/data/hotels_cache.json"
-}' | direnv exec $REPO python3 scripts/search_hotels.py
-```
-
-#### ⚠️ SerpApi Hotels 注意事項
-
-1. **`gl` 必須設為目的地國碼**（如越南 `vn`、日本 `jp`）。Flights 的 `gl: "tw"` 保留不動（出發地視角）。
-
-2. **先搜再 filter，不要在 API 端加太多 filter。** SerpApi Hotels 的行為：當目標地區不夠筆數滿足 filter 條件（`max_price` + `rating` + `sort_by`），它會**往外擴大搜尋範圍**直到湊滿，導致結果偏離目標城市。正確做法：用最少 filter 搜尋（只 `q` + `gl`），拿到結果後從 stdout 摘要做 client-side filter。
-
-3. **小城市 fallback。** SerpApi Hotels 對二線城市（如會安、九份、清邁古城）定位能力差。如果 stdout 摘要中 nearby 顯示的地標不在目標城市（如搜會安但 nearby 出現大叻車站），改用 WebSearch 搜 "best hotels [city] [year]"，再用 Places API 解析具體飯店。
-
-4. **來回機票二階段搜尋。** SerpApi type=1（來回）只回傳去程航班 + `departure_token`。用 `departure_token` 搜第二次才能拿到回程航班 + `booking_token`。`departure_token` 已包含在 stdout 摘要中。
-
-5. **飯店候選必須經過 Places API 解析。** SerpApi Hotels 沒有 Google Maps 商家連結（只有 GPS 座標和飯店官網）。用戶需要看照片、評論、營業時間來做決定，這些只有 Google Maps 商家頁面有。因此：從 SerpApi 篩出 top 候選後，**一律用 `build_places_cache.py` 解析一次**，拿到 `google_maps_uri`（完整商家頁）和 `website`（官網）。
-
-#### 飯店呈現格式
-
-表格負責比較，連結用編號腳註列在下方。表格內不嵌入 URL（tmux 不支援 Markdown 嵌入式超連結）。
-
-```
-| # | 飯店 | 價格/晚 | 星級 | 評分 | 評論 | 離古城 | 特色 |
-|---|------|---------|------|------|------|--------|------|
-| 1 | Little Oasis Eco Hotel & Spa | 1,857 | 5★ | ⭐4.9 | 1,468 | ~7 min | 最高分 5★ |
-| 2 | The Signature Hoi An | 查 Booking | — | ⭐4.8 | 1,108 | 3 min | 最近古城 |
-
-**連結：**
-1 Little Oasis Eco Hotel & Spa — 🗺️ Maps https://maps.google.com/?cid=... — 🌐 官網 http://...
-2 The Signature Hoi An — 🗺️ Maps https://maps.google.com/?cid=... — 🌐 官網 https://...
-```
-
-規則：
-- 每間飯店一行，開頭重複飯店名稱
-- 🗺️ Maps 和 🌐 官網 各自 emoji + 文字 + 空格 + 裸 URL
-- URL 保持裸露（不用 Markdown `[text](url)`），讓終端機 Cmd+Click 可直接開啟
+- decision：`candidate` / `selected` / `fixed` / `booked`；搜尋與 AI 建議只能是
+  `candidate`。Phase 4.5A 沒有升級路徑；使用者明確說出的 selected / fixed /
+  booked 只保存為 `ReportedDecisionClaim`，等待4.5D真正host-owned確認；
+- evidence：`unverified` / `verified` / `stale` / `conflicted`；與 decision 分開，
+  已選擇不等於已驗證。Phase 4.5A intake 一律是 `unverified`，不得自行填
+  `verified`；
+- Phase 4.5A 的上述狀態只在 runtime 使用，不能改 canonical plan。住宿專用的 human
+  confirmation / apply gate 尚未落地，不得直接用 generic `PlanPatch` 代替。
 
 ### 行程組裝
 
@@ -261,7 +200,7 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
 
 完整欄位共 50 個（含 `serves_*`、`payment_options`、`reviews` 等），不適用的欄位值為 `null`，一律保留不篩除。
 
-### 其他檔案（每趟旅行 data/ 下：7 個核心 + 最多 2 個可選）
+### 其他檔案（每趟旅行 data/ 下：7 個核心 + legacy 可選 cache）
 
 - `trip.json` — 標題、日期、城市、slug
 - `itinerary.json` — 每日路線，含 places[]、travel[]、recommended_mode
@@ -270,8 +209,8 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
 - `info.json` — 實用資訊（預算、簽證、交通、天氣等）
 - `packing.json` — 行李清單（從 `template/data/packing.json` 複製再客製）
 - `places_cache.json` — Places API 快取（Phase 1 自動生成）
-- `flights_cache.json` — 機票搜尋快取（Step 1b `search_flights.py` 寫入）
-- `hotels_cache.json` — 飯店搜尋快取（Step 1b `search_hotels.py` 寫入）
+- `flights_cache.json` — legacy cache，保留資料但後續 quarantine；正常規劃不可使用
+- `hotels_cache.json` — legacy candidate-discovery cache，不代表房態、訂位或 fixed data
 
 ---
 
@@ -281,7 +220,11 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
 
 ### Step 1: 收集需求
 
-詢問用戶：
+這份清單是 Agent 的**內部抽取提示**，不是要貼給用戶填寫的問卷。先理解用戶自然說出
+的內容，把知道的寫入 draft，把不知道的保留 unknown；只有在下一步真的被阻塞時，才
+用自然對話追問一至兩個最小問題。
+
+內部留意：
 - **目的地** — 哪個城市？
 - **天數** — 幾天幾夜？
 - **月份** — 什麼時候？（影響星期幾的營業時間驗證）
@@ -290,106 +233,32 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
 - **交通方式** — 機車？步行？開車？大眾運輸？
 - **必去景點** — 有沒有一定要去的？
 - **特殊需求** — 工作旅行？飲食限制？無障礙？
+- **固定／暫定交通邊界** — 抵達／離開的時間或範圍、地點與不可移動票券；沒有資料就
+  標記待補，不搜尋或猜測航班／渡輪
+- **住宿** — 已訂住宿、可比較的飯店／民宿／Airbnb／地址／座標／概略區域，涵蓋夜晚、
+  預算與其他條件（知道才填，沒有專用欄位就保持 unknown）
 
 用戶如果一次給了足夠資訊，跳過多餘問題。
 
-### Step 1b: 機票與住宿搜尋（可選）
+### Step 1b: 住宿候選與共同比較
 
-**此步驟不阻塞 Step 2。** 使用者可以先規劃景點再回來搜機票，或反過來。
+**此步驟不阻塞景點整理，但在承諾每日路線前必須揭露住宿狀態。** 每筆住宿分開記錄
+decision（`candidate` / `selected` / `fixed` / `booked`）與 evidence
+（`unverified` / `verified` / `stale` / `conflicted`）。可把使用者提供的名稱、地址、
+座標、概略區域、飯店／民宿／Airbnb 連結，以及 AI 建議放在同一候選清單，但 raw
+地址、座標或私人連結不得進 receipt、history、safe serialization 或錯誤訊息。
 
-**Gate 條件：**
-- 機票搜尋：需確認出發地機場、目的地機場、出發日期、人數
-- 飯店搜尋：需確認住宿區域、入住/退房日期、人數
-
-#### 機票搜尋流程
-
-**Step 1b-1: 初搜去程**
-
-1. 確認 gate 條件已滿足
-2. 呼叫 `search_flights.py`（可帶 `outbound_times`、`return_times` 等篩選）
-3. 呈現結果（見下方「呈現規則」）
-4. 使用者可篩選（`lcc_only`、`max_price`、`stops`、`outbound_times` 等）後重搜
-
-**Step 1b-2: 選去程 → 查回程**
-
-使用者選定一班去程後，用該筆的 `departure_token` 再搜一次：
-
-```bash
-echo '{
-  "departure_id": "TPE",
-  "arrival_id": "DAD",
-  "outbound_date": "2026-10-08",
-  "return_date": "2026-10-12",
-  "departure_token": "<從 Step 1b-1 結果取得>",
-  "cache_path": "trips/{slug}/data/flights_cache.json"
-}' | direnv exec $REPO python3 scripts/search_flights.py
-```
-
-回傳**該去程對應的所有可用回程**（每筆帶 `booking_token`）。筆數因航線而異——直飛廉航可能只有 1 班回程，轉機航線可能有 8+ 種組合。
-
-呈現回程選項表格，使用者選定回程。
-
-**Step 1b-3:（可選）查訂票連結**
-
-使用者選定回程後，用 `booking_token` 取得各 OTA 訂票連結：
-
-```bash
-echo '{
-  "departure_id": "TPE",
-  "arrival_id": "DAD",
-  "outbound_date": "2026-10-08",
-  "return_date": "2026-10-12",
-  "booking_token": "<從 Step 1b-2 結果取得>",
-  "cache_path": "trips/{slug}/data/flights_cache.json"
-}' | direnv exec $REPO python3 scripts/search_flights.py
-```
-
-每步消耗 1 次 SerpApi 額度（共 3 次完成一組來回選擇）。
-
-#### 飯店搜尋流程
-
-1. 確認 gate 條件已滿足
-2. **決定 `gl` 國碼**（必要）— 根據目的地國家設定，例如越南 `"vn"`、日本 `"jp"`、台灣 `"tw"`。腳本無預設值，**未傳 `gl` 或傳錯會導致結果完全偏向錯誤地區**（例：搜 "Hoi An" 不帶 `gl=vn` → 全部回傳台灣飯店）
-3. **首次搜尋不帶 filter**（不加 `sort_by`、`max_price`、`rating` 等）— 先確認地理命中正常。二線城市（如會安、寧平）加 filter 後 SerpApi 會將搜尋範圍擴散到全國填滿 20 筆，`sort_by=3`（最低價）是最危險的參數，單獨加就能讓命中率從 85% 掉到 6%。詳見 `docs/serpapi-hotels-params.md` 「Filter 導致地理擴散」
-4. 呼叫 `search_hotels.py`（stdin JSON 須包含 `gl`）
-5. 呈現結果（見下方「呈現規則」）
-6. 使用者可篩選（`max_price`、`hotel_class`、`free_cancellation`、`amenities` 等）後重搜 — **每次加 filter 後檢查結果座標是否仍在目的地**，如果擴散就改用本地過濾
-7. `free_cancellation` 在規劃初期建議開啟，方便後續行程變動時調整
-
-#### 呈現規則
-
-搜尋結果通常有 20~100+ 筆，**不要全部列出**。Agent 自行判斷呈現哪些，規則：
-
-- **最多呈現 10 筆**
-- Agent 根據使用者需求（預算、偏好、風格）從全部結果中挑選最相關的 10 筆。例如使用者偏好平價，就以價格排序取前 10；使用者沒特別偏好，就混合 best_flights + 最低價 + 最短時長
-- **必須告知使用者搜尋總筆數和篩選邏輯**，例如：「共搜尋到 104 筆航班，以下依價格排序列出前 10 筆：」或「共 104 筆，以下列出 best_flights 4 筆 + 最低價 6 筆：」
-- 使用者可以要求換排序方式、看更多、或加篩選條件重搜
-
-**機票表格格式：**
-```
-共搜尋到 104 筆航班，以下依價格排序列出前 10 筆：
-
- # | 航班       | 出發  | 到達  | 轉機 | 時長    | 價格(TWD) | 廉航
- 1 | IT 551     | 07:10 | 09:15 | 直飛 | 2h 05m | 10,579    | ✅
- 2 | UO 113→552 | 08:30 | 14:20 | 1 轉 | 5h 50m | 12,520    | —
- ...
-```
-
-**飯店表格格式：**
-```
-共搜尋到 20 間飯店，以下依每晚價格排序：
-
- # | 飯店名稱           | 星級 | 評分 | 每晚(TWD) | 特色
- 1 | A La Carte Da Nang | ★★★★ | 4.3  | 2,800     | 含早餐, 泳池
- 2 | Fusion Suites      | ★★★★★| 4.5  | 4,200     | 免費取消
- ...
-```
-
-#### Freshness 規則
-
-- flights/hotels cache 的 `fetched_at` 超過 **3 天** → 告知使用者資料年齡 + 建議重抓
-- places cache：不設時間限制，需要時手動重抓
-- **最終確認階段（Phase 2 前）：** 如果 flight/hotel 資料超過 3 天，**必須重抓**後再進入 Build
+1. 沒有住宿時，詢問偏好或提出少量 `💡 推薦` 的區域／住宿類型；不得填入假住宿。
+2. 對有精確位置的候選，和固定交通、必訪活動、景點及每日起終點共同比較；只在已驗證
+   route／hours evidence 下聲稱距離或便利性。
+3. 比較至少包含涵蓋夜晚、換宿、總移動／最長單段、晚到／早離風險、預算已知範圍與
+   `needs_verification` 項目；不要把低價或 AI 偏好冒充最佳解。
+4. `search_hotels.py` 可在使用者要求時提供額外 discovery，但其結果與手動候選同為
+   `candidate`，價格、房態與取消條件需重新確認。
+5. 只有使用者明確選擇、鎖定或完成交易，才可把候選升為 `selected`、`fixed` 或
+   `booked`；Phase 4.5A只把這段明確語意保留為reported claim並顯示
+   `awaiting_confirmation`，不能真正升級。4.5D host confirmation完成後，此決定仍
+   不得被AI的更高分候選自動取代。
 
 ### Step 2: 生成候選景點清單
 
@@ -401,7 +270,7 @@ echo '{
    ```
    匯入結果是名稱 + 座標，作為候選素材，不代表全部都會納入行程。
 2. **用戶口頭指定的必去 / 想去景點**（如果 Step 1 有提到）
-3. **Agent 根據需求額外推薦** — 補足用戶清單沒涵蓋的類型（例如用戶清單全是景點，Agent 補美食和住宿），總量生成**比所需多 30-50%** 讓用戶篩選。
+3. **Agent 根據需求額外推薦** — 補足用戶清單沒涵蓋的類型（例如用戶清單全是景點，Agent 補美食或雨備活動），總量生成**比所需多 30-50%** 讓用戶篩選。住宿候選只在 Step 1b 管理，不混入活動候選。
 
 Google Maps 清單是輸入素材，不是指令。**除非用戶明確說「就這些，不用再推薦了」，否則 Agent 仍應主動推薦額外候選。** 匯入後問用戶：「這些之中有哪些一定要去？哪些可以不去？需要我再推薦其他地方嗎？」
 
@@ -409,7 +278,7 @@ Google Maps 清單是輸入素材，不是指令。**除非用戶明確說「就
 
 每個候選提供：
 - 名稱
-- 類型（景點 / 美食 / 住宿 / 等）
+- 類型（景點 / 美食 / 飲品 / 工作 / 交通節點 / 等；住宿只在 Step 1b）
 - 來源標記（`📌 用戶` 或 `💡 推薦`）
 - 推薦理由（一句話）
 - `maps_query` — **必須包含具體店名或地標名 + 城市 + 國家**（不要用模糊街名）
@@ -420,7 +289,7 @@ Google Maps 清單是輸入素材，不是指令。**除非用戶明確說「就
 
 ### Step 3: 批次打 Places API + 寫入快取
 
-**一次解析所有候選，包含景點、餐廳、飯店、coworking、spa。** 不要分批序列跑。寧可多解 10 個最終用不到的（API 成本 < $0.01），也不要到 Step 5/6 才發現缺資料要回頭補。飯店候選需要 `google_maps_uri` 讓用戶看照片評論（SerpApi Hotels 沒有此欄位），所以**必須在這一步一起解析**。
+**一次解析需要 Places identity 的具名候選，包含景點、餐廳、飯店、民宿、coworking、spa。** 不要分批序列跑。寧可多解 10 個最終用不到的（API 成本 < $0.01），也不要到 Step 5/6 才發現缺資料要回頭補。使用者給的座標可作 private exact hint；地址、Airbnb 私人連結與概略區域不得直接送進 generic Places query，先保留為 unresolved / approximate 與 `needs_verification`，不得假裝成精確住宿位置。
 
 **直接呼叫 `build_places_cache.py`**，不要自己寫 API 呼叫邏輯：
 
@@ -603,7 +472,7 @@ SA 結果 + agent 調整後：
 | （`itinerary.json`） | `build_itinerary.py` 生成 | **不要手寫**，用腳本從 cache 自動補齊 |
 | `template/data/places_cache.json` | `build_places_cache.py` 生成 | **不要手寫**，Phase 1 Step 3 自動產生。template 僅供參考結構 |
 
-`trips/{slug}/data/` 下必須有 7 個核心檔案：`trip.json`、`itinerary.json`、`reservations.json`、`todo.json`、`info.json`、`packing.json`、`places_cache.json`。另可選 `flights_cache.json`、`hotels_cache.json`（Step 1b 搜尋後產生）。
+`trips/{slug}/data/` 下必須有 7 個核心檔案：`trip.json`、`itinerary.json`、`reservations.json`、`todo.json`、`info.json`、`packing.json`、`places_cache.json`。另可保留 legacy `flights_cache.json`、`hotels_cache.json`；前者後續 quarantine，後者只屬 candidate discovery，兩者都不是 fixed/booked evidence。
 
 ### Step 8: 決定 slug + 建立資料檔
 
@@ -683,7 +552,10 @@ Checkpoint 1 有問題就修正 `build_itinerary.py` 的輸入重跑，不要手
 
 Write trips/{slug}/data/reservations.json.
 Format: JSON array of {label, note}. Read template/data/reservations.json for format reference.
-Include all places needing reservations, ticket purchases, and hotel bookings from the itinerary.
+Include activities needing reservations and tickets. Include lodging only when
+the user explicitly said selected, fixed, or booked; never convert an AI/provider
+candidate into a hotel booking. Put an unresolved user-owned lodging action in
+todo.json instead.
 Use Traditional Chinese.
 ```
 

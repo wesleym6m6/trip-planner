@@ -15,7 +15,7 @@ static policy、memory/disk evidence分流、雙時鐘與promotion gate記錄在
 
 ## 功能
 
-- **互動式行程規劃** — AI agent 提案景點，你篩選、排序、加約束
+- **自然語言互動式規劃** — AI 先理解固定交通、住宿偏好與景點需求，再提出可比較的行程
 - **真實資料驅動** — Google Places API 營業時間 + Routes API 交通時間
 - **自動生成網站** — 行程表、地圖、行事曆下載、訂位清單、行李清單
 - **GitHub Pages 部署** — 一鍵部署，手機隨時查看
@@ -87,6 +87,21 @@ boundary：核心只有injected transport，沒有內建credential或live CLI。
 舊`check_hours.py`使用regular cache，因此永遠只輸出advisory，不代表當日
 確定營業。
 
+Phase 4.5 的產品方向是「固定／暫定交通 + 住宿錨點 + 每日行程共同最佳化」。使用者
+只要自然描述已知資訊，不需要填規格表；AI 會把明確內容寫入 process-local typed
+draft，沒有提到的內容保持 unknown。機票、渡輪、鐵路等只接受使用者輸入的抵達／
+離開時間或時間範圍與地點，不提供航班搜尋。住宿可以是飯店、民宿、Airbnb、地址、
+座標或概略區域；沒有住宿資料時，AI 只能追問或提出候選，不能捏造住宿。
+
+Phase 4.5A 的公開 binding 一律是 candidate + unverified。使用者若清楚說「選這間」
+或「已訂」，AI 會保留成附 opaque source reference 的 reported decision claim，
+不會遺失語意，也不會把 claim 冒充成權威 selected / fixed / booked。此 slice 沒有
+任何 decision promotion 或 canonical mutation 路徑，也尚未實作住宿／每日路線共同
+optimizer；evidence binding、共同 scoring 與真正 host-owned 的住宿確認／canonical
+apply gate 分別留在 Phase 4.5B、4.5C、4.5D。舊 `search_flights.py` 與其 cache 保留
+資料相容性，但已列為後續 quarantine，不是正常規劃功能；`search_hotels.py` 只可作
+住宿候選 discovery，不能代表房態、訂位或可直接寫入計畫。
+
 兩階段流程：
 1. **Scout** — 互動式規劃：收集需求 → 解析景點 → 用戶篩選 → 路線優化 → 驗證
 2. **Build** — 生成網站：組裝 JSON → 充實交通 → legacy營業時間提示 → 渲染 HTML → 部署
@@ -104,6 +119,8 @@ trip-plan/
 │   ├── enrich_itinerary.py     # 充實交通資料（距離/時間/模式）
 │   ├── routes_coverage.py      # Routes API 地區覆蓋資料（transit/two_wheeler 支援國家）
 │   ├── check_hours.py          # legacy regular-hours advisory（不輸出綠燈）
+│   ├── search_flights.py       # legacy：後續 quarantine，非正常規劃功能
+│   ├── search_hotels.py        # legacy candidate discovery，非訂房／房態來源
 │   ├── render_trip.py          # 渲染 HTML + 行事曆
 │   ├── build_index.py          # 重建首頁
 │   └── deploy.sh               # 部署到 GitHub Pages

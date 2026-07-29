@@ -160,13 +160,15 @@ key_id
 - `place_profile`
 - `place_opening_hours`
 - `route_estimate`
-- `flight_offer`
-- `hotel_offer`
+- `flight_offer`（legacy reservation；Phase 4.5 不啟用）
+- `hotel_offer`（legacy discovery reservation；不得代表訂位）
 
 Phase 4.0 先落地 place identity/profile、opening hours 與 route value schema；
-flight/hotel enum只保留 roadmap identity，直到 Phase 4.5 定義完整
-passenger/occupancy、tax、currency與offer lifecycle前一律回
-`UNSUPPORTED_FACT_KIND`。這避免先固化一個不完整的價格 schema。
+flight/hotel enum只保留 legacy roadmap identity，未有明確 policy 前一律回
+`UNSUPPORTED_FACT_KIND`。Phase 4.5 不建立航班搜尋；固定交通是 user-owned
+intent。住宿可由飯店、民宿、Airbnb、地址、座標或概略區域提出為候選；未解析的
+地址或概略區域可先參與保守比較，但必須揭露不確定性。只有具 exact identity／route
+evidence 才可聲稱距離或便利性，任何候選都不構成訂位或可用性。
 
 Qualifier是kind-specific allowlist、排序後的scalar tuple；unknown／拼錯欄位
 fail closed，不接受filesystem path、API key、authorization、secret或provider
@@ -179,10 +181,10 @@ session token。Place identity key明確綁 `identity_provider`，profile / hour
 - departure / arrival context；
 - 必要的 routing preference。
 
-Flight/hotel offer key 必須完整綁定日期、旅客／住房人數、艙等或房型 scope、
-currency 與 provider offer identity。不完整 scope 的價格不可互相比較。
-Phase 4.0在query contract正式定義前也直接回`UNSUPPORTED_FACT_KIND`，必須在
-reservation / HTTP前停止。
+Legacy hotel discovery 若被使用，key 必須完整綁定日期、住房人數、房型 scope、
+currency 與 provider offer identity；不完整 scope 的價格不可互相比較。它只可產生
+tentative lodging candidate，不得把 property token、價格或 availability 升格為
+selected/fixed/booked。flight offer 仍在 reservation / HTTP 前停止。
 
 ### `ProviderRequest`
 
@@ -535,15 +537,22 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
 - [Routes error handling](https://developers.google.com/maps/documentation/routes/handle-errors)
 - [Routes `FallbackInfo`](https://developers.google.com/maps/documentation/routes/reference/rest/v2/FallbackInfo)
 
-### SerpApi flights / hotels
+### Legacy SerpApi hotel discovery 與 flight quarantine
 
-- `search_metadata.status`、top-level `error` 與 empty-success 必須分開；
-- query scope與 provider search ID不可在 normalization時丟失；
-- flight outbound、return與 booking lookup是不同 record，不能覆寫同一檔；
+- Phase 4.5 不提供 flight search；`search_flights.py`、flight cache 與其 tokens
+  保留供歷史相容與後續 quarantine，不是正常產品路徑，也不得 promotion；
+- `search_hotels.py` 若使用，只是 provider-specific discovery input。Airbnb、民宿、
+  地址、座標與概略區域必須可同等進入住宿候選；
+- `search_metadata.status`、top-level `error` 與 empty-success 必須分開，且 query
+  scope與 provider search ID不可在 normalization時丟失；
 - booking/departure/property token只作短期 provider session，不進 durable fact；
-- price、availability、currency、passenger/occupancy與日期完整綁定；
-- 搜尋結果不是已訂位。只有使用者選定／完成交易後，才轉成 user-owned
-  fixed/private canonical data。
+- price、availability、currency、occupancy與日期完整綁定，但只可標為 tentative；
+- 搜尋或 AI 建議都不是已訂位。Phase 4.5A 的所有 binder 只能建立 process-local
+  candidate + unverified；清楚的使用者 selected / fixed / booked 語意只保留為
+  non-authoritative `ReportedDecisionClaim`與opaque source ref，不能提升candidate；
+- canonical lodging mutation 必須等 Phase 4.5D 的住宿專用 confirmation grant 與
+  apply gate，再疊加既有 PlanPatch / preview / approval / validation；不能直接把
+  generic PlanPatch 當成住宿決定的充分授權。
 
 參考：
 
@@ -740,12 +749,39 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   validators與Python compile通過。未呼叫真實provider、未render、未deploy，
   `trips/`保持byte-for-byte不變。
 
-### Phase 4.5 — Flights / hotels
+### Phase 4.5 — Natural-language intake / fixed transport / lodging optimization
 
-- query-scoped normalized offers；
-- multi-stage records不互相覆寫；
-- short freshness、empty-result protection；
-- selection / reservation和 search result分離。
+- 自然語言是唯一 user-facing intake；typed schema 是 AI／trusted host 的內部安全
+  結構，不得轉成要求使用者逐欄填寫的表單。只抽取使用者明確提供的日期、旅伴／預算、
+  抵離交通、必訪活動與住宿偏好，未提供的欄位保持 unknown，只追問真正阻塞的資訊；
+- 航班、渡輪、鐵路與其他交通只作 user-owned fixed 或 tentative
+  arrival/departure boundary，可記 exact time 或 bounded window；不建立航班搜尋或
+  provider promotion。legacy flight script/cache 後續 quarantine，不刪除既有資料；
+- provider-neutral lodging candidate 接受飯店、民宿、Airbnb、地址、座標或概略區域；
+  hotel search 僅是 candidate discovery，並與其他輸入同等處理；
+- Phase 4.5A draft 只包含住宿類型、private location hint、`[check_in, check_out)`
+  local dates與可選的 minor-unit price；住客／房間、check-in/out time window、取消
+  條件與可訂性留給後續 provider／comparison slice，不能假裝本階段已支援；
+- candidate 的 decision 與 evidence 是獨立維度。4.5A不提供任何decision或evidence
+  promotion function；即使caller能直接import module，也只能產生candidate +
+  unverified。使用者明確語意留在reported claim並回`awaiting_confirmation`，
+  snapshot-bound evidence promotion留給4.5B，真正host-owned decision boundary留給
+  4.5D。missing或概略位置一律揭露`needs_verification`，但可參與保守runtime比較；
+- Phase 4.5A 所有 draft、binding 與 assessment 都是 process-local，不建立
+  `FactKey`、`ProviderRequest`、`PlanPatch`，也不修改 canonical plan。私人位置、
+  label、時間與價格不進safe view；公開binding ID使用process-secret keyed digest，
+  不可跨process當durable identity。ID刻意在不同process改變；determinism只保證同一
+  intake session內的結構結果、coverage與permutation invariance，不宣稱cross-process
+  ID replay。單次assessment上限366晚、256個候選；
+- Phase 4.5B加入snapshot-bound住宿identity／route evidence與comparison-ready
+  candidate；4.5C才把住宿錨點、固定交通、景點、Routes、hours、冬季／換宿buffer
+  放入共同scoring；4.5D再加入住宿專用canonical confirmation/apply gate；
+- 後續4.5C exit gate才加入Busan住宿比較與Hokkaido冬季跨城換宿canned acceptance；
+  不搬動固定抵離／活動或已訂住宿，全套須離線、deterministic且real-trip files
+  byte-for-byte不變。
+
+目前4.5A已完成22個專項回歸；全套536個offline tests、三個real-trip validators與
+Python compile通過。未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### Phase 4.6 — readiness與 compliance preview
 

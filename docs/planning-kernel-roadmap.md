@@ -6,9 +6,9 @@
 solver decision gate、Phase 4.0 facts/policy foundation、Phase 4.1A
 trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
 revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
-exit gate與Phase 4.4 Places profile / hours offline exit gate已完成；真實
-provider驗收尚待明確授權，下一個code slice不得越過Phase 4.5 Flights /
-hotels邊界
+exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
+natural-language runtime intake已完成；真實provider驗收尚待明確授權；下一個
+code slice是Phase 4.5B snapshot-bound住宿evidence與comparison-ready candidate
 
 ## 產品目標
 
@@ -247,7 +247,8 @@ Exit gate：
 範圍：
 
 - static provider policy與exact ProviderRequest promotion gate；
-- Places identity優先，再接Routes、Places profile/hours、flight、hotel；
+- Places identity優先，再接 Routes、Places profile/hours 與 provider-neutral
+  住宿候選定位；交通只接受使用者輸入的固定抵離邊界；
 - normalized facts與kind-specific exact scope；
 - provenance、retrieved-at、valid-until、purge-at與confidence；
 - run-scoped memory evidence與policy-authorized disk LKG分流；
@@ -263,7 +264,7 @@ Exit gate：
 - driving / transit fallback 清楚揭露；
 - travel-ready profile 能指出需要出發前重新驗證的項目。
 
-目前進度（2026-07-28）：
+目前進度（2026-07-29）：
 
 - Phase 4.0 已建立 immutable FactKey / FactValue / FactObservation、
   exact ProviderRequest、static ProviderPolicyRegistry、trusted promotion gate、
@@ -313,7 +314,22 @@ Exit gate：
 - legacy regular-hours checker永不輸出verified green，locale文字不參與判定；
   broad/full-mask cache builder預設quarantine。Busan／Hokkaido canned E2E、
   514個offline tests與三個real-trip validators已通過，trip files hash未變；
-  下一個code slice不跨越Phase 4.5 Flights / hotels邊界。
+  Phase 4.4 live API驗收仍需明確授權；
+- Phase 4.5A已建立process-local自然語言住宿／交通draft、candidate-only extraction、
+  exact runtime user-decision grant與逐夜coverage assessment。AI／provider不能提升
+  decision或自行宣稱verified，raw私人位置／時間／價格不進safe view，且本slice
+  沒有provider call、共同optimizer或canonical mutation。
+
+Phase 4.5 remaining slices：
+
+- **4.5B — lodging evidence / comparison candidate**：snapshot-bound identity與
+  route evidence、provider-neutral comparison fields、hotel discovery adapter；
+- **4.5C — joint lodging / itinerary scoring**：固定交通、住宿錨點、景點、
+  Routes、hours與換宿／冬季buffer共同評分；加入Busan／Hokkaido lodging canned
+  acceptance；
+- **4.5D — canonical lodging confirmation/apply**：住宿專用human confirmation
+  authority、review、typed mutation與既有TripStore protection整合；4.5A的reported
+  claim不能取代此gate。
 
 ### Phase 5 — Product Interface and Skill
 
@@ -513,7 +529,8 @@ Exit gate：
 
 ### 2026-07-28 — Phase 4.0 facts/policy foundation 完成
 
-- 建立四種V1 normalized fact schema與flight/hotel fail-closed reservation；
+- 建立四種 V1 normalized fact schema，並預留 legacy flight/hotel offer kind 的
+  fail-closed reservation；
   exact kind-specific scope、request fingerprint、source/provenance binding與
   bounded result shapes均有typed validation。
 - 建立static policy catalog與promotion authority boundary；即使私下偽造
@@ -688,7 +705,32 @@ Exit gate：
   compile全過；29個trip files hash aggregate維持
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
-  明確授權，下一個slice是Phase 4.5 Flights / hotels。
+  明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
+
+### 2026-07-29 — Phase 4.5A natural-language lodging intake 完成
+
+- 新增provider-neutral `LocationHint`、exact／window transport draft、
+  lodging intent draft、decision/evidence binding與逐夜assessment；自然語言之外
+  沒有user-facing表單，unknown lodging不會生成假candidate。
+- 所有4.5A binder只能建立candidate + unverified，module內也沒有promotion seam。
+  selected／fixed／booked自然語言只保存為附opaque source ref的
+  `ReportedDecisionClaim`，assessment回`awaiting_confirmation`；真正host-owned
+  authority留到4.5D。
+- Private label、address、coordinate、provider place ID、transport time與price不進
+  repr／safe serialization／issue；process-secret keyed digest避免低熵位置被公開
+  digest離線猜測。這些ID刻意不作cross-process replay；determinism只涵蓋同一intake
+  session的結構結果、coverage與permutation invariance。
+- `[check_in, check_out)`使用local date；逐夜判定missing options、undecided、
+  split-stay coverage與overlap conflict。單次上限366晚、256個候選，避免極端日期
+  或candidate fan-out耗盡資源。
+- README、facts contract、repo skill與已安裝Codex skill已移除正常航班搜尋流程；
+  hotel search只屬candidate discovery，住宿decision與evidence分軸，legacy Build
+  不得把AI/provider candidate寫成booking。
+- 22個4.5A專項與全套536個offline tests、三個real-trip validators、Python compile
+  全過；29個trip files hash aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5B
+  snapshot-bound lodging evidence與comparison-ready candidate。
 
 ### 2026-07-27 — Phase 0 exit gate 達成
 
