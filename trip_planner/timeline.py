@@ -32,6 +32,7 @@ from .models import (
     TravelEstimate,
     TripState,
 )
+from .availability import ActivityAvailability, AvailabilityDisposition
 
 
 IssueSink: TypeAlias = Callable[[CheckIssue], None]
@@ -56,7 +57,10 @@ class _FirstLeg:
 
 
 def evaluate_timeline(
-    state: TripState, *, now: datetime | None = None
+    state: TripState,
+    *,
+    now: datetime | None = None,
+    activity_availability: tuple[ActivityAvailability, ...] = (),
 ) -> CheckReport:
     """Simulate ``state`` and return a structured, deterministic report.
 
@@ -68,6 +72,15 @@ def evaluate_timeline(
 
     if now is not None and (now.tzinfo is None or now.utcoffset() is None):
         raise ValueError("evaluate_timeline(now=...) must be timezone-aware")
+    if not isinstance(activity_availability, tuple) or any(
+        type(item) is not ActivityAvailability for item in activity_availability
+    ):
+        raise TypeError("activity_availability must contain exact values")
+    availability_by_id = {item.activity_id: item for item in activity_availability}
+    if len(availability_by_id) != len(activity_availability) or any(
+        item_id not in state.activity_by_id for item_id in availability_by_id
+    ):
+        raise ValueError("activity_availability must have unique known activity IDs")
 
     issues: list[CheckIssue] = list(state.load_issues)
     seen_issues: set[tuple[object, ...]] = {
@@ -149,6 +162,7 @@ def evaluate_timeline(
             hard_mode_limits,
             zone,
             now,
+            availability_by_id,
             add_issue,
         )
         timeline.extend(entries)
@@ -197,6 +211,24 @@ def evaluate_timeline(
     )
 
 
+def evaluate_composed_timeline(
+    composed: object,
+    *,
+    now: datetime | None = None,
+) -> CheckReport:
+    """Evaluate one runtime composition without leaking its sidecar into TripState."""
+
+    from .composition import ComposedTripState
+
+    if type(composed) is not ComposedTripState:
+        raise TypeError("composed must be an exact ComposedTripState")
+    return evaluate_timeline(
+        composed.state,
+        now=now,
+        activity_availability=composed.activity_availability,
+    )
+
+
 def _simulate_day(
     day: DaySpec,
     activities: list[Activity],
@@ -204,6 +236,7 @@ def _simulate_day(
     hard_mode_limits: dict[str, frozenset[str]],
     zone: ZoneInfo,
     now: datetime | None,
+    availability_by_id: dict[str, ActivityAvailability],
     add_issue: IssueSink,
 ) -> tuple[
     list[TimelineEntry],
@@ -500,6 +533,24 @@ def _simulate_day(
             arrival_verified and duration_verified,
             add_issue,
         )
+        availability_verified = True
+        availability = availability_by_id.get(activity.activity_id)
+        availability_window_end = None
+        if availability is not None:
+            (
+                start_at,
+                availability_verified,
+                availability_window_end,
+            ) = _fit_activity_availability(
+                day,
+                activity,
+                proposed_start,
+                simulated_duration,
+                zone,
+                availability,
+                now,
+                add_issue,
+            )
         end_at = _add_elapsed(start_at, simulated_duration)
         if (
             activity_index == 0
@@ -520,7 +571,11 @@ def _simulate_day(
             0.0, _elapsed_minutes(arrival_at, start_at)
         )
 
-        entry_is_verified = arrival_verified and duration_verified
+        entry_is_verified = (
+            arrival_verified
+            and duration_verified
+            and availability_verified
+        )
         fixed_schedule_outside_day = (
             activity.flexibility is Flexibility.FIXED_TIME
             and scheduled_at is not None
@@ -572,10 +627,16 @@ def _simulate_day(
 
         slack = None
         applicable_end = window_end
+        if availability_window_end is not None:
+            applicable_end = (
+                _earliest((applicable_end, availability_window_end))
+                if applicable_end is not None
+                else availability_window_end
+            )
         if day_end is not None:
             applicable_end = (
-                _earliest((window_end, day_end))
-                if window_end is not None
+                _earliest((applicable_end, day_end))
+                if applicable_end is not None
                 else day_end
             )
         if applicable_end is not None:
@@ -772,6 +833,92 @@ def _fit_activity_window(
         )
     )
     return proposed_start, None
+
+
+def _fit_activity_availability(
+    day: DaySpec,
+    activity: Activity,
+    proposed_start: datetime,
+    duration_min: float,
+    zone: ZoneInfo,
+    availability: ActivityAvailability,
+    now: datetime | None,
+    add_issue: IssueSink,
+) -> tuple[datetime, bool, datetime | None]:
+    if (
+        availability.disposition is AvailabilityDisposition.NEEDS_VERIFICATION
+        or availability.fresh_until is None
+        or now is None
+        or availability.fresh_until <= _instant(now)
+    ):
+        add_issue(
+            _issue(
+                "OPENING_HOURS_NEEDS_VERIFICATION",
+                IssueSeverity.WARNING,
+                (
+                    f"Opening hours for {activity.activity_id!r} "
+                    "need verification."
+                ),
+                activity_ids=(activity.activity_id,),
+                evidence_refs=availability.evidence_refs,
+                details=(
+                    (
+                        "reason",
+                        availability.reason or "opening_hours_unknown",
+                    ),
+                ),
+                fixes=("refresh_opening_hours",),
+            )
+        )
+        return proposed_start, False, None
+    manual = (
+        [
+            _window_on_planning_day(
+                day,
+                item,
+                zone,
+                (activity.activity_id,),
+                add_issue,
+            )
+            for item in activity.allowed_windows
+        ]
+        if activity.allowed_windows
+        else [
+            (
+                datetime.min.replace(tzinfo=timezone.utc),
+                datetime.max.replace(tzinfo=timezone.utc),
+            )
+        ]
+    )
+    for provider in availability.intervals:
+        for manual_start, manual_end in manual:
+            start = _latest((proposed_start, provider.start_at, manual_start))
+            end = _earliest((provider.end_at, manual_end))
+            if not _after(_add_elapsed(start, duration_min), end):
+                if (
+                    activity.flexibility is Flexibility.FIXED_TIME
+                    and _after(start, proposed_start)
+                ):
+                    break
+                return start, True, end
+    add_issue(
+        _issue(
+            "OPENING_HOURS_VIOLATION",
+            IssueSeverity.ERROR,
+            (
+                f"Activity {activity.activity_id!r} cannot fit its full "
+                "duration inside current opening hours."
+            ),
+            activity_ids=(activity.activity_id,),
+            evidence_refs=availability.evidence_refs,
+            fixes=(
+                "move_activity",
+                "shorten_activity",
+                "refresh_opening_hours",
+            ),
+        )
+    )
+    return proposed_start, True, None
 
 
 def _hard_activity_mode_limits(

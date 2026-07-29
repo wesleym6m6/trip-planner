@@ -1,5 +1,6 @@
 """
-Batch-resolve candidate places with full field mask and write to places_cache.json.
+Deprecated legacy cache builder.  Broad/full-mask Places collection is
+quarantined and requires an explicit opt-in; it is never a Phase 4 runtime.
 
 Input (stdin JSON):
 {
@@ -18,8 +19,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
-from directions import FULL_FIELD_MASK, resolve_places_batched
+_LEGACY_OPT_IN = "--legacy-full-mask-cache"
 
 
 def transform_raw_to_cache(raw_place, maps_query):
@@ -87,6 +87,20 @@ def transform_raw_to_cache(raw_place, maps_query):
 
 
 def main():
+    if _LEGACY_OPT_IN not in sys.argv[1:]:
+        print(
+            "REFUSED: broad/full-mask Places cache is legacy-only. "
+            f"Re-run with {_LEGACY_OPT_IN} to acknowledge the quarantine.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if sys.stdin.isatty():
+        print("REFUSED: legacy cache builder requires JSON on stdin.", file=sys.stderr)
+        sys.exit(2)
+    # Import the legacy provider helper only after the quarantine acknowledgement.
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+    from directions import FULL_FIELD_MASK, resolve_places_batched
+
     input_data = json.load(sys.stdin)
     candidates = input_data["candidates"]
     cache_path = input_data["cache_path"]

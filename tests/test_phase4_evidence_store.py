@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +21,7 @@ from trip_planner.evidence_store import (
     EvidenceStoreError,
 )
 from trip_planner.facts import (
+    GOOGLE_MAPS_NON_EEA_POLICY_PROFILE,
     EvidencePersistence,
     FactKey,
     FactKind,
@@ -34,6 +36,7 @@ from trip_planner.facts import (
     ProviderResult,
     ProviderResultStatus,
     authorize_provider_result,
+    google_maps_policy_registry,
 )
 
 
@@ -107,6 +110,33 @@ def policy_registry(*, disk_retention_seconds: int = 3600) -> ProviderPolicyRegi
                 ),
                 required_attribution_labels=("Google Maps",),
             ),
+        )
+    )
+
+
+def pre_phase44_google_registry() -> ProviderPolicyRegistry:
+    current = google_maps_policy_registry(
+        GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+    )
+    legacy_runtime_ids = {
+        "google-place-profile-runtime-v1",
+        "google-place-hours-runtime-v1",
+    }
+    return ProviderPolicyRegistry(
+        policies=tuple(
+            (
+                replace(
+                    policy,
+                    allowed_query_fields=(
+                        "language_code",
+                        "region_code",
+                    ),
+                    policy_digest="",
+                )
+                if policy.policy_id in legacy_runtime_ids
+                else policy
+            )
+            for policy in current.policies
         )
     )
 
@@ -1162,6 +1192,68 @@ class EvidenceStoreTests(unittest.TestCase):
             reloaded.current_revision,
         )
         self.assertEqual(0, self.reset_nonces.calls)
+
+    def test_phase44_policy_expansion_retains_durable_google_place_id(
+        self,
+    ) -> None:
+        old_policies = pre_phase44_google_registry()
+        new_policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        key = identity_key()
+        policy = old_policies.policy("google-place-id-v1")
+        request = ProviderRequest(
+            provider_id="google-places",
+            adapter_id="google-places",
+            adapter_version="v1",
+            operation="resolve-place",
+            fact_keys=(key,),
+            policy_id=policy.policy_id,
+            policy_digest=policy.policy_digest,
+        )
+        observation = identity_observation(
+            old_policies,
+            key=key,
+            request=request,
+        )
+        result = ProviderResult(
+            request_fingerprint=request.request_fingerprint,
+            status=ProviderResultStatus.SUCCESS,
+            observations=(observation,),
+            problems=(),
+            attempts_used=1,
+            completed_at=observation.retrieved_at,
+        )
+        authorized = (
+            facts_module._authorize_google_place_identity_result(
+                request,
+                result,
+                old_policies,
+                _token=(
+                    facts_module
+                    ._GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN
+                ),
+            )
+        )
+        old_store = self.store(policies=old_policies)
+        written = old_store.merge(authorized)
+
+        migrated = self.store(policies=new_policies).load()
+
+        self.assertTrue(written.success, written.to_dict())
+        self.assertTrue(migrated.success, migrated.to_dict())
+        self.assertEqual("migrated", migrated.status)
+        self.assertEqual((observation,), migrated.ledger.observations)
+        self.assertEqual((), migrated.purged_observation_ids)
+        document = json.loads(self.cache_path.read_text("utf-8"))
+        self.assertEqual(
+            new_policies.revision,
+            document["policy_registry_revision"],
+        )
+        self.assertEqual(
+            "google-place-id-v1",
+            document["records"][0]["policy_id"],
+        )
 
     def test_policy_drift_does_not_migrate_a_tampered_store_revision(
         self,

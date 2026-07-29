@@ -6,8 +6,9 @@
 solver decision gate、Phase 4.0 facts/policy foundation、Phase 4.1A
 trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
 revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
-exit gate 已完成；真實provider驗收尚待明確授權，下一個code slice不得越過
-Phase 4.4 Places profile / hours邊界
+exit gate與Phase 4.4 Places profile / hours offline exit gate已完成；真實
+provider驗收尚待明確授權，下一個code slice不得越過Phase 4.5 Flights /
+hotels邊界
 
 ## 產品目標
 
@@ -213,7 +214,7 @@ Exit gate：
 - 釜山 fixture 可處理大眾運輸與每日住宿 anchor；
 - 北海道 fixture 可處理冬季 buffer、跨城市與 fixed reservations。
 
-目前進度（2026-07-28）：
+目前進度（2026-07-29）：
 
 - `schedule-problem/v2`、`schedule-candidate/v1`、完整 assignment replay、
   per-day summary、lexicographic scorer 與 typed failures 已落地；
@@ -301,8 +302,18 @@ Exit gate：
   per-mode partial failure保留LKG，fallback與provider warning一路投影到
   runtime TravelEstimate及timeline disclosure；
 - canned-response E2E已涵蓋adapter → batch → session → composition →
-  timeline。本checkpoint完成offline exit gate但沒有呼叫真實provider；
-  下一個code slice不跨越Phase 4.4 Places profile / hours邊界。
+  timeline。本checkpoint完成Routes offline exit gate但沒有呼叫真實provider；
+- Phase 4.4已建立三個fixed-mask Place Details request、dedicated authorization
+  gate、injected GET transport、strict bounded decoder、typed retry/budget與
+  snapshot/session drift protection；current七日coverage綁實際send date，
+  profile/hours content持續只存在memory；
+- fresh unconflicted current hours透過runtime-only availability sidecar與manual
+  windows取交集，完整活動duration才算可行；regular、stale、conflict與missing
+  只產生needs-verification。Fixed-time不暗移，slack使用實際交集終點；
+- legacy regular-hours checker永不輸出verified green，locale文字不參與判定；
+  broad/full-mask cache builder預設quarantine。Busan／Hokkaido canned E2E、
+  514個offline tests與三個real-trip validators已通過，trip files hash未變；
+  下一個code slice不跨越Phase 4.5 Flights / hotels邊界。
 
 ### Phase 5 — Product Interface and Skill
 
@@ -647,6 +658,37 @@ Exit gate：
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，Phase 5 CLI/interface不在本slice。
+
+### 2026-07-29 — Phase 4.4 Places profile / hours offline exit gate 完成
+
+- 新增profile、current hours、regular hours三個dedicated request factory與
+  authorization gate；固定minimal field masks，並把fresh Place endpoint、
+  identity observation/value、snapshot/evidence/store revision、locale與target
+  dates綁入exact fingerprint。Generic provider gate與forged endpoint均在HTTP
+  前拒絕。
+- Transport由caller注入並自行持有credential。GET path只在runtime含Place ID；
+  safe binding只保留digest與field names。Strict decoder限制64 KiB、JSON
+  depth/node、duplicate key、NaN與exact response fields，HTTP、transport、
+  retry及actual-send budget都映射為typed outcome。
+- Current coverage綁request send instant的place-local date，不受response跨
+  午夜影響。Period date/day、special-day範圍、truncation、24/7、explicit
+  never-open、overnight與DST都由machine-readable Point驗證；缺periods是
+  unknown，不冒充closed。Regular schedule只投影typical evidence。
+- `ActivityAvailability`是runtime-only sidecar；只有fresh、unconflicted
+  current facts可形成hard constraint，且完整activity duration必須落在
+  manual/provider交集。Fixed-time不暗移，provider交集終點會進slack；regular、
+  stale、conflict與missing只產生needs-verification並保留全部evidence refs與
+  attribution。
+- Legacy `check_hours.py`不再把locale-dependent `weekdayDescriptions`當資料，
+  regular-hours結果永不輸出綠燈；broad/full-mask cache builder預設拒絕，需
+  `--legacy-full-mask-cache`明確承認quarantine。
+- 獨立review找到的send/completion跨午夜、session digest不一致、等價current
+  誤判衝突與provider/manual slack邊界均已修正並加入回歸。Busan／Hokkaido
+  canned E2E與全套514個offline tests、三個real-trip validators、Python
+  compile全過；29個trip files hash aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
+  明確授權，下一個slice是Phase 4.5 Flights / hotels。
 
 ### 2026-07-27 — Phase 0 exit gate 達成
 

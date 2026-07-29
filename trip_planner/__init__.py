@@ -106,6 +106,15 @@ from .composition import (
     LiveAttribution,
     compose_trip_state,
 )
+from .availability import (
+    ActivityAvailability,
+    AvailabilityDisposition,
+    AvailabilityInterval,
+)
+from .opening_hours import (
+    OpeningHoursEvaluation,
+    evaluate_opening_window,
+)
 from .mutations import (
     PATCH_VERSION,
     PLAN_PATCH_MAX_OPERATIONS,
@@ -126,7 +135,7 @@ from .mutations import (
     patch_digest,
 )
 from .store import StoreError, StoreProblem, StoreResult, TripStore
-from .timeline import evaluate_timeline
+from .timeline import evaluate_composed_timeline, evaluate_timeline
 from .repair import (
     PROPOSAL_VERSION,
     SNAPSHOT_VERSION,
@@ -213,9 +222,30 @@ from .routes import (
     execute_google_route_request,
     parse_protobuf_duration_seconds,
 )
+from .place_details import (
+    GOOGLE_PLACE_CURRENT_HOURS_FIELD_MASK,
+    GOOGLE_PLACE_DETAILS_URL,
+    GOOGLE_PLACE_PROFILE_FIELD_MASK,
+    GOOGLE_PLACE_REGULAR_HOURS_FIELD_MASK,
+    GooglePlaceDetailsBatchExecution,
+    GooglePlaceDetailsExecution,
+    GooglePlaceDetailsHttpRequest,
+    GooglePlaceDetailsHttpResponse,
+    GooglePlaceDetailsRequest,
+    GooglePlaceDetailsTransport,
+    GooglePlaceDetailsTransportError,
+    GooglePlaceDetailsTransportErrorKind,
+    PlaceDetailsAttemptBudget,
+    PlaceDetailsKind,
+    build_google_place_details_http_request,
+    build_google_place_details_request,
+    execute_google_place_details,
+    execute_google_place_details_batch,
+)
 
 __all__ = [
     "Activity",
+    "ActivityAvailability",
     "AddActivity",
     "AddConstraint",
     "ApprovalGrant",
@@ -231,6 +261,8 @@ __all__ = [
     "DaySpec",
     "DecisionState",
     "AuthorizedProviderResult",
+    "AvailabilityDisposition",
+    "AvailabilityInterval",
     "EVIDENCE_SNAPSHOT_VERSION",
     "EVIDENCE_STORE_VERSION",
     "DurableEvidenceSource",
@@ -252,6 +284,10 @@ __all__ = [
     "FACT_QUERY_VERSION",
     "GOOGLE_PLACE_IDENTITY_FIELD_MASK",
     "GOOGLE_PLACE_ID_REFRESH_FIELD_MASK",
+    "GOOGLE_PLACE_CURRENT_HOURS_FIELD_MASK",
+    "GOOGLE_PLACE_DETAILS_URL",
+    "GOOGLE_PLACE_PROFILE_FIELD_MASK",
+    "GOOGLE_PLACE_REGULAR_HOURS_FIELD_MASK",
     "GOOGLE_MAPS_NON_EEA_POLICY_PROFILE",
     "GOOGLE_ROUTES_COMPUTE_URL",
     "GOOGLE_ROUTES_FIELD_MASK",
@@ -329,7 +365,18 @@ __all__ = [
     "GoogleRoutesTransport",
     "GoogleRoutesTransportError",
     "GoogleRoutesTransportErrorKind",
+    "GooglePlaceDetailsBatchExecution",
+    "GooglePlaceDetailsExecution",
+    "GooglePlaceDetailsHttpRequest",
+    "GooglePlaceDetailsHttpResponse",
+    "GooglePlaceDetailsRequest",
+    "GooglePlaceDetailsTransport",
+    "GooglePlaceDetailsTransportError",
+    "GooglePlaceDetailsTransportErrorKind",
     "OperationReason",
+    "OpeningHoursEvaluation",
+    "PlaceDetailsAttemptBudget",
+    "PlaceDetailsKind",
     "RepairBudget",
     "RepairContractError",
     "RepairController",
@@ -369,6 +416,8 @@ __all__ = [
     "build_repair_issues",
     "build_google_place_identity_refresh_request",
     "build_google_place_identity_request",
+    "build_google_place_details_http_request",
+    "build_google_place_details_request",
     "build_google_route_request",
     "build_google_routes_http_request",
     "build_schedule_candidate",
@@ -380,6 +429,8 @@ __all__ = [
     "default_replan_scope",
     "encode_plan",
     "evaluate_google_place_identity_candidates",
+    "evaluate_composed_timeline",
+    "evaluate_opening_window",
     "extract_fresh_google_place_endpoint",
     "finalize_google_place_identity_refresh",
     "finalize_google_place_identity_review",
@@ -405,5 +456,7 @@ __all__ = [
     "execute_google_route",
     "execute_google_route_batch",
     "execute_google_route_request",
+    "execute_google_place_details",
+    "execute_google_place_details_batch",
     "parse_protobuf_duration_seconds",
 ]

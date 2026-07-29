@@ -23,10 +23,13 @@ from .facts import (
     EvidencePersistence,
     EvidenceSnapshot,
     FactContractError,
+    FactKind,
     ProviderProblem,
+    _digest as _fact_digest,
     merge_provider_result,
     prune_evidence,
 )
+from .places_identity import _digest as _place_identity_digest
 
 
 Clock = Callable[[], datetime]
@@ -263,6 +266,9 @@ class EvidenceSession:
             tuple[Any, ...], tuple[str, ...]
         ] = {}
         self._global_problem_ids: set[tuple[Any, ...]] = set()
+        self._accepted_place_details_bases: set[
+            tuple[str, str, str]
+        ] = set()
         self._seed_store_problems(base.provider_problems)
 
     def load(self) -> EvidenceSessionLoad:
@@ -297,7 +303,12 @@ class EvidenceSession:
                         "results; durable evidence belongs to EvidenceStore."
                     ),
                 )
-            self._validate_current_route_basis(authorized_result)
+            place_details_basis = (
+                self._validate_current_google_runtime_basis(
+                    authorized_result,
+                    checked_at=checked_at,
+                )
+            )
             checked_at = self._clock.now()
             merged = merge_provider_result(
                 self._ledger,
@@ -305,6 +316,10 @@ class EvidenceSession:
                 purge_now=checked_at,
             )
             self._ledger = merged.ledger
+            if place_details_basis is not None:
+                self._accepted_place_details_bases.add(
+                    place_details_basis
+                )
             self._record_outcomes(
                 authorized_result,
                 merged.problems,
@@ -401,8 +416,31 @@ class EvidenceSession:
         self._problem_ids_by_key.clear()
         self._problem_scope_by_id.clear()
         self._global_problem_ids.clear()
+        self._accepted_place_details_bases.clear()
         self._seed_store_problems(current.provider_problems)
         return max(checked_at, self._clock.now())
+
+    def _validate_current_google_runtime_basis(
+        self,
+        authorized_result: AuthorizedProviderResult,
+        *,
+        checked_at: datetime,
+    ) -> tuple[str, str, str] | None:
+        request = authorized_result.request
+        if request.provider_id == "google-routes" and (
+            request.policy_id == "google-route-runtime-v1"
+        ):
+            self._validate_current_route_basis(authorized_result)
+            return None
+        if request.provider_id == "google-places" and request.policy_id in {
+            "google-place-profile-runtime-v1",
+            "google-place-hours-runtime-v1",
+        }:
+            return self._validate_current_place_details_basis(
+                authorized_result,
+                checked_at=checked_at,
+            )
+        return None
 
     def _validate_current_route_basis(
         self,
@@ -427,12 +465,13 @@ class EvidenceSession:
             scope.get("origin_observation_id"),
             scope.get("destination_observation_id"),
         }
-        active_ids = {
-            item.observation_id for item in self._ledger.observations
+        active_by_id = {
+            item.observation_id: item
+            for item in self._ledger.observations
         }
         if (
             None in endpoint_observations
-            or not endpoint_observations.issubset(active_ids)
+            or not endpoint_observations.issubset(active_by_id)
         ):
             raise FactContractError(
                 "EVIDENCE_REVISION_CHANGED",
@@ -441,6 +480,111 @@ class EvidenceSession:
                     "memory-only result was merged."
                 ),
             )
+        key = request.fact_keys[0]
+        for index, prefix in enumerate(("origin", "destination")):
+            observation = active_by_id[scope[f"{prefix}_observation_id"]]
+            if (
+                observation.key.kind is not FactKind.PLACE_IDENTITY
+                or observation.key.subject_ids != (key.subject_ids[index],)
+                or observation.provenance.provider_id != "google-places"
+                or observation.value.value_digest
+                != scope[f"{prefix}_value_digest"]
+            ):
+                raise FactContractError(
+                    "EVIDENCE_REVISION_CHANGED",
+                    (
+                        "Google route endpoint identity binding changed before "
+                        "the memory-only result was merged."
+                    ),
+                )
+
+    def _validate_current_place_details_basis(
+        self,
+        authorized_result: AuthorizedProviderResult,
+        *,
+        checked_at: datetime,
+    ) -> tuple[str, str, str]:
+        request = authorized_result.request
+        scope = dict(request.query_scope)
+        if scope.get("basis_store_revision") != self._store_revision:
+            raise FactContractError(
+                "EVIDENCE_REVISION_CHANGED",
+                (
+                    "Google Place Details durable evidence changed before the "
+                    "memory-only result was merged."
+                ),
+            )
+        basis = (
+            self._store_revision,
+            str(scope.get("basis_evidence_revision")),
+            str(scope.get("basis_snapshot_id")),
+        )
+        active_observation_ids = [
+            item.observation_id
+            for item in self._ledger.observations
+            if item.retained_at(checked_at)
+        ]
+        current_evidence_revision = _fact_digest(
+            {"observation_ids": active_observation_ids},
+            prefix="active-evidence",
+        )
+        if (
+            basis[1] != current_evidence_revision
+            and basis not in self._accepted_place_details_bases
+        ):
+            raise FactContractError(
+                "EVIDENCE_REVISION_CHANGED",
+                (
+                    "Google Place Details evidence changed before the "
+                    "memory-only result was merged."
+                ),
+            )
+        observation_id = scope.get("identity_observation_id")
+        identity = next(
+            (
+                item
+                for item in self._ledger.observations
+                if item.observation_id == observation_id
+            ),
+            None,
+        )
+        key = request.fact_keys[0]
+        expected_endpoint_id = None
+        if identity is not None:
+            expected_endpoint_id = _place_identity_digest(
+                {
+                    "location_id": key.subject_ids[0],
+                    "provider_id": "google-places",
+                    "provider_place_id": identity.value.payload.get(
+                        "provider_place_id"
+                    ),
+                    "observation_id": identity.observation_id,
+                    "value_digest": identity.value.value_digest,
+                    "valid_until": _utc_iso(identity.valid_until),
+                    "snapshot_id": scope.get("basis_snapshot_id"),
+                },
+                prefix="place-endpoint-identity",
+            )
+        if (
+            identity is None
+            or identity.key.kind is not FactKind.PLACE_IDENTITY
+            or identity.key.subject_ids != key.subject_ids
+            or identity.provenance.provider_id != "google-places"
+            or identity.value.value_digest
+            != scope.get("identity_value_digest")
+            or identity.value.payload.get("provider_place_id")
+            != key.qualifier_map.get("provider_place_id")
+            or not identity.fresh_at(checked_at)
+            or expected_endpoint_id != scope.get("identity_endpoint_id")
+        ):
+            raise FactContractError(
+                "EVIDENCE_REVISION_CHANGED",
+                (
+                    "Google Place Details identity changed before the "
+                    "memory-only result was merged."
+                ),
+            )
+        return basis
 
     def _current_problems(self) -> tuple[ProviderProblem, ...]:
         return tuple(

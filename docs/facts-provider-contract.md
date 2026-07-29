@@ -1,6 +1,6 @@
 # Facts and Provider Contract
 
-狀態：Phase 4 implementation contract（4.3 Routes offline exit gate）
+狀態：Phase 4 implementation contract（4.4 Places profile / hours offline exit gate）
 契約版本：`fact-query/v1`、`fact-observation/v1`、
 `evidence-snapshot/v1`、`provider-result/v1`、
 `place-identity-review/v1`
@@ -470,6 +470,19 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
   status採`MEMORY_ONLY`，不能因為設定`purge_at=30d`就落盤。
 - `currentOpeningHours` 只覆蓋 request day起算的 7 天，包含 special hours；
   `regularOpeningHours` 只是 typical schedule，不能證明遠期假日營業。
+- Place Details分成profile、current hours、regular hours三個exact request；各自
+  使用固定minimal field mask，並把identity endpoint、observation/value、
+  evidence snapshot、durable store revision、locale與target dates綁進
+  fingerprint。原始Place ID只出現在runtime URL，不進safe binding或repr。
+- Current-hours七日起點綁實際send instant在place timezone的日期，不使用可能
+  已跨午夜的response completion date。Point的date/day、truncation、overnight
+  與DST local time都需一致；ambiguous或nonexistent wall time fail closed。
+- `periods`缺席代表unknown；明確空陣列代表never open。Current periods會轉成
+  date-specific half-open UTC intervals及完整closed dates；regular periods只
+  投影typical schedule，永遠不能成為travel-ready hard constraint。
+- Adapter只接受injected transport與bounded bytes；64 KiB、strict UTF-8 JSON、
+  duplicate key、NaN、depth/node、unknown field、HTTP/transport錯誤與每次實際
+  send budget均有typed boundary。Credential由transport自行持有。
 - `weekdayDescriptions` 的順序依 locale，不可假設 Monday-first；execution
   validator使用 machine-readable periods。
 - 只 request product需要的最小 field mask。Reviews、photos、generative
@@ -697,14 +710,35 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   provider、未render、未deploy，也未修改`trips/`。472個offline tests與
   三個real-trip validators通過。
 
-### Phase 4.4 — Places profile / hours
+### Phase 4.4 — Places profile / hours（offline exit gate完成）
 
-- minimal field masks；
-- full profile先全採memory-only；若實測需要，另立coordinate-only fact後才
-  開啟條款允許的30天disk policy；
-- date-specific intervals與 special-hours uncertainty；
-- full-duration opening-window validation；
-- legacy `check_hours.py`改讀共同 facts/kernel。
+- dedicated Place Details authorization gate拒絕generic promotion；profile、
+  current hours與regular hours各自綁exact single-key scope、fixed minimal
+  field mask、fresh Google Place endpoint與snapshot/store revision。
+- full profile維持`MEMORY_ONLY`；本slice沒有新增coordinate disk fact，也不把
+  purge deadline誤當落盤許可。Raw response、Place ID、provider text與dynamic
+  attribution不進canonical、disk、receipt或safe views。
+- injectable GET adapter支援typed HTTP/transport failure、single-attempt
+  default、opt-in最多三次retry、共享actual-send budget、strict bounded decoder
+  與batch/session drift rejection。
+- current hours依request send date建立七日date-specific intervals，保留
+  special-day coverage、overnight、24/7、explicit never-open與closed dates；
+  absent periods、錯誤weekday/date、超界、overlap及DST ambiguity均fail closed。
+- runtime composition以process-local `ActivityAvailability` sidecar帶入timeline；
+  fresh unconflicted current hours才可成為hard constraint，而且活動完整duration
+  必須落在manual/provider交集。Fixed-time活動不會被暗中搬動，slack使用實際
+  交集終點。
+- regular、stale、conflicted與missing hours只產生machine-readable
+  `OPENING_HOURS_NEEDS_VERIFICATION`；多份等價current evidence可合併，多份
+  不同current evidence則保留全部refs並fail closed。
+- legacy `check_hours.py`只共用pure full-duration evaluator；舊
+  `regularOpeningHours`永不輸出綠燈，locale-dependent
+  `weekdayDescriptions`不作判定。Broad/full-mask cache builder預設拒絕，
+  必須以`--legacy-full-mask-cache`明確承認quarantine才可執行。
+- canned Busan/Hokkaido E2E涵蓋identity → adapter → batch budget →
+  memory session → composition → timeline；514個offline tests、三個real-trip
+  validators與Python compile通過。未呼叫真實provider、未render、未deploy，
+  `trips/`保持byte-for-byte不變。
 
 ### Phase 4.5 — Flights / hotels
 

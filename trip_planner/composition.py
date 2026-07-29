@@ -12,11 +12,16 @@ import hashlib
 import json
 import unicodedata
 from dataclasses import dataclass, field, fields, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Mapping
 
 from .codec import plan_to_trip_state
-from .facts import EvidenceSnapshot, FactKind, FactObservation
+from .availability import (
+    ActivityAvailability,
+    AvailabilityDisposition,
+    AvailabilityInterval,
+)
+from .facts import EvidenceSnapshot, FactKey, FactKind, FactObservation
 from .models import CheckIssue, EvidenceState, TravelEstimate, TripState
 
 
@@ -156,6 +161,10 @@ class ComposedTripState:
         default=(),
         repr=False,
     )
+    activity_availability: tuple[ActivityAvailability, ...] = field(
+        default=(),
+        repr=False,
+    )
     contract_version: str = COMPOSITION_VERSION
 
     def __post_init__(self) -> None:
@@ -195,6 +204,34 @@ class ComposedTripState:
                 "ComposedTripState.live_attributions must contain exact "
                 "LiveAttribution values"
             )
+        if not isinstance(self.activity_availability, tuple) or any(
+            type(item) is not ActivityAvailability
+            for item in self.activity_availability
+        ):
+            raise TypeError(
+                "ComposedTripState.activity_availability must contain "
+                "exact values"
+            )
+        if len(
+            {
+                item.activity_id
+                for item in self.activity_availability
+            }
+        ) != len(self.activity_availability):
+            raise ValueError(
+                "ComposedTripState.activity_availability has duplicate "
+                "activity IDs"
+            )
+        object.__setattr__(
+            self,
+            "activity_availability",
+            tuple(
+                sorted(
+                    self.activity_availability,
+                    key=lambda item: item.activity_id,
+                )
+            ),
+        )
         normalized = tuple(
             sorted(
                 set(self.live_attributions),
@@ -246,6 +283,8 @@ class ComposedTripState:
 def compose_trip_state(
     canonical_plan: Mapping[str, Any],
     evidence_snapshot: EvidenceSnapshot,
+    *,
+    availability_keys: tuple[FactKey, ...] = (),
 ) -> ComposedTripState:
     """Compose one immutable, route-only runtime sidecar.
 
@@ -319,14 +358,21 @@ def compose_trip_state(
             superseded_unverified_refs,
         ),
     )
-    used_observations = tuple(
-        sorted(
-            (
+    availability, availability_observations = _project_activity_availability(
+        canonical_state, evidence_snapshot, availability_keys
+    )
+    used_by_id = {
+        observation.observation_id: observation
+        for observation in (
+            [
                 observation
                 for _projection, observation in projections.values()
-            ),
-            key=lambda item: item.observation_id,
+            ]
+            + list(availability_observations)
         )
+    }
+    used_observations = tuple(
+        used_by_id[item_id] for item_id in sorted(used_by_id)
     )
     live_attributions = _live_attributions(used_observations)
     required_labels = tuple(
@@ -364,7 +410,202 @@ def compose_trip_state(
         composed_state_digest=_trip_state_digest(composed_state),
         evidence=binding,
         live_attributions=live_attributions,
+        activity_availability=availability,
     )
+
+
+def _project_activity_availability(
+    state: TripState,
+    snapshot: EvidenceSnapshot,
+    availability_keys: tuple[FactKey, ...],
+) -> tuple[tuple[ActivityAvailability, ...], tuple[FactObservation, ...]]:
+    if (
+        not isinstance(availability_keys, tuple)
+        or any(
+            type(key) is not FactKey
+            or key.kind is not FactKind.PLACE_OPENING_HOURS
+            for key in availability_keys
+        )
+    ):
+        raise TypeError(
+            "availability_keys must contain exact opening-hours keys"
+        )
+
+    by_location: dict[str, list[Any]] = {}
+    day_dates = {day.day_id: day.date for day in state.days}
+    for activity in state.activities:
+        by_location.setdefault(activity.location_id, []).append(activity)
+    candidates: dict[str, list[ActivityAvailability]] = {}
+    used: list[FactObservation] = []
+    keys = {key.key_id: key for key in _hours_keys(snapshot)}
+    keys.update({key.key_id: key for key in availability_keys})
+    for key in (keys[key_id] for key_id in sorted(keys)):
+        activities = by_location.get(key.subject_ids[0], [])
+        if not activities:
+            continue
+        resolution = snapshot.resolve(key)
+        qualifiers = key.qualifier_map
+        target_start = date.fromisoformat(str(qualifiers["target_start"]))
+        target_end = date.fromisoformat(str(qualifiers["target_end"]))
+        relevant = [
+            activity for activity in activities
+            if target_start <= day_dates[activity.day_id] <= target_end
+        ]
+        if not relevant:
+            continue
+        used.extend(resolution.candidates)
+        observation = resolution.selected
+        if (
+            observation is not None
+            and resolution.supports_travel_ready_use
+        ):
+            payload = observation.value.payload
+            disposition = AvailabilityDisposition.HARD_CURRENT
+            candidate_intervals = tuple(
+                AvailabilityInterval(
+                    start_at=_parse_datetime(
+                        item["start_at"],
+                        "hours start_at",
+                    ),
+                    end_at=_parse_datetime(item["end_at"], "hours end_at"),
+                )
+                for item in payload["intervals"]
+            )
+            candidate_refs = (
+                f"fact:{observation.observation_id}",
+            )
+            candidate_reason = None
+            candidate_fresh_until = observation.valid_until
+        else:
+            disposition = AvailabilityDisposition.NEEDS_VERIFICATION
+            candidate_intervals = ()
+            candidate_refs = resolution.evidence_refs
+            candidate_reason = {
+                EvidenceState.VERIFIED: "regular_opening_hours",
+                EvidenceState.STALE: "stale_opening_hours",
+                EvidenceState.CONFLICTED: "conflicted_opening_hours",
+                EvidenceState.UNVERIFIED: "missing_opening_hours",
+            }[resolution.evidence_state]
+            candidate_fresh_until = None
+        for activity in relevant:
+            candidates.setdefault(activity.activity_id, []).append(
+                ActivityAvailability(
+                    activity_id=activity.activity_id,
+                    disposition=disposition,
+                    intervals=candidate_intervals,
+                    evidence_refs=candidate_refs,
+                    reason=candidate_reason,
+                    fresh_until=candidate_fresh_until,
+                )
+            )
+
+    projected: list[ActivityAvailability] = []
+    for activity_id in sorted(candidates):
+        values = candidates[activity_id]
+        hard = [
+            item
+            for item in values
+            if item.disposition is AvailabilityDisposition.HARD_CURRENT
+        ]
+        semantic_hard: dict[
+            tuple[tuple[datetime, datetime], ...],
+            list[ActivityAvailability],
+        ] = {}
+        for item in hard:
+            semantic_hard.setdefault(
+                tuple(
+                    (interval.start_at, interval.end_at)
+                    for interval in item.intervals
+                ),
+                [],
+            ).append(item)
+        if len(semantic_hard) == 1:
+            equivalent = next(iter(semantic_hard.values()))
+            refs = tuple(
+                sorted(
+                    {
+                        ref
+                        for item in equivalent
+                        for ref in item.evidence_refs
+                    }
+                )
+            )
+            fresh_until = min(
+                item.fresh_until
+                for item in equivalent
+                if item.fresh_until is not None
+            )
+            projected.append(
+                ActivityAvailability(
+                    activity_id=activity_id,
+                    disposition=AvailabilityDisposition.HARD_CURRENT,
+                    intervals=equivalent[0].intervals,
+                    evidence_refs=refs,
+                    fresh_until=fresh_until,
+                )
+            )
+        else:
+            refs = tuple(
+                sorted(
+                    {
+                        ref
+                        for item in values
+                        for ref in item.evidence_refs
+                    }
+                )
+            )
+            reason = (
+                "conflicting_current_opening_hours"
+                if len(semantic_hard) > 1
+                else _needs_verification_reason(values)
+            )
+            projected.append(
+                ActivityAvailability(
+                    activity_id=activity_id,
+                    disposition=AvailabilityDisposition.NEEDS_VERIFICATION,
+                    evidence_refs=refs,
+                    reason=reason,
+                )
+            )
+    used_refs = {
+        ref
+        for availability in projected
+        for ref in availability.evidence_refs
+    }
+    used_by_id = {
+        item.observation_id: item
+        for item in used
+        if f"fact:{item.observation_id}" in used_refs
+    }
+    return (
+        tuple(projected),
+        tuple(used_by_id[item_id] for item_id in sorted(used_by_id)),
+    )
+
+
+def _needs_verification_reason(
+    values: list[ActivityAvailability],
+) -> str:
+    precedence = (
+        "conflicted_opening_hours",
+        "stale_opening_hours",
+        "regular_opening_hours",
+        "missing_opening_hours",
+    )
+    reasons = {item.reason for item in values}
+    return next(
+        (reason for reason in precedence if reason in reasons),
+        "missing_opening_hours",
+    )
+
+
+def _hours_keys(snapshot: EvidenceSnapshot) -> tuple[FactKey, ...]:
+    by_id = {
+        item.key.key_id: item.key
+        for item in snapshot.observations
+        if item.key.kind is FactKind.PLACE_OPENING_HOURS
+    }
+    return tuple(by_id[key_id] for key_id in sorted(by_id))
 
 
 def _route_keys(snapshot: EvidenceSnapshot) -> tuple[Any, ...]:

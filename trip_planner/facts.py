@@ -38,6 +38,16 @@ _GOOGLE_ROUTE_FIELD_MASK = (
     "fallbackInfo.routingMode,"
     "fallbackInfo.reason"
 )
+_GOOGLE_PLACE_PROFILE_FIELD_MASK = (
+    "attributions,businessStatus,displayName.text,id,location,timeZone.id"
+)
+_GOOGLE_PLACE_CURRENT_HOURS_FIELD_MASK = (
+    "attributions,currentOpeningHours.periods,"
+    "currentOpeningHours.specialDays.date,id,timeZone.id"
+)
+_GOOGLE_PLACE_REGULAR_HOURS_FIELD_MASK = (
+    "attributions,id,regularOpeningHours.periods,timeZone.id"
+)
 
 Scalar: TypeAlias = str | int | float | bool | None
 
@@ -650,7 +660,17 @@ def google_maps_policy_registry(
                 persistence=EvidencePersistence.MEMORY_ONLY,
                 max_validity_seconds=30 * day,
                 max_retention_seconds=day,
-                allowed_query_fields=("language_code", "region_code"),
+                allowed_query_fields=(
+                    "basis_evidence_revision",
+                    "basis_snapshot_id",
+                    "basis_store_revision",
+                    "field_mask",
+                    "identity_endpoint_id",
+                    "identity_observation_id",
+                    "identity_value_digest",
+                    "language_code",
+                    "region_code",
+                ),
                 required_attribution_labels=("Google Maps",),
             ),
             ProviderPolicy(
@@ -675,7 +695,20 @@ def google_maps_policy_registry(
                 persistence=EvidencePersistence.MEMORY_ONLY,
                 max_validity_seconds=30 * day,
                 max_retention_seconds=day,
-                allowed_query_fields=("language_code", "region_code"),
+                allowed_query_fields=(
+                    "basis",
+                    "basis_evidence_revision",
+                    "basis_snapshot_id",
+                    "basis_store_revision",
+                    "field_mask",
+                    "identity_endpoint_id",
+                    "identity_observation_id",
+                    "identity_value_digest",
+                    "language_code",
+                    "region_code",
+                    "target_end",
+                    "target_start",
+                ),
                 required_attribution_labels=("Google Maps",),
             ),
             ProviderPolicy(
@@ -1707,10 +1740,39 @@ class ProviderResult:
 
 _AUTHORIZATION_TOKEN = object()
 _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN = object()
+_GOOGLE_PLACE_DETAILS_AUTHORIZATION_TOKEN = object()
 _GOOGLE_ROUTE_AUTHORIZATION_TOKEN = object()
 _GENERIC_AUTHORIZATION_GATE = "provider-policy"
 _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_GATE = "google-place-identity"
+_GOOGLE_PLACE_DETAILS_AUTHORIZATION_GATE = "google-place-details"
 _GOOGLE_ROUTE_AUTHORIZATION_GATE = "google-route"
+_GOOGLE_PLACE_DETAILS_COMMON_QUERY_FIELDS = frozenset(
+    {
+        "basis_evidence_revision",
+        "basis_snapshot_id",
+        "basis_store_revision",
+        "field_mask",
+        "identity_endpoint_id",
+        "identity_observation_id",
+        "identity_value_digest",
+        "language_code",
+        "region_code",
+    }
+)
+_GOOGLE_PLACE_DETAILS_DIGEST_QUERY_FIELDS = frozenset(
+    {
+        "basis_evidence_revision",
+        "basis_snapshot_id",
+        "basis_store_revision",
+        "identity_endpoint_id",
+        "identity_observation_id",
+        "identity_value_digest",
+    }
+)
+_GOOGLE_PLACE_DETAILS_HOURS_QUERY_FIELDS = (
+    _GOOGLE_PLACE_DETAILS_COMMON_QUERY_FIELDS
+    | {"basis", "target_end", "target_start"}
+)
 _GOOGLE_ROUTE_REQUIRED_QUERY_FIELDS = frozenset(
     {
         "basis_evidence_revision",
@@ -1776,8 +1838,9 @@ def authorize_provider_result(
 ) -> AuthorizedProviderResult:
     """Validate a generic provider result.
 
-    Google place identity is deliberately excluded: only the dedicated
-    review/refresh finalizers may mint an authorized identity result.
+    Built-in Google identity, Place Details and Routes promotions are
+    deliberately excluded.  Only their dedicated trusted adapters or
+    review/refresh finalizers may mint an authorized result.
     """
 
     return _authorize_provider_result(
@@ -1845,6 +1908,41 @@ def _authorize_google_route_result(
     )
 
 
+def _authorize_google_place_details_result(
+    request: ProviderRequest,
+    result: ProviderResult,
+    policies: ProviderPolicyRegistry,
+    *,
+    _token: object,
+) -> AuthorizedProviderResult:
+    """Authorize one profile/hours result minted by the Places adapter."""
+
+    if _token is not _GOOGLE_PLACE_DETAILS_AUTHORIZATION_TOKEN:
+        raise FactContractError(
+            "UNTRUSTED_PROVENANCE",
+            (
+                "Google Place Details authorization requires the trusted "
+                "Places adapter."
+            ),
+        )
+    if not _is_google_place_details_promotion(request):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            (
+                "Dedicated Place Details authorization received a "
+                "non-profile/hours request."
+            ),
+        )
+    _validate_google_place_details_authorization_scope(request, result)
+    return _authorize_provider_result(
+        request,
+        result,
+        policies,
+        authorization_gate=_GOOGLE_PLACE_DETAILS_AUTHORIZATION_GATE,
+        _place_details_token=_token,
+    )
+
+
 def _authorize_provider_result(
     request: ProviderRequest,
     result: ProviderResult,
@@ -1852,6 +1950,7 @@ def _authorize_provider_result(
     *,
     authorization_gate: str,
     _identity_token: object | None = None,
+    _place_details_token: object | None = None,
     _route_token: object | None = None,
 ) -> AuthorizedProviderResult:
     """Shared exact policy validation behind token-separated host gates."""
@@ -1863,6 +1962,18 @@ def _authorize_provider_result(
         raise FactContractError(
             "PENDING_REVIEW",
             "Google place identity authorization requires a trusted finalizer.",
+        )
+    if (
+        authorization_gate == _GOOGLE_PLACE_DETAILS_AUTHORIZATION_GATE
+        and _place_details_token
+        is not _GOOGLE_PLACE_DETAILS_AUTHORIZATION_TOKEN
+    ):
+        raise FactContractError(
+            "UNTRUSTED_PROVENANCE",
+            (
+                "Google Place Details authorization requires the trusted "
+                "Places adapter."
+            ),
         )
     if (
         authorization_gate == _GOOGLE_ROUTE_AUTHORIZATION_GATE
@@ -1999,6 +2110,17 @@ def _authorize_provider_result(
         )
     if (
         authorization_gate == _GENERIC_AUTHORIZATION_GATE
+        and _is_google_place_details_promotion(request)
+    ):
+        raise FactContractError(
+            "UNTRUSTED_PROVENANCE",
+            (
+                "Google Place Details evidence requires the dedicated "
+                "adapter promotion boundary."
+            ),
+        )
+    if (
+        authorization_gate == _GENERIC_AUTHORIZATION_GATE
         and _is_google_route_promotion(request)
     ):
         raise FactContractError(
@@ -2054,6 +2176,155 @@ def _is_google_route_promotion(request: object) -> bool:
             for key in request.fact_keys
         )
     )
+
+
+def _is_google_place_details_promotion(request: object) -> bool:
+    if type(request) is not ProviderRequest:
+        return False
+    profile = (
+        request.provider_id == "google-places"
+        and request.policy_id == "google-place-profile-runtime-v1"
+        and request.operation == "fetch-place-profile"
+        and any(
+            key.kind is FactKind.PLACE_PROFILE
+            for key in request.fact_keys
+        )
+    )
+    hours = (
+        request.provider_id == "google-places"
+        and request.policy_id == "google-place-hours-runtime-v1"
+        and request.operation == "fetch-opening-hours"
+        and any(
+            key.kind is FactKind.PLACE_OPENING_HOURS
+            for key in request.fact_keys
+        )
+    )
+    return profile or hours
+
+
+def _validate_google_place_details_authorization_scope(
+    request: ProviderRequest,
+    result: ProviderResult,
+) -> None:
+    if len(request.fact_keys) != 1:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google Place Details authorization requires exactly one fact key.",
+        )
+    key = request.fact_keys[0]
+    is_profile = (
+        key.kind is FactKind.PLACE_PROFILE
+        and request.operation == "fetch-place-profile"
+        and request.policy_id == "google-place-profile-runtime-v1"
+    )
+    is_hours = (
+        key.kind is FactKind.PLACE_OPENING_HOURS
+        and request.operation == "fetch-opening-hours"
+        and request.policy_id == "google-place-hours-runtime-v1"
+    )
+    if not (is_profile or is_hours):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google Place Details request kind, operation and policy differ.",
+        )
+    qualifiers = key.qualifier_map
+    if qualifiers.get("identity_provider") != "google-places":
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google Place Details requires a Google Places identity key.",
+        )
+
+    scope = dict(request.query_scope)
+    required_scope = (
+        _GOOGLE_PLACE_DETAILS_COMMON_QUERY_FIELDS
+        if is_profile
+        else _GOOGLE_PLACE_DETAILS_HOURS_QUERY_FIELDS
+    )
+    if set(scope) != required_scope:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            (
+                "Google Place Details scope must contain the exact identity, "
+                "evidence, locale and field-mask bindings."
+            ),
+        )
+    for name in _GOOGLE_PLACE_DETAILS_DIGEST_QUERY_FIELDS:
+        if (
+            not isinstance(scope[name], str)
+            or _HEX_DIGEST_RE.fullmatch(scope[name]) is None
+        ):
+            raise FactContractError(
+                "INVALID_PROVIDER_REQUEST",
+                (
+                    f"Google Place Details scope {name} must be a lowercase "
+                    "SHA-256 digest."
+                ),
+            )
+    language_code = scope["language_code"]
+    region_code = scope["region_code"]
+    if (
+        not isinstance(language_code, str)
+        or not language_code
+        or len(language_code) > 35
+        or re.fullmatch(
+            r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*",
+            language_code,
+        )
+        is None
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google Place Details language_code must be a bounded BCP-47 tag.",
+        )
+    if (
+        not isinstance(region_code, str)
+        or re.fullmatch(r"[A-Z]{2}", region_code) is None
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "Google Place Details region_code must be an uppercase region.",
+        )
+
+    if is_profile:
+        expected_mask = _GOOGLE_PLACE_PROFILE_FIELD_MASK
+    else:
+        basis = qualifiers["basis"]
+        if (
+            scope["basis"] != basis
+            or scope["target_start"] != qualifiers["target_start"]
+            or scope["target_end"] != qualifiers["target_end"]
+        ):
+            raise FactContractError(
+                "EVIDENCE_BINDING_MISMATCH",
+                (
+                    "Opening-hours request scope differs from its exact "
+                    "basis/date fact key."
+                ),
+            )
+        expected_mask = (
+            _GOOGLE_PLACE_CURRENT_HOURS_FIELD_MASK
+            if basis == "current"
+            else _GOOGLE_PLACE_REGULAR_HOURS_FIELD_MASK
+        )
+    if scope["field_mask"] != expected_mask:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            (
+                "Google Place Details field_mask must equal the fixed minimal "
+                "mask for its operation."
+            ),
+        )
+
+    expected_place_id = qualifiers["provider_place_id"]
+    for observation in result.observations:
+        if observation.provenance.provider_record_id != expected_place_id:
+            raise FactContractError(
+                "EVIDENCE_BINDING_MISMATCH",
+                (
+                    "Google Place Details provider record differs from the "
+                    "trusted Place ID."
+                ),
+            )
 
 
 def _validate_google_route_authorization_scope(
@@ -2478,6 +2749,13 @@ def merge_provider_result(
             authorized_result.result,
             ledger.policies,
             _token=_GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
+        )
+    elif _is_google_place_details_promotion(authorized_result.request):
+        reauthorized = _authorize_google_place_details_result(
+            authorized_result.request,
+            authorized_result.result,
+            ledger.policies,
+            _token=_GOOGLE_PLACE_DETAILS_AUTHORIZATION_TOKEN,
         )
     elif _is_google_route_promotion(authorized_result.request):
         reauthorized = _authorize_google_route_result(
@@ -3690,6 +3968,14 @@ def _normalize_opening_hours(payload: dict[str, Any]) -> dict[str, Any]:
                 (
                     f"intervals[{index}] starts outside the declared local "
                     "coverage range."
+                ),
+            )
+        if local_end.date() > local_start.date() + timedelta(days=1):
+            raise FactContractError(
+                "INVALID_PROVIDER_RESPONSE",
+                (
+                    f"intervals[{index}] cannot span beyond the start "
+                    "local date's next local day."
                 ),
             )
         if local_end.date() > end_date + timedelta(days=1):

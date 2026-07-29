@@ -546,6 +546,123 @@ def builtin_google_route_observation(
     )
 
 
+def builtin_google_place_details_scope(
+    key: FactKey,
+) -> tuple[tuple[str, object], ...]:
+    scope: list[tuple[str, object]] = [
+        ("basis_evidence_revision", "a" * 64),
+        ("basis_snapshot_id", "b" * 64),
+        ("basis_store_revision", "c" * 64),
+        (
+            "field_mask",
+            (
+                facts_module._GOOGLE_PLACE_PROFILE_FIELD_MASK
+                if key.kind is FactKind.PLACE_PROFILE
+                else (
+                    facts_module._GOOGLE_PLACE_CURRENT_HOURS_FIELD_MASK
+                    if key.qualifier_map["basis"] == "current"
+                    else facts_module._GOOGLE_PLACE_REGULAR_HOURS_FIELD_MASK
+                )
+            ),
+        ),
+        ("identity_endpoint_id", "d" * 64),
+        ("identity_observation_id", "e" * 64),
+        ("identity_value_digest", "f" * 64),
+        ("language_code", "zh-Hant"),
+        ("region_code", "TW"),
+    ]
+    if key.kind is FactKind.PLACE_OPENING_HOURS:
+        scope.extend(
+            (
+                ("basis", key.qualifier_map["basis"]),
+                ("target_end", key.qualifier_map["target_end"]),
+                ("target_start", key.qualifier_map["target_start"]),
+            )
+        )
+    return tuple(scope)
+
+
+def builtin_google_place_details_request(
+    policies: ProviderPolicyRegistry,
+    *keys: FactKey,
+    query_scope: tuple[tuple[str, object], ...] | None = None,
+) -> ProviderRequest:
+    if not keys:
+        raise AssertionError("Place Details helper requires at least one key")
+    first = keys[0]
+    if first.kind is FactKind.PLACE_PROFILE:
+        policy_id = "google-place-profile-runtime-v1"
+        operation = "fetch-place-profile"
+    elif first.kind is FactKind.PLACE_OPENING_HOURS:
+        policy_id = "google-place-hours-runtime-v1"
+        operation = "fetch-opening-hours"
+    else:
+        raise AssertionError("unsupported Place Details test key")
+    policy = policies.policy(policy_id)
+    return ProviderRequest(
+        provider_id="google-places",
+        adapter_id="google-places",
+        adapter_version="v1",
+        operation=operation,
+        fact_keys=keys,
+        policy_id=policy.policy_id,
+        policy_digest=policy.policy_digest,
+        query_scope=(
+            builtin_google_place_details_scope(first)
+            if query_scope is None
+            else query_scope
+        ),
+    )
+
+
+def builtin_google_place_details_observation(
+    request: ProviderRequest,
+    *,
+    provider_record_id: str = "place-123",
+) -> FactObservation:
+    key = request.fact_keys[0]
+    if key.kind is FactKind.PLACE_PROFILE:
+        value = FactValue.from_payload(
+            FactKind.PLACE_PROFILE,
+            {
+                "provider_place_id": key.qualifier_map[
+                    "provider_place_id"
+                ],
+                "latitude": 35.1796,
+                "longitude": 129.0756,
+                "display_name": "Busan Museum",
+                "timezone": "Asia/Seoul",
+                "business_status": "operational",
+            },
+        )
+    else:
+        value = opening_value(
+            provider_place_id=str(
+                key.qualifier_map["provider_place_id"]
+            ),
+            basis=str(key.qualifier_map["basis"]),
+            coverage_start=str(key.qualifier_map["target_start"]),
+            coverage_end=str(key.qualifier_map["target_end"]),
+        )
+    return FactObservation(
+        key=key,
+        value=value,
+        provenance=ProviderProvenance(
+            provider_id="google-places",
+            adapter_id="google-places",
+            adapter_version="v1",
+            request_fingerprint=request.request_fingerprint,
+            retention_policy_id=request.policy_id,
+            provider_record_id=provider_record_id,
+            attributions=(("Google Maps", None),),
+        ),
+        retrieved_at=NOW,
+        valid_until=NOW + timedelta(hours=12),
+        purge_at=NOW + timedelta(days=1),
+        confidence=1,
+    )
+
+
 def authorized_result(
     *,
     request: ProviderRequest,
@@ -1211,6 +1328,34 @@ class FactContractTests(unittest.TestCase):
                 "Google Maps",
                 by_id[policy_id].required_attribution_labels,
             )
+        common_details_scope = {
+            "basis_evidence_revision",
+            "basis_snapshot_id",
+            "basis_store_revision",
+            "field_mask",
+            "identity_endpoint_id",
+            "identity_observation_id",
+            "identity_value_digest",
+            "language_code",
+            "region_code",
+        }
+        self.assertTrue(
+            common_details_scope.issubset(
+                by_id[
+                    "google-place-profile-runtime-v1"
+                ].allowed_query_fields
+            )
+        )
+        self.assertTrue(
+            (
+                common_details_scope
+                | {"basis", "target_end", "target_start"}
+            ).issubset(
+                by_id[
+                    "google-place-hours-runtime-v1"
+                ].allowed_query_fields
+            )
+        )
         self.assertFalse(
             any(
                 item.persistence is EvidencePersistence.DISK_TTL
@@ -1220,6 +1365,209 @@ class FactContractTests(unittest.TestCase):
         self.assert_contract_error(
             "INVALID_PROVIDER_REQUEST",
             lambda: google_maps_policy_registry("unknown-region"),
+        )
+
+    def test_builtin_google_place_details_requires_dedicated_authorization(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        for key in (
+            place_profile_key(),
+            opening_key(basis="regular_typical"),
+        ):
+            with self.subTest(kind=key.kind.value):
+                request = builtin_google_place_details_request(
+                    policies, key
+                )
+                item = builtin_google_place_details_observation(request)
+                raw = provider_result(
+                    request=request,
+                    status=ProviderResultStatus.SUCCESS,
+                    observations=(item,),
+                )
+
+                self.assert_contract_error(
+                    "UNTRUSTED_PROVENANCE",
+                    lambda: authorize_provider_result(
+                        request, raw, policies
+                    ),
+                )
+                self.assert_contract_error(
+                    "UNTRUSTED_PROVENANCE",
+                    lambda: (
+                        facts_module
+                        ._authorize_google_place_details_result(
+                            request,
+                            raw,
+                            policies,
+                            _token=object(),
+                        )
+                    ),
+                )
+                authorized = (
+                    facts_module._authorize_google_place_details_result(
+                        request,
+                        raw,
+                        policies,
+                        _token=(
+                            facts_module
+                            ._GOOGLE_PLACE_DETAILS_AUTHORIZATION_TOKEN
+                        ),
+                    )
+                )
+                merged = merge_provider_result(
+                    EvidenceLedger(policies),
+                    authorized,
+                    purge_now=NOW,
+                )
+
+                self.assertEqual((item,), merged.ledger.observations)
+
+    def test_builtin_google_place_details_scope_is_exact_and_bound(
+        self,
+    ) -> None:
+        policies = google_maps_policy_registry(
+            GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+        )
+        key = opening_key(basis="regular_typical")
+        valid_scope = builtin_google_place_details_scope(key)
+        token = facts_module._GOOGLE_PLACE_DETAILS_AUTHORIZATION_TOKEN
+
+        for field, replacement in (
+            (
+                "field_mask",
+                (
+                    f"{facts_module._GOOGLE_PLACE_REGULAR_HOURS_FIELD_MASK},"
+                    "reviews"
+                ),
+            ),
+            ("identity_observation_id", "not-a-digest"),
+            ("language_code", "bad locale!"),
+            ("region_code", "tw"),
+            ("basis", "current"),
+            ("target_end", "2026-10-04"),
+        ):
+            with self.subTest(field=field):
+                malformed = builtin_google_place_details_request(
+                    policies,
+                    key,
+                    query_scope=tuple(
+                        (
+                            name,
+                            replacement if name == field else value,
+                        )
+                        for name, value in valid_scope
+                    ),
+                )
+                raw = provider_result(
+                    request=malformed,
+                    status=ProviderResultStatus.FAILED,
+                    problems=(
+                        problem(
+                            key,
+                            code=ProviderProblemCode.NOT_FOUND,
+                            retryable=False,
+                        ),
+                    ),
+                )
+                self.assert_contract_error(
+                    (
+                        "EVIDENCE_BINDING_MISMATCH"
+                        if field in {"basis", "target_end"}
+                        else "INVALID_PROVIDER_REQUEST"
+                    ),
+                    lambda: (
+                        facts_module
+                        ._authorize_google_place_details_result(
+                            malformed,
+                            raw,
+                            policies,
+                            _token=token,
+                        )
+                    ),
+                )
+
+        incomplete = builtin_google_place_details_request(
+            policies,
+            key,
+            query_scope=tuple(
+                item for item in valid_scope if item[0] != "field_mask"
+            ),
+        )
+        incomplete_raw = provider_result(
+            request=incomplete,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    key,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: facts_module._authorize_google_place_details_result(
+                incomplete,
+                incomplete_raw,
+                policies,
+                _token=token,
+            ),
+        )
+
+        other = opening_key(
+            location_id="loc-other",
+            basis="regular_typical",
+        )
+        batched = builtin_google_place_details_request(
+            policies, key, other
+        )
+        batched_raw = provider_result(
+            request=batched,
+            status=ProviderResultStatus.FAILED,
+            problems=(
+                problem(
+                    key,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+                problem(
+                    other,
+                    code=ProviderProblemCode.NOT_FOUND,
+                    retryable=False,
+                ),
+            ),
+        )
+        self.assert_contract_error(
+            "INVALID_PROVIDER_REQUEST",
+            lambda: facts_module._authorize_google_place_details_result(
+                batched,
+                batched_raw,
+                policies,
+                _token=token,
+            ),
+        )
+
+        request = builtin_google_place_details_request(policies, key)
+        mismatched = builtin_google_place_details_observation(
+            request,
+            provider_record_id="place-other",
+        )
+        mismatched_raw = provider_result(
+            request=request,
+            status=ProviderResultStatus.SUCCESS,
+            observations=(mismatched,),
+        )
+        self.assert_contract_error(
+            "EVIDENCE_BINDING_MISMATCH",
+            lambda: facts_module._authorize_google_place_details_result(
+                request,
+                mismatched_raw,
+                policies,
+                _token=token,
+            ),
         )
 
     def test_builtin_google_route_requires_dedicated_authorization(
@@ -2054,6 +2402,66 @@ class FactContractTests(unittest.TestCase):
                 confidence=1,
             ),
         )
+
+    def test_opening_hours_reject_multiday_interval_but_accepts_overnight(
+        self,
+    ) -> None:
+        self.assert_contract_error(
+            "INVALID_PROVIDER_RESPONSE",
+            lambda: opening_value(
+                intervals=[
+                    {
+                        "start_at": "2026-10-03T10:00:00+09:00",
+                        "end_at": "2026-10-05T10:00:00+09:00",
+                    }
+                ]
+            ),
+        )
+
+        overnight = opening_value(
+            intervals=[
+                {
+                    "start_at": "2026-10-03T22:00:00+09:00",
+                    "end_at": "2026-10-04T02:00:00+09:00",
+                }
+            ]
+        )
+        self.assertEqual(
+            "2026-10-03T17:00:00Z",
+            overnight.payload["intervals"][0]["end_at"],
+        )
+
+    def test_opening_hours_accept_dst_local_day_boundaries(self) -> None:
+        for start_at, end_at, expected_hours in (
+            (
+                "2026-03-08T00:00:00-05:00",
+                "2026-03-09T00:00:00-04:00",
+                23,
+            ),
+            (
+                "2026-11-01T00:00:00-04:00",
+                "2026-11-02T00:00:00-05:00",
+                25,
+            ),
+        ):
+            with self.subTest(start_at=start_at):
+                value = opening_value(
+                    coverage_start=start_at[:10],
+                    coverage_end=start_at[:10],
+                    intervals=[{"start_at": start_at, "end_at": end_at}],
+                    timezone_name="America/New_York",
+                )
+                interval = value.payload["intervals"][0]
+                start = datetime.fromisoformat(
+                    interval["start_at"].replace("Z", "+00:00")
+                )
+                end = datetime.fromisoformat(
+                    interval["end_at"].replace("Z", "+00:00")
+                )
+                self.assertEqual(
+                    expected_hours,
+                    (end - start).total_seconds() / 3600,
+                )
 
     def test_regular_typical_hours_are_verified_but_draft_only(
         self,

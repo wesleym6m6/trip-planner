@@ -20,8 +20,11 @@ Statuses:
 import json
 import re
 import sys
-from datetime import datetime, time as local_time, timedelta
+from datetime import datetime, time as local_time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from trip_planner.opening_hours import evaluate_opening_window
 
 if __package__:
     from .plan_compat import (
@@ -39,7 +42,15 @@ OUTDOOR_TYPES = {
     "locality", "sublocality", "route", "intersection", "premise",
 }
 
-DOW_NAMES_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DOW_NAMES_EN = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 DOW_NAMES_ZH = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
 
 # Python weekday (0=Mon..6=Sun) → Google day (0=Sun, 1=Mon..6=Sat)
@@ -54,50 +65,68 @@ def parse_date_range(date_range_str):
 
 
 def get_day_hours_str(opening_hours, weekday_idx):
-    """Get human-readable hours string for a weekday (Python index)."""
-    if not opening_hours:
-        return None, None
-    descriptions = opening_hours.get("weekdayDescriptions", [])
-    if not descriptions or weekday_idx >= len(descriptions):
-        return None, None
-    day_str = descriptions[weekday_idx]
-    parts = day_str.split(": ", 1)
-    if len(parts) < 2:
-        return day_str, False
-    hours = parts[1]
-    is_closed = hours.strip().lower() == "closed"
-    return hours, is_closed
+    """Do not index locale-ordered provider prose by Python weekday."""
+
+    del opening_hours, weekday_idx
+    return None, None
 
 
 def get_periods_for_day(opening_hours, google_dow):
-    """Get all (open_min, close_min) periods for a Google day-of-week."""
-    if not opening_hours:
-        return []
+    """Return legacy periods touching this weekday, including prior overnight."""
+    if not opening_hours or not isinstance(opening_hours.get("periods"), list):
+        return None
     periods = []
     for p in opening_hours.get("periods", []):
-        if p.get("open", {}).get("day") != google_dow:
+        if not isinstance(p, dict):
             continue
-        open_h = p["open"].get("hour", 0)
-        open_m = p["open"].get("minute", 0)
-        close_day = p.get("close", {}).get("day", google_dow)
-        close_h = p.get("close", {}).get("hour", 23)
-        close_m = p.get("close", {}).get("minute", 59)
-
-        open_min = open_h * 60 + open_m
-        close_min = close_h * 60 + close_m
-        if close_day != google_dow:
-            close_min += 24 * 60  # overnight
-
-        periods.append((open_min, close_min, f"{open_h:02d}:{open_m:02d}", f"{close_h:02d}:{close_m:02d}"))
+        opened, closed = p.get("open"), p.get("close")
+        if not isinstance(opened, dict) or not isinstance(closed, dict):
+            continue
+        try:
+            open_day, close_day = int(opened["day"]), int(closed["day"])
+            open_h, open_m = int(opened.get("hour", 0)), int(opened.get("minute", 0))
+            close_h, close_m = int(closed.get("hour", 0)), int(closed.get("minute", 0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        values = (
+            (open_day, 6),
+            (close_day, 6),
+            (open_h, 23),
+            (close_h, 23),
+            (open_m, 59),
+            (close_m, 59),
+        )
+        if not all(0 <= value <= maximum for value, maximum in values):
+            continue
+        if open_day == google_dow:
+            open_min = open_h * 60 + open_m
+            close_min = close_h * 60 + close_m
+            if close_day != google_dow:
+                close_min += 24 * 60
+        elif open_day == (google_dow - 1) % 7 and close_day == google_dow:
+            open_min = open_h * 60 + open_m - 24 * 60
+            close_min = close_h * 60 + close_m
+        else:
+            continue
+        periods.append(
+            (
+                open_min,
+                close_min,
+                f"{open_h:02d}:{open_m:02d}",
+                f"{close_h:02d}:{close_m:02d}",
+            )
+        )
 
     periods.sort(key=lambda x: x[0])
     return periods
 
 
 def check_visit_time(periods, visit_time_str):
-    """Check if visit_time falls within any period.
+    """Legacy arrival-only advisory check.
 
-    Returns (status, detail_str).
+    This compatibility API intentionally cannot prove a visit is open: it has
+    no date-specific provider evidence or full visit duration.  New runtime
+    code must use :func:`trip_planner.opening_hours.evaluate_opening_window`.
     """
     if not visit_time_str or not periods:
         return None, None
@@ -117,7 +146,7 @@ def check_visit_time(periods, visit_time_str):
 
     # Check if visit falls in any period
     for open_min, close_min, open_str, close_str in periods:
-        if open_min <= visit_min <= close_min:
+        if open_min <= visit_min < close_min:
             return "in_range", f"{open_str}-{close_str}"
 
     # Not in any period — classify why
@@ -148,7 +177,7 @@ def is_outdoor_type(types):
     return bool(set(types) & OUTDOOR_TYPES)
 
 
-def check_place(place, cache, weekday_idx):
+def check_place(place, cache, weekday_idx, *, resolved_at=None):
     """Check a single place's opening hours for a given day and visit time."""
     place_id = place.get("place_id")
     title = place.get("title", "?")
@@ -158,32 +187,23 @@ def check_place(place, cache, weekday_idx):
         return None
 
     cache_entry = cache.get(place_id, {}) if place_id else {}
+    # Legacy caches contain a weekly regular schedule, never date-specific
+    # current/special-hours evidence.  It is advisory only.
     opening_hours = cache_entry.get("regular_opening_hours")
     types = cache_entry.get("types", [])
 
-    # Step 1: Check day-of-week
-    hours_str, is_closed = get_day_hours_str(opening_hours, weekday_idx)
-
-    if is_closed:
-        return {
-            "title": title,
-            "place_id": place_id,
-            "time": visit_time,
-            "status": "❌",
-            "hours": "Closed",
-            "note": "當天公休",
-        }
+    hours_str, _unused = get_day_hours_str(opening_hours, weekday_idx)
 
     # No hours data
-    if not hours_str:
+    if not opening_hours:
         if is_outdoor_type(types):
             return {
                 "title": title,
                 "place_id": place_id,
                 "time": visit_time,
-                "status": "🔓",
-                "hours": None,
-                "note": "戶外/公共空間",
+            "status": "⚠️",
+            "hours": None,
+            "note": "戶外/公共空間；無 date-specific 營業時間證據",
             }
         return {
             "title": title,
@@ -191,24 +211,44 @@ def check_place(place, cache, weekday_idx):
             "time": visit_time,
             "status": "❓",
             "hours": None,
-            "note": "無營業時間資料",
+            "note": "無營業時間資料；需確認",
         }
 
-    # Step 2: Check specific visit time against periods
+    # weekdayDescriptions uses locale-dependent ordering.  Only periods may
+    # inform this advisory; missing periods must remain unknown.
     google_dow = PY_TO_GOOGLE_DOW[weekday_idx]
     periods = get_periods_for_day(opening_hours, google_dow)
+    if periods is None:
+        return _unknown_place_result(
+            title, place_id, visit_time, hours_str,
+            "regular schedule 缺少 machine-readable periods；需確認",
+        )
+    if not periods:
+        return _unknown_place_result(
+            title, place_id, visit_time, hours_str,
+            "regular schedule 無可用 periods；不可推定開店或閉店",
+        )
 
-    if visit_time and periods:
+    if visit_time:
         time_status, detail = check_visit_time(periods, visit_time)
 
         if time_status == "in_range":
+            # Exercise the shared evaluator when the legacy cache provides a
+            # usable timezone.  Its result remains advisory because these are
+            # regular weekly periods, not current/special-hours evidence.
+            evaluator_note = _legacy_evaluator_note(
+                periods, place, cache_entry, resolved_at
+            )
             return {
                 "title": title,
                 "place_id": place_id,
                 "time": visit_time,
-                "status": "✅",
+                "status": "⚠️",
                 "hours": hours_str,
-                "note": f"{visit_time} 在 {detail} 內",
+                "note": (
+                    f"{visit_time} 落在 {detail}；regular schedule 僅 advisory、"
+                    f"需確認{evaluator_note}"
+                ),
             }
         elif time_status in ("early", "late", "break"):
             return {
@@ -217,17 +257,81 @@ def check_place(place, cache, weekday_idx):
                 "time": visit_time,
                 "status": "⚠️",
                 "hours": hours_str,
-                "note": detail,
+                "note": (
+                    f"{detail}；regular schedule 僅 advisory；"
+                    "需 date-specific 營業時間確認"
+                ),
             }
 
-    # Has hours but no visit time or no periods — just confirm day is open
+    # A regular schedule can never establish a verified green light.
     return {
         "title": title,
         "place_id": place_id,
         "time": visit_time,
-        "status": "✅",
+        "status": "⚠️",
         "hours": hours_str,
-        "note": None,
+        "note": "regular schedule 僅 advisory；需 date-specific 營業時間確認",
+    }
+
+
+def _legacy_windows(periods, arrival):
+    """Materialize legacy local-clock periods solely for advisory diagnostics."""
+    windows = []
+    for open_min, close_min, _open, _close in periods:
+        start = (arrival + timedelta(days=open_min // (24 * 60))).replace(
+            hour=int(open_min % (24 * 60) // 60),
+            minute=int(open_min % 60), second=0, microsecond=0,
+        )
+        end = (arrival + timedelta(days=close_min // (24 * 60))).replace(
+            hour=int(close_min % (24 * 60) // 60),
+            minute=int(close_min % 60), second=0, microsecond=0,
+        )
+        windows.append((start, end))
+    return windows
+
+
+def _legacy_evaluator_note(periods, place, cache_entry, resolved_at):
+    """Use the shared evaluator only with an unambiguous local instant."""
+    if resolved_at is None:
+        return "；缺少 arrival instant，無法評估完整時長"
+    try:
+        zone = ZoneInfo(cache_entry.get("time_zone", ""))
+        arrival = _localize_unambiguous(resolved_at, zone)
+        duration_value = place.get("duration_min", place.get("duration", 1))
+        duration = timedelta(minutes=max(1, float(duration_value)))
+        outcome = evaluate_opening_window(
+            _legacy_windows(periods, arrival), arrival, duration
+        )
+    except (TypeError, ValueError, ZoneInfoNotFoundError):
+        return "；timezone/DST 或完整時長未知，需確認"
+    if outcome.status != "open":
+        return "；完整停留時間跨出 regular shift"
+    return ""
+
+
+def _localize_unambiguous(local_value, zone):
+    """Attach a ZoneInfo only when its local wall clock maps once."""
+    if local_value.tzinfo is not None:
+        return local_value.astimezone(zone)
+    candidates = []
+    for fold in (0, 1):
+        candidate = local_value.replace(tzinfo=zone, fold=fold)
+        round_trip = candidate.astimezone(timezone.utc).astimezone(zone)
+        if round_trip.replace(tzinfo=None) == local_value:
+            candidates.append(candidate)
+    if len(candidates) != 2 or candidates[0].utcoffset() != candidates[1].utcoffset():
+        raise ValueError("local time is ambiguous or nonexistent")
+    return candidates[0]
+
+
+def _unknown_place_result(title, place_id, visit_time, hours, note):
+    return {
+        "title": title,
+        "place_id": place_id,
+        "time": visit_time,
+        "status": "❓",
+        "hours": hours,
+        "note": note,
     }
 
 
@@ -277,7 +381,9 @@ def main():
                 if resolved_at is not None
                 else weekday_idx
             )
-            result = check_place(place, cache, place_weekday_idx)
+            result = check_place(
+                place, cache, place_weekday_idx, resolved_at=resolved_at
+            )
             if result is None:
                 continue
             result["visit_date"] = (
@@ -287,9 +393,11 @@ def main():
             )
             day_check["places"].append(result)
 
-            if result["status"] in ("⚠️", "❌"):
+            if result["status"] in ("⚠️", "❌", "❓"):
                 warnings.append(
-                    f"{result['status']} {result['title']} — Day {day_num}（{DOW_NAMES_ZH[place_weekday_idx]}）{result.get('note', '')}"
+                    f"{result['status']} {result['title']} — Day "
+                    f"{day_num}（{DOW_NAMES_ZH[place_weekday_idx]}）"
+                    f"{result.get('note', '')}"
                 )
 
         checks.append(day_check)
@@ -302,12 +410,20 @@ def main():
     print(f"\n營業時間檢查結果（{trip_json.get('date_range', '?')}）", file=sys.stderr)
     print("=" * 50, file=sys.stderr)
     for day_check in checks:
-        print(f"\nDay {day_check['day']}（{day_check['day_of_week_zh']} {day_check['date']}）", file=sys.stderr)
+        print(
+            f"\nDay {day_check['day']}（"
+            f"{day_check['day_of_week_zh']} {day_check['date']}）",
+            file=sys.stderr,
+        )
         for p in day_check["places"]:
             time_str = f"[{p['time']}]" if p.get("time") else ""
             hours_display = p["hours"] or p.get("note", "")
             note = f" — {p['note']}" if p.get("note") and p["note"] != hours_display else ""
-            print(f"  {p['status']} {time_str:>7} {p['title']}: {hours_display}{note}", file=sys.stderr)
+            print(
+                f"  {p['status']} {time_str:>7} {p['title']}: "
+                f"{hours_display}{note}",
+                file=sys.stderr,
+            )
 
     if warnings:
         print(f"\n{'='*50}", file=sys.stderr)
@@ -315,7 +431,7 @@ def main():
         for w in warnings:
             print(f"  {w}", file=sys.stderr)
     else:
-        print(f"\n✅ 所有到達時間都在營業時間內", file=sys.stderr)
+        print("\n⚠️ 無 legacy 警告；仍需 date-specific 營業時間確認", file=sys.stderr)
 
 
 if __name__ == "__main__":

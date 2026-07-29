@@ -80,9 +80,16 @@ renderer、validator 與部分讀取工具可相容讀取，但 legacy writer �
 `PlanPatch` 路徑操作。Phase 5 的 `tripctl` CLI 尚未提供，除非已明確接受 developer
 workflow，否則不要 migration 真實 trip。
 
+Phase 4.4 的 Places profile / opening-hours runtime目前也是developer
+boundary：核心只有injected transport，沒有內建credential或live CLI。
+只有fresh、無衝突的`currentOpeningHours`可限制完整活動時段；
+`regularOpeningHours`、stale、conflicted或missing資料只會要求重新確認。
+舊`check_hours.py`使用regular cache，因此永遠只輸出advisory，不代表當日
+確定營業。
+
 兩階段流程：
 1. **Scout** — 互動式規劃：收集需求 → 解析景點 → 用戶篩選 → 路線優化 → 驗證
-2. **Build** — 生成網站：組裝 JSON → 充實交通 → 驗證營業時間 → 渲染 HTML → 部署
+2. **Build** — 生成網站：組裝 JSON → 充實交通 → legacy營業時間提示 → 渲染 HTML → 部署
 
 ## 專案結構
 
@@ -92,11 +99,11 @@ trip-plan/
 ├── tests/                 # offline adversarial regression
 ├── docs/                  # roadmap、ADR 與 correctness contracts
 ├── scripts/               # 所有腳本
-│   ├── build_places_cache.py   # 批次解析景點 → places_cache.json
+│   ├── build_places_cache.py   # legacy full-mask cache（預設 quarantine）
 │   ├── build_itinerary.py      # 從簡化輸入 + cache → itinerary.json
 │   ├── enrich_itinerary.py     # 充實交通資料（距離/時間/模式）
 │   ├── routes_coverage.py      # Routes API 地區覆蓋資料（transit/two_wheeler 支援國家）
-│   ├── check_hours.py          # 營業時間驗證（含到達時間）
+│   ├── check_hours.py          # legacy regular-hours advisory（不輸出綠燈）
 │   ├── render_trip.py          # 渲染 HTML + 行事曆
 │   ├── build_index.py          # 重建首頁
 │   └── deploy.sh               # 部署到 GitHub Pages
