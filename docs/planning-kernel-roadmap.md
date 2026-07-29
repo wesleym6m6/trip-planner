@@ -7,8 +7,9 @@ solver decision gate、Phase 4.0 facts/policy foundation、Phase 4.1A
 trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
 revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
 exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
-natural-language runtime intake已完成；真實provider驗收尚待明確授權；下一個
-code slice是Phase 4.5B snapshot-bound住宿evidence與comparison-ready candidate
+natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
+comparison candidate已完成；真實provider驗收尚待明確授權；下一個code slice是
+Phase 4.5C joint lodging / itinerary scoring
 
 ## 產品目標
 
@@ -316,14 +317,17 @@ Exit gate：
   514個offline tests與三個real-trip validators已通過，trip files hash未變；
   Phase 4.4 live API驗收仍需明確授權；
 - Phase 4.5A已建立process-local自然語言住宿／交通draft、candidate-only extraction、
-  exact runtime user-decision grant與逐夜coverage assessment。AI／provider不能提升
-  decision或自行宣稱verified，raw私人位置／時間／價格不進safe view，且本slice
-  沒有provider call、共同optimizer或canonical mutation。
+  non-authoritative reported decision claim與逐夜coverage assessment。
+  AI／provider不能提升decision或自行宣稱verified，raw私人位置／時間／價格不進
+  safe view，且本slice沒有provider call、共同optimizer或canonical mutation；
+- Phase 4.5B已建立exact snapshot-bound住宿identity／route evidence sidecar、
+  provider-neutral comparison candidate與offline hotel discovery normalizer。
+  Route必須帶產生observation的request receipt，並確認endpoint observation/value
+  未漂移；stale、conflicted、missing與缺receipt不暴露數值，只產生deduped refresh
+  requests。4.5A candidate仍維持candidate + unverified。
 
 Phase 4.5 remaining slices：
 
-- **4.5B — lodging evidence / comparison candidate**：snapshot-bound identity與
-  route evidence、provider-neutral comparison fields、hotel discovery adapter；
 - **4.5C — joint lodging / itinerary scoring**：固定交通、住宿錨點、景點、
   Routes、hours與換宿／冬季buffer共同評分；加入Busan／Hokkaido lodging canned
   acceptance；
@@ -706,6 +710,33 @@ Exit gate：
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
+
+### 2026-07-29 — Phase 4.5B lodging evidence / comparison candidate 完成
+
+- 新增runtime-only `LodgingComparisonCandidate` sidecar；它重申原始
+  `LodgingCandidate`必須維持candidate + unverified + empty evidence refs，並以
+  `basic_only`、`identity_bound`、`route_bound`、`blocked`表達目前能安全比較到哪一層，
+  不產生最佳住宿、decision promotion或canonical mutation。
+- Location ID只有經exact `EvidenceSnapshot` fresh identity resolution後才可成為
+  Routes endpoint；provider place ID、地址、座標與概略區域仍須identity review。Safe
+  view只含opaque IDs、state、coverage／known-field flags與attribution labels。
+- Route evidence除了current snapshot resolution，還必須帶產生該observation的exact
+  `GoogleRouteRequest` receipt，並核對原／現endpoint observation與value digest。
+  missing、stale、conflicted、缺receipt或endpoint drift不輸出duration/distance，
+  而是建立綁current snapshot的refresh request；相同semantic request會先去重，可直接
+  交既有Routes batch/session gate。
+- 新增process-local `normalize_serpapi_hotel_discovery()`，無HTTP或cache；query scope、
+  dates、occupancy、currency/minor unit、region/language與trusted completion time完整
+  綁定。Metadata error、top-level error、empty success、partial與invalid response
+  分開，provider search ID/property只留HMAC ref，所有輸出仍為provider-discovered
+  candidate + unverified。Result明確是non-provenance DTO；status與diagnostic ref不能
+  進authorization、cache、evidence、receipt或decision；沒有`HOTEL_OFFER`
+  promotion、availability或booking語意。
+- 55個Phase 4.5專項與全套569個offline tests、三個real-trip validators、Python
+  compile全過；29個trip files hash aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5C joint
+  lodging / itinerary scoring與Busan／Hokkaido canned acceptance。
 
 ### 2026-07-29 — Phase 4.5A natural-language lodging intake 完成
 

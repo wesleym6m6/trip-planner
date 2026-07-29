@@ -71,6 +71,11 @@ quarantine 的相容資料，正常規劃不可呼叫或採納。
 `search_hotels.py` 與 `hotels_cache.json` 若使用，僅為 provider-specific candidate
 discovery；須與手動輸入同等看待，不能代表房態、價格有效、可訂或已訂。候選位置可用
 `build_places_cache.py` 驗證；只有已驗證的座標／route 才可聲稱相對距離或便利性。
+4.5B 的 `normalize_serpapi_hotel_discovery()`只做caller-supplied response的offline
+normalization，不會執行搜尋；metadata error、top-level error、empty success與
+partial result必須分開，輸出仍只能是provider-discovered candidate + unverified。
+Result是non-provenance DTO；status、provider search ref與diagnostic ref均不得作
+authorization、cache、evidence、receipt或住宿決策依據。
 
 狀態規則：
 
@@ -79,9 +84,11 @@ discovery；須與手動輸入同等看待，不能代表房態、價格有效�
   booked 只保存為 `ReportedDecisionClaim`，等待4.5D真正host-owned確認；
 - evidence：`unverified` / `verified` / `stale` / `conflicted`；與 decision 分開，
   已選擇不等於已驗證。Phase 4.5A intake 一律是 `unverified`，不得自行填
-  `verified`；
-- Phase 4.5A 的上述狀態只在 runtime 使用，不能改 canonical plan。住宿專用的 human
-  confirmation / apply gate 尚未落地，不得直接用 generic `PlanPatch` 代替。
+  `verified`。4.5B只在獨立comparison sidecar投影identity／route evidence，不會
+  回寫candidate的evidence state；
+- Phase 4.5A/B 的上述draft、claim與sidecar只在 runtime 使用，不能改 canonical
+  plan。住宿專用的 human confirmation / apply gate 尚未落地，不得直接用 generic
+  `PlanPatch` 代替。
 
 ### 行程組裝
 
@@ -249,12 +256,17 @@ decision（`candidate` / `selected` / `fixed` / `booked`）與 evidence
 地址、座標或私人連結不得進 receipt、history、safe serialization 或錯誤訊息。
 
 1. 沒有住宿時，詢問偏好或提出少量 `💡 推薦` 的區域／住宿類型；不得填入假住宿。
-2. 對有精確位置的候選，和固定交通、必訪活動、景點及每日起終點共同比較；只在已驗證
-   route／hours evidence 下聲稱距離或便利性。
-3. 比較至少包含涵蓋夜晚、換宿、總移動／最長單段、晚到／早離風險、預算已知範圍與
-   `needs_verification` 項目；不要把低價或 AI 偏好冒充最佳解。
-4. `search_hotels.py` 可在使用者要求時提供額外 discovery，但其結果與手動候選同為
-   `candidate`，價格、房態與取消條件需重新確認。
+2. 用4.5B comparison sidecar表達涵蓋晚數、住宿類型、位置精度、價格是否已知與
+   evidence readiness。只有fresh location identity可成為route endpoint；route
+   observation還必須附原request receipt，且endpoint observation/value未漂移，
+   才可使用duration/distance。缺receipt、missing、stale或conflicted只要求refresh。
+3. 4.5B只顯示涵蓋夜晚、位置精度、已知價格flags、個別已驗證route與
+   `needs_verification`；換宿、總移動／最長單段、晚到／早離風險與預算彙總屬
+   4.5C。在此之前不宣稱kernel已選出最佳住宿，也不要把低價或 AI 偏好冒充最佳解。
+4. 4.5B正常流程只能normalize caller-supplied raw response。Legacy
+   `search_hotels.py`會實際呼叫provider並寫cache，只有使用者明確授權live provider、
+   已確認成本與retention policy時才可執行，且不屬4.5B exit gate；結果仍與手動候選
+   同為`candidate`，價格、房態與取消條件需重新確認。
 5. 只有使用者明確選擇、鎖定或完成交易，才可把候選升為 `selected`、`fixed` 或
    `booked`；Phase 4.5A只把這段明確語意保留為reported claim並顯示
    `awaiting_confirmation`，不能真正升級。4.5D host confirmation完成後，此決定仍

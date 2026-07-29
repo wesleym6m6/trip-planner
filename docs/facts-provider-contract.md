@@ -545,8 +545,17 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
   地址、座標與概略區域必須可同等進入住宿候選；
 - `search_metadata.status`、top-level `error` 與 empty-success 必須分開，且 query
   scope與 provider search ID不可在 normalization時丟失；
+- 4.5B的`normalize_serpapi_hotel_discovery()`只接受caller提供的bounded raw
+  response與trusted completion time，不執行HTTP。Request完整綁query、dates、
+  occupancy、currency/minor unit、region與language；unknown metadata status fail
+  closed，search/property identity只留process-HMAC ref；
+- normalizer result只是non-provenance DTO；status、provider search ref與diagnostic
+  ref都不可作authorization、cache hit、evidence、receipt、history或住宿決策依據。
+  真正evidence consumer只接受既有typed `EvidenceSnapshot`，不接受discovery result；
 - booking/departure/property token只作短期 provider session，不進 durable fact；
-- price、availability、currency、occupancy與日期完整綁定，但只可標為 tentative；
+- price若可精確normalize，必須與currency/minor unit、occupancy及日期完整綁定，
+  且只可標為tentative。4.5B不產生availability claim；未來provider若提供
+  availability，也必須綁相同完整scope並有獨立freshness policy；
 - 搜尋或 AI 建議都不是已訂位。Phase 4.5A 的所有 binder 只能建立 process-local
   candidate + unverified；清楚的使用者 selected / fixed / booked 語意只保留為
   non-authoritative `ReportedDecisionClaim`與opaque source ref，不能提升candidate；
@@ -761,27 +770,39 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   hotel search 僅是 candidate discovery，並與其他輸入同等處理；
 - Phase 4.5A draft 只包含住宿類型、private location hint、`[check_in, check_out)`
   local dates與可選的 minor-unit price；住客／房間、check-in/out time window、取消
-  條件與可訂性留給後續 provider／comparison slice，不能假裝本階段已支援；
+  條件與可訂性不進4.5A candidate。4.5B discovery request可綁住客／房間query
+  scope，但不把搜尋結果冒充availability或booking；
 - candidate 的 decision 與 evidence 是獨立維度。4.5A不提供任何decision或evidence
   promotion function；即使caller能直接import module，也只能產生candidate +
   unverified。使用者明確語意留在reported claim並回`awaiting_confirmation`，
-  snapshot-bound evidence promotion留給4.5B，真正host-owned decision boundary留給
-  4.5D。missing或概略位置一律揭露`needs_verification`，但可參與保守runtime比較；
+  snapshot-bound evidence projection由4.5B sidecar處理，真正host-owned decision
+  boundary留給4.5D。missing或概略位置一律揭露`needs_verification`，但可參與保守
+  runtime比較；
 - Phase 4.5A 所有 draft、binding 與 assessment 都是 process-local，不建立
   `FactKey`、`ProviderRequest`、`PlanPatch`，也不修改 canonical plan。私人位置、
   label、時間與價格不進safe view；公開binding ID使用process-secret keyed digest，
   不可跨process當durable identity。ID刻意在不同process改變；determinism只保證同一
   intake session內的結構結果、coverage與permutation invariance，不宣稱cross-process
   ID replay。單次assessment上限366晚、256個候選；
-- Phase 4.5B加入snapshot-bound住宿identity／route evidence與comparison-ready
-  candidate；4.5C才把住宿錨點、固定交通、景點、Routes、hours、冬季／換宿buffer
-  放入共同scoring；4.5D再加入住宿專用canonical confirmation/apply gate；
+- Phase 4.5B已加入snapshot-bound住宿identity／route evidence與comparison-ready
+  sidecar。只有`LOCATION_ID`經fresh identity resolution才可成為route endpoint；
+  route observation另須原request receipt，且當時／目前endpoint observation與value
+  digest相同。缺receipt、missing、stale、conflicted或endpoint drift不暴露route
+  數值，只建立current-snapshot refresh request。Sidecar仍要求原candidate維持
+  candidate + unverified + empty evidence refs；
+- 4.5B hotel discovery normalizer無HTTP、cache或durable fact，只把strict bounded
+  response轉成provider-discovered candidate + unverified。Success、partial、
+  empty、provider error與invalid response有互斥shape；raw query、provider status
+  payload、search/property token、位置與價格amount不進safe view；
+- 4.5C才把住宿錨點、固定交通、景點、Routes、hours、冬季／換宿buffer放入共同
+  scoring；4.5D再加入住宿專用canonical confirmation/apply gate；
 - 後續4.5C exit gate才加入Busan住宿比較與Hokkaido冬季跨城換宿canned acceptance；
   不搬動固定抵離／活動或已訂住宿，全套須離線、deterministic且real-trip files
   byte-for-byte不變。
 
-目前4.5A已完成22個專項回歸；全套536個offline tests、三個real-trip validators與
-Python compile通過。未呼叫provider、未render、未deploy、未修改`trips/`。
+目前Phase 4.5已完成55個A/B專項回歸；全套569個offline tests、三個real-trip
+validators與Python compile通過。未呼叫provider、未render、未deploy、未修改
+`trips/`；下一個slice是4.5C joint lodging / itinerary scoring。
 
 ### Phase 4.6 — readiness與 compliance preview
 

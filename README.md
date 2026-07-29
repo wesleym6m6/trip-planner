@@ -95,12 +95,27 @@ draft，沒有提到的內容保持 unknown。機票、渡輪、鐵路等只接�
 
 Phase 4.5A 的公開 binding 一律是 candidate + unverified。使用者若清楚說「選這間」
 或「已訂」，AI 會保留成附 opaque source reference 的 reported decision claim，
-不會遺失語意，也不會把 claim 冒充成權威 selected / fixed / booked。此 slice 沒有
-任何 decision promotion 或 canonical mutation 路徑，也尚未實作住宿／每日路線共同
-optimizer；evidence binding、共同 scoring 與真正 host-owned 的住宿確認／canonical
-apply gate 分別留在 Phase 4.5B、4.5C、4.5D。舊 `search_flights.py` 與其 cache 保留
-資料相容性，但已列為後續 quarantine，不是正常規劃功能；`search_hotels.py` 只可作
-住宿候選 discovery，不能代表房態、訂位或可直接寫入計畫。
+不會遺失語意，也不會把 claim 冒充成權威 selected / fixed / booked。
+
+Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
+與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
+且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
+duration/distance。missing、stale、conflicted、缺 receipt 或 endpoint drift 都只回
+`needs_verification` 與去重後的 refresh request，不會改寫 4.5A candidate。比較欄位
+只表達涵蓋晚數、住宿類型、位置精度、價格是否已知與 evidence readiness；「哪間最
+好」的共同 scoring 仍屬 Phase 4.5C。
+
+4.5B 另提供純 offline 的 SerpApi hotel response normalizer，嚴格區分 metadata
+status、top-level error、empty success 與 partial result；query/search ID/token/位置
+與價格原值不進 safe view，所有結果仍只產生 provider-discovered candidate +
+unverified。Result 只是 non-provenance DTO；status 與 process-local diagnostic ref
+不可作 authorization、cache、evidence、receipt 或住宿決策依據。此 normalizer 沒有
+HTTP、cache、`HOTEL_OFFER` fact、房態或訂位語意。
+真正 host-owned 的住宿確認／canonical apply gate 仍留在 Phase 4.5D。舊
+`search_flights.py` 與其 cache 保留資料相容性但已 quarantine；`search_hotels.py`
+也只可在使用者明確授權 live provider、成本與資料保留政策後，作 exit gate 外的
+legacy 候選 discovery；不能代表房態、訂位或可直接寫入計畫。一般 4.5B 流程只離線
+正規化 caller-supplied response，不會自行呼叫 provider。
 
 兩階段流程：
 1. **Scout** — 互動式規劃：收集需求 → 解析景點 → 用戶篩選 → 路線優化 → 驗證
