@@ -9,8 +9,9 @@ revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
 exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
 natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
 comparison candidate、Phase 4.5C joint lodging / itinerary recommendation與
-Phase 4.5D host-signed canonical lodging confirmation / apply已完成；真實provider
-驗收尚待明確授權；下一個code slice是Phase 4.6 readiness / compliance preview
+Phase 4.5D host-signed canonical lodging confirmation / apply，以及Phase 4.6A
+read-only readiness projection已完成；真實provider驗收尚待明確授權；下一個
+code slice是Phase 4.6B legacy evidence migration / cleanup preview
 
 ## 產品目標
 
@@ -350,7 +351,7 @@ Phase 4.5已完成：
 - consistent JSON envelope；
 - inspect / propose / score / validate / apply；
 - 重寫 trip-planner skill，讓 agent 使用 kernel，而不是把 prompt 當規則引擎；
-- draft / review / travel-ready readiness profiles；
+- 以統一 envelope 呈現 Phase 4.6 readiness profiles；
 - 統一 `retryable`、`pending_review_retained` 與 `next_action` result envelope；
 - 一次性 review/classify migrated baseline，明確採納後才解除
   `protected_activity_ids`；不得由 scheduler 偷清 migration protection。
@@ -717,6 +718,38 @@ Exit gate：
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
+
+### 2026-07-30 — Phase 4.6A read-only readiness projection 完成
+
+- 新增validated `CanonicalLodgingSummary`與factory-only `TripReadiness`，將exact
+  canonical revision/state、composed state、kernel report、lodging summary、
+  `EvidenceBinding`及完整`EvidenceSnapshot`綁成safe digest。Assessor會從
+  canonical plan + snapshot重新
+  compose並比對完整runtime view，再跑timeline kernel；caller不能刪除used evidence
+  或live attribution後沿用穩定binding digest，也不能提供自稱的report。
+- readiness固定為`draft`／`review`／`travel_ready`，輸出bounded counts、
+  machine-readable problem codes、單一`next_action`與allowlisted繁中摘要。只有
+  全部used evidence仍fresh、retained、selected、可供travel-ready且live
+  attribution完整時，才會給最早的freshness或retention deadline作為
+  `recheck_required_at`；需要recompose、refresh或resolve時不會沿用evidence
+  deadline，但仍會保留尚待確認住宿review的到期時間。
+- missing、stale、conflicted、retention-expired、selection/binding drift與
+  regular-hours advisory有不同結果。Canonical住宿即使decision為`booked`，
+  evidence仍是`unverified`並停在`review`；lodging intake現在保留exact
+  `[stay_start, stay_end)`，不同區間的`not_required`不能跨trip沿用。Safe output
+  只以不可逆`trip_ref`關聯行程，不回傳caller-controlled raw trip ID。
+- Canonical或完整composed view漂移會要求`recompose_trip_state`，不會誤報成
+  provider refresh或行程不可行；只有仍在有效期限內的waiting review會要求
+  `confirm_lodging`，過期、拒絕或binding mismatch會要求
+  `restage_lodging_review`。
+- 修正canonical plan缺`slug`時，`plan_to_trip_state()`誤用隨機temporary directory
+  名稱的既有不確定性；fallback現在固定使用canonical `trip_id`，同一plan可重播成
+  相同state digest。
+- 24個4.6A專項、全套624個offline tests、三個real-trip validators與Python compile
+  全過；29個trip files hash aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。未呼叫
+  provider、未render、未deploy、未修改`trips/`；下一個slice是4.6B legacy evidence
+  migration / cleanup preview。
 
 ### 2026-07-30 — Phase 4.5 product acceptance gate 完成
 

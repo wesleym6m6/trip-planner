@@ -1101,6 +1101,8 @@ class LodgingIntakeAssessment:
 
     status: LodgingIntakeStatus
     requirement: LodgingRequirement
+    stay_start: date
+    stay_end: date
     candidates: tuple[LodgingCandidate, ...] = field(
         default=(),
         repr=False,
@@ -1126,6 +1128,14 @@ class LodgingIntakeAssessment:
             raise TypeError(
                 "LodgingIntakeAssessment.requirement must be exact"
             )
+        stay_start = _exact_date(self.stay_start, "stay_start")
+        stay_end = _exact_date(self.stay_end, "stay_end")
+        if stay_end <= stay_start:
+            raise ValueError("stay_end must be after stay_start")
+        if (stay_end - stay_start).days > _MAX_STAY_NIGHTS:
+            raise ValueError(
+                "Lodging assessment span exceeds the bounded intake limit"
+            )
         if (
             not isinstance(self.candidates, tuple)
             or any(
@@ -1150,6 +1160,8 @@ class LodgingIntakeAssessment:
                 "contract_version": self.contract_version,
                 "status": self.status.value,
                 "requirement": self.requirement.value,
+                "stay_start": stay_start.isoformat(),
+                "stay_end": stay_end.isoformat(),
                 "candidate_ids": [
                     item.candidate_id for item in self.candidates
                 ],
@@ -1214,6 +1226,8 @@ class LodgingIntakeAssessment:
             "assessment_id": self.assessment_id,
             "status": self.status.value,
             "requirement": self.requirement.value,
+            "stay_start": self.stay_start.isoformat(),
+            "stay_end": self.stay_end.isoformat(),
             "candidates": [item.to_dict() for item in self.candidates],
             "required_nights": [
                 item.isoformat() for item in self.required_nights
@@ -1295,12 +1309,16 @@ def assess_lodging_intake(
             return _assessment(
                 status=LodgingIntakeStatus.CONFLICTED,
                 requirement=requirement,
+                stay_start=stay_start,
+                stay_end=stay_end,
                 candidates=ordered_candidates,
                 issues=(issue,),
             )
         return _assessment(
             status=LodgingIntakeStatus.NOT_REQUIRED,
             requirement=requirement,
+            stay_start=stay_start,
+            stay_end=stay_end,
             candidates=ordered_candidates,
         )
 
@@ -1478,6 +1496,8 @@ def assess_lodging_intake(
     return _assessment(
         status=status,
         requirement=requirement,
+        stay_start=stay_start,
+        stay_end=stay_end,
         candidates=ordered_candidates,
         required_nights=all_nights,
         option_missing_nights=option_missing,
@@ -1492,6 +1512,8 @@ def _assessment(
     *,
     status: LodgingIntakeStatus,
     requirement: LodgingRequirement,
+    stay_start: date,
+    stay_end: date,
     candidates: tuple[LodgingCandidate, ...],
     required_nights: tuple[date, ...] = (),
     option_missing_nights: tuple[date, ...] = (),
@@ -1503,6 +1525,8 @@ def _assessment(
     return LodgingIntakeAssessment(
         status=status,
         requirement=requirement,
+        stay_start=stay_start,
+        stay_end=stay_end,
         candidates=candidates,
         required_nights=required_nights,
         option_missing_nights=option_missing_nights,

@@ -789,6 +789,11 @@ def plan_to_trip_state(plan: Mapping[str, Any]) -> "TripState":
 
     validate_plan(plan)
     trip, itinerary = legacy_compatibility_views(plan)
+    if (
+        not isinstance(trip.get("slug"), str)
+        or not str(trip["slug"]).strip()
+    ):
+        trip["slug"] = str(plan["trip_id"])
     _omit_blank_legacy_optional_fields(trip, itinerary)
 
     from .loaders import load_legacy_trip

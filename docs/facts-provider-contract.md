@@ -830,18 +830,36 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   可在caller明確授權後另行執行，但4.5C scorer本身沒有HTTP、cache或provider fan-out。
 
 目前Phase 4.5已完成A/B/C/D runtime intake、evidence、joint recommendation與
-host-confirmed canonical apply，並通過可讀的Busan／Hokkaido離線walkthrough：
-74個Phase 4.5專項、全套600個offline tests、三個
-real-trip validators與Python
-compile通過；29個trip files hash aggregate維持
+host-confirmed canonical apply，並通過可讀的Busan／Hokkaido離線walkthrough。
+Phase 4.6A read-only readiness projection也已完成；全套624個offline tests、三個
+real-trip validators與Python compile通過，29個trip files hash aggregate維持
 `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
-未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.6 readiness /
-compliance preview。
+未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.6B legacy
+evidence migration / cleanup preview。
 
 ### Phase 4.6 — readiness與 compliance preview
 
-- draft / review / travel-ready facts checklist；
-- `recheck_required_at`；
+- 4.6A已提供validated `CanonicalLodgingSummary`與factory-only `TripReadiness`。
+  Assessor只接受canonical plan、exact `ComposedTripState`／`EvidenceSnapshot`及
+  原composition的availability keys，從plan + snapshot重新compose並比對完整runtime
+  view，再執行deterministic timeline kernel；輸出draft／review／travel-ready、
+  bounded problem counts、單一`next_action`、不可逆`trip_ref`及canonical／
+  composed／kernel-report／evidence safe digests；
+- `recheck_required_at`只取所有實際used且仍travel-ready facts的最早freshness或
+  retention deadline。stale、conflicted、missing、retention-expired、binding drift
+  或缺live attribution都fail closed；需要recompose／refresh／resolve時不會沿用
+  evidence deadline，但仍會回報尚待確認住宿review的到期時間；
+- canonical lodging的selected／fixed／booked只代表decision，evidence仍固定
+  unverified，因此readiness停在review。Lodging intake保留exact
+  `[stay_start, stay_end)`；不同區間的assessment不可沿用。沒有住宿且requirement
+  未明確時要求補充，不虛構住宿；
+- Canonical或完整composed view漂移要求`recompose_trip_state`；只有尚未到期的
+  waiting lodging review可要求`confirm_lodging`，過期、拒絕或binding mismatch
+  一律要求`restage_lodging_review`；
+- 4.6A沒有caller-owned/durable I/O、provider、store、render、confirmation或
+  mutation authority，safe
+  serialization不含provider value、attribution、位置、住宿日期、價格、URL或raw
+  state；
 - legacy evidence migration / cleanup preview；
 - 釜山、北海道先用 canned facts，再由使用者授權真實 provider驗收。
 

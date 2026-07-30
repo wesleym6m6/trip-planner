@@ -150,6 +150,8 @@ class NaturalLanguageIntakeTests(unittest.TestCase):
             requirement=LodgingRequirement.NOT_REQUIRED,
         )
         self.assertEqual(LodgingIntakeStatus.NOT_REQUIRED, empty.status)
+        self.assertEqual(START, empty.stay_start)
+        self.assertEqual(END, empty.stay_end)
         self.assertFalse(empty.needs_verification)
 
         conflict = assess_lodging_intake(

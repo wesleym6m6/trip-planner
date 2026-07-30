@@ -101,6 +101,7 @@ def _merge_routes(
     provider: str,
     specs: tuple[tuple[FactKey, float, datetime], ...],
     payload_extras: dict[str, object] | None = None,
+    purge_at: datetime | None = None,
 ) -> tuple[EvidenceLedger, tuple[FactObservation, ...]]:
     policy = next(
         item
@@ -149,7 +150,11 @@ def _merge_routes(
                 ),
                 retrieved_at=NOW,
                 valid_until=valid_until,
-                purge_at=NOW + timedelta(hours=23),
+                purge_at=(
+                    purge_at
+                    if purge_at is not None
+                    else NOW + timedelta(hours=23)
+                ),
                 confidence=1.0,
             )
         )

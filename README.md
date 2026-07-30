@@ -137,6 +137,28 @@ idempotency request重播；不同trip、revision、patch、anchor、selection b
 .venv/bin/python scripts/phase45_acceptance.py
 ```
 
+Phase 4.6A 提供純唯讀的 `assess_trip_readiness()`。Caller 必須同時提供 canonical
+plan、exact `ComposedTripState`、同一份 `EvidenceSnapshot`與原 composition 使用的
+opening-hours keys；assessor 會從 plan + snapshot 重新 compose、比對完整 runtime
+view、衍生住宿摘要，再執行 deterministic timeline kernel，不接受 caller 自稱的
+binding或檢查結果。輸出固定為 `draft`、`review` 或
+`travel_ready`，只含 safe digests、counts、machine-readable problems、單一
+`next_action` 與可用時的 `recheck_required_at`。missing、stale、conflicted、
+retention-expired、binding drift、缺 live attribution、regular hours 與待確認住宿
+各有保守分流；canonical/composed不一致會要求重新組裝，且需要 recompose、
+refresh 或 resolve 時不會捏造 evidence 有效期限。有效期限會取 freshness 與
+retention 兩者較早者；尚待確認住宿會另以 review 到期時間要求重新評估。沒有
+期限時，繁中摘要也不會暗示存在指定時間。
+只有仍有效的 waiting lodging review 會要求 `confirm_lodging`；過期、被拒絕或
+綁錯行程版本的 review 會要求 `restage_lodging_review`。
+
+這個 readiness seam 不讀寫 store、plan 或 provider，也沒有 mutation／confirmation
+authority；公開行程識別只提供不可逆的`trip_ref`。Canonical 住宿即使已是
+`booked`，其 evidence 仍固定為 `unverified`，
+因此只能進 `review`，不會被「已決定」誤判成「已驗證」。沒有住宿時也必須由
+lodging intake 以exact `[stay_start, stay_end)`明確表達 `not_required`，否則
+readiness 會要求補充資訊。
+
 4.5B 另提供純 offline 的 SerpApi hotel response normalizer，嚴格區分 metadata
 status、top-level error、empty success 與 partial result；query/search ID/token/位置
 與價格原值不進 safe view，所有結果仍只產生 provider-discovered candidate +

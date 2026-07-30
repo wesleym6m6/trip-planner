@@ -93,6 +93,19 @@ authorization、cache、evidence、receipt或住宿決策依據。
   `supports_authoritative_use=false`。4.5D只接受使用者直接指定或明選option後產生的
   exact `LodgingConfirmationRequest`；不得用generic `PlanPatch`／`ApprovalGrant`、
   reported claim或ranking代替host-signed confirmation。
+- Phase 4.6A readiness從canonical plan + exact snapshot重新compose並比對完整
+  composed view，再執行kernel。原composition若使用額外availability keys，必須
+  原樣傳入；不得只信穩定`EvidenceBinding.binding_digest`，因它刻意不包含
+  used observation與live attribution requirement。
+  不得把`feasible`直接翻成`travel_ready`：stale、missing、conflicted、
+  retention-expired、regular hours、缺live attribution或canonical lodging
+  `evidence_state=unverified`都必須保守降級。`booked`只表示decision，不是證據；
+  lodging intake必須與exact `[stay_start, stay_end)`相符；readiness沒有refresh、
+  confirmation、store或mutation authority。Canonical/composed不一致只能要求
+  `recompose_trip_state`，不能誤稱行程不可行；重新確認期限取freshness與retention
+  兩者較早者，尚待確認住宿則保留review expiry作狀態轉換期限。只有仍有效的
+  waiting review可要求`confirm_lodging`；過期、拒絕或binding mismatch只能要求
+  `restage_lodging_review`。
 
 ### 行程組裝
 
