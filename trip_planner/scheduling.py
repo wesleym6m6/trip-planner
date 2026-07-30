@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .availability import ActivityAvailability, AvailabilityDisposition
 from .codec import plan_to_trip_state
 from .composition import ComposedTripState, EvidenceBinding
 from .models import (
@@ -44,7 +45,7 @@ from .mutations import (
 from .timeline import evaluate_timeline
 
 
-SCHEDULE_PROBLEM_VERSION = "schedule-problem/v2"
+SCHEDULE_PROBLEM_VERSION = "schedule-problem/v3"
 SCHEDULE_CANDIDATE_VERSION = "schedule-candidate/v1"
 
 _MAX_CANDIDATES = 1
@@ -220,6 +221,7 @@ class ScheduleProblem:
     base_state_digest: str = ""
     canonical_state_digest: str = ""
     evidence_binding: EvidenceBinding | None = None
+    activity_availability: tuple[ActivityAvailability, ...] = ()
     problem_id: str = ""
 
     def __post_init__(self) -> None:
@@ -318,6 +320,84 @@ class ScheduleProblem:
                     "ScheduleProblem evidence and evaluation clocks differ.",
                 )
             evidence_binding_digest = self.evidence_binding.binding_digest
+        if (
+            not isinstance(self.activity_availability, tuple)
+            or any(
+                type(item) is not ActivityAvailability
+                for item in self.activity_availability
+            )
+        ):
+            raise ScheduleContractError(
+                "INVALID_INPUT",
+                "ScheduleProblem.activity_availability must contain exact "
+                "ActivityAvailability values.",
+            )
+        availability_by_id = {
+            item.activity_id: item for item in self.activity_availability
+        }
+        if len(availability_by_id) != len(self.activity_availability):
+            raise ScheduleContractError(
+                "INVALID_INPUT",
+                "ScheduleProblem.activity_availability activity IDs must be unique.",
+            )
+        unknown_availability_ids = set(availability_by_id).difference(
+            self.state.activity_by_id
+        )
+        if unknown_availability_ids:
+            raise ScheduleContractError(
+                "INVALID_REFERENCE",
+                "ScheduleProblem.activity_availability refers to unknown activities.",
+            )
+        invalid_hard_refs = {
+            reference
+            for availability in self.activity_availability
+            if availability.disposition
+            is AvailabilityDisposition.HARD_CURRENT
+            for reference in availability.evidence_refs
+            if (
+                not isinstance(reference, str)
+                or not reference.startswith("fact:")
+                or len(reference) != 69
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in reference[5:]
+                )
+            )
+        }
+        if invalid_hard_refs:
+            raise ScheduleContractError(
+                "INVALID_INPUT",
+                "ScheduleProblem hard availability requires "
+                "fact:<sha256> evidence references.",
+            )
+        if self.evidence_binding is not None:
+            bound_observation_ids = set(
+                self.evidence_binding.used_observation_ids
+            )
+            unbound_hard_refs = {
+                reference[5:]
+                for availability in self.activity_availability
+                if availability.disposition
+                is AvailabilityDisposition.HARD_CURRENT
+                for reference in availability.evidence_refs
+                if reference[5:] not in bound_observation_ids
+            }
+            if unbound_hard_refs:
+                raise ScheduleContractError(
+                    "INVALID_INPUT",
+                    "ScheduleProblem hard availability evidence is absent "
+                    "from its evidence binding.",
+                )
+        object.__setattr__(
+            self,
+            "activity_availability",
+            tuple(
+                sorted(
+                    self.activity_availability,
+                    key=lambda item: item.activity_id,
+                )
+            ),
+        )
         expected_problem_id = _digest(
             {
                 "contract_version": self.contract_version,
@@ -326,6 +406,9 @@ class ScheduleProblem:
                 "base_state_digest": expected_state_digest,
                 "canonical_state_digest": canonical_state_digest,
                 "evidence_binding_digest": evidence_binding_digest,
+                "activity_availability": _stable_value(
+                    self.activity_availability
+                ),
                 "evaluation_at": _utc_iso(self.evaluation_at),
                 "scope": _stable_value(self.scope),
                 "preferences": _stable_value(self.preferences),
@@ -787,6 +870,24 @@ def schedule_problem_from_composed(
         limits=limits if limits is not None else SearchLimits(),
         canonical_state_digest=composed.canonical_state_digest,
         evidence_binding=composed.evidence,
+        activity_availability=composed.activity_availability,
+    )
+
+
+def evaluate_schedule_state(
+    problem: ScheduleProblem,
+    state: TripState,
+) -> CheckReport:
+    """Evaluate a schedule state with its pinned clock and availability sidecar."""
+
+    if type(problem) is not ScheduleProblem:
+        raise TypeError("evaluate_schedule_state requires ScheduleProblem")
+    if type(state) is not TripState:
+        raise TypeError("evaluate_schedule_state requires exact TripState")
+    return evaluate_timeline(
+        state,
+        now=problem.evaluation_at,
+        activity_availability=problem.activity_availability,
     )
 
 
@@ -1547,16 +1648,14 @@ def build_schedule_candidate(
     provisional_state = materialize_schedule(
         problem, assignments, promoted
     )
-    provisional_report = evaluate_timeline(
-        provisional_state, now=problem.evaluation_at
-    )
+    provisional_report = evaluate_schedule_state(problem, provisional_state)
     normalized_assignments = assignments_from_state(
         problem, provisional_state, provisional_report
     )
     state = materialize_schedule(
         problem, normalized_assignments, promoted
     )
-    report = evaluate_timeline(state, now=problem.evaluation_at)
+    report = evaluate_schedule_state(problem, state)
     fixed_point_assignments = assignments_from_state(
         problem, state, report
     )
@@ -2474,6 +2573,7 @@ __all__ = [
     "build_schedule_candidate",
     "candidate_to_plan_patch",
     "default_replan_scope",
+    "evaluate_schedule_state",
     "materialize_schedule",
     "replay_schedule_candidate",
     "schedule_key",

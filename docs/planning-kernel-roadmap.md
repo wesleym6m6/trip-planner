@@ -8,8 +8,9 @@ trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
 revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
 exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
 natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
-comparison candidate已完成；真實provider驗收尚待明確授權；下一個code slice是
-Phase 4.5C joint lodging / itinerary scoring
+comparison candidate、Phase 4.5C joint lodging / itinerary recommendation
+已完成；真實provider驗收尚待明確授權；下一個code slice是Phase 4.5D
+canonical lodging confirmation / apply
 
 ## 產品目標
 
@@ -215,10 +216,12 @@ Exit gate：
 - 釜山 fixture 可處理大眾運輸與每日住宿 anchor；
 - 北海道 fixture 可處理冬季 buffer、跨城市與 fixed reservations。
 
-目前進度（2026-07-29）：
+目前進度（2026-07-30）：
 
-- `schedule-problem/v2`、`schedule-candidate/v1`、完整 assignment replay、
-  per-day summary、lexicographic scorer 與 typed failures 已落地；
+- `schedule-problem/v3`、`schedule-candidate/v1`、完整 assignment replay、
+  per-day summary、lexicographic scorer 與 typed failures 已落地；v3把
+  runtime `ActivityAvailability` 納入problem identity與solver/replay，
+  process-local v2 problem fail closed；
 - production solver 已升為 `bounded-deterministic-best-first/v2`；可跨
   non-improving plateau，並加入 coverage-first in-place promotion、lazy
   `REQUIRES` closure 與 bounded selective-time subset repair，不宣稱全域
@@ -324,13 +327,15 @@ Exit gate：
   provider-neutral comparison candidate與offline hotel discovery normalizer。
   Route必須帶產生observation的request receipt，並確認endpoint observation/value
   未漂移；stale、conflicted、missing與缺receipt不暴露數值，只產生deduped refresh
-  requests。4.5A candidate仍維持candidate + unverified。
+  requests。4.5A candidate仍維持candidate + unverified；
+- Phase 4.5C已建立exact composed/snapshot-bound的detached lodging-anchor
+  `ScheduleProblem`與lexicographic recommendation。固定抵離／booked活動、Routes、
+  current hours、逐夜coverage、換宿與明示冬季buffer共同進入評估；不完整evidence、
+  reported claim、同分或mixed snapshot都不產生winner，價格在可比較evidence完成前
+  明確排除。Result只表示priority review，不含decision/canonical authority。
 
-Phase 4.5 remaining slices：
+Phase 4.5 remaining slice：
 
-- **4.5C — joint lodging / itinerary scoring**：固定交通、住宿錨點、景點、
-  Routes、hours與換宿／冬季buffer共同評分；加入Busan／Hokkaido lodging canned
-  acceptance；
 - **4.5D — canonical lodging confirmation/apply**：住宿專用human confirmation
   authority、review、typed mutation與既有TripStore protection整合；4.5A的reported
   claim不能取代此gate。
@@ -710,6 +715,29 @@ Exit gate：
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
+
+### 2026-07-30 — Phase 4.5C joint lodging / itinerary recommendation 完成
+
+- 新增純runtime `LodgingItineraryOption`／`LodgingItineraryAssessment` sidecar；
+  每個option只能由同一`ComposedTripState`加宣告的住宿錨點建立，solver結果在比較前
+  重新replay。未宣告day/location mutation、mixed snapshot、route slot語意不等價或
+  偽造hours sidecar一律fail closed。
+- 共同score採固定lexicographic vector，先守hard／required／protected／evidence，
+  再比較換宿、已接受行程變動、slack、最長住宿leg與總travel。只有fresh identity、
+  exact route receipt、current snapshot observation與所有solver required arcs完整
+  時才可排序；unknown/stale/conflicted/missing值不轉成0。價格目前明確不評分。
+- `schedule-problem/v3`把`ActivityAvailability`納入problem identity、solver、
+  replay、preview與post-commit recomposition；evidence-bound hard hours refs必須出現
+  在binding，post-commit hours drift使用current report並保留
+  `EVIDENCE_REVISION_CHANGED`。
+- Busan canned acceptance包含固定10:00抵達邊界、每日住宿錨點與18:00 booked晚餐；
+  Hokkaido包含A→B split stay、180分鐘冬季跨城leg、45分鐘明示buffer與16:00 booked
+  ryokan check-in。同分不選winner，reported booking claim仍等待4.5D。
+- 8個4.5C專項、63個Phase 4.5 A/B/C專項與全套589個offline tests、三個real-trip
+  validators及Python compile全過；29個trip files hash aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5D
+  canonical lodging confirmation / apply。
 
 ### 2026-07-29 — Phase 4.5B lodging evidence / comparison candidate 完成
 

@@ -44,6 +44,7 @@ from .scheduling import (
     ScheduleScore,
     assignments_from_state,
     candidate_to_plan_patch,
+    evaluate_schedule_state,
     replay_schedule_candidate,
     schedule_key,
     schedule_problem_from_composed,
@@ -51,7 +52,6 @@ from .scheduling import (
     score_schedule,
 )
 from .store import StoreProblem, StoreResult
-from .timeline import evaluate_timeline
 
 
 _OBJECTIVE_NAMES = (
@@ -847,7 +847,7 @@ class ScheduleStager:
             patch,
             (),
             preview,
-            evaluation_at=problem.evaluation_at,
+            problem=problem,
         )
         if contract_problem is not None:
             return _problem_review(
@@ -1242,7 +1242,7 @@ class ScheduleStager:
             pending.patch,
             approvals,
             preview,
-            evaluation_at=pending.problem.evaluation_at,
+            problem=pending.problem,
         )
         if contract_problem is not None:
             self._pending = None
@@ -1678,9 +1678,7 @@ def _assess_strict_improvement(
     final_state: TripState | None = None,
 ) -> _ScheduleAssessment:
     final = final_state or replay_schedule_candidate(problem, candidate)
-    baseline_report = evaluate_timeline(
-        problem.state, now=problem.evaluation_at
-    )
+    baseline_report = evaluate_schedule_state(problem, problem.state)
     baseline_score = score_schedule(
         problem,
         problem.state,
@@ -1693,7 +1691,7 @@ def _assess_strict_improvement(
     )
     baseline_schedule_key = schedule_key(baseline_assignments, ())
     baseline_key = baseline_score.objective_key()
-    candidate_report = evaluate_timeline(final, now=problem.evaluation_at)
+    candidate_report = evaluate_schedule_state(problem, final)
     candidate_score = score_schedule(
         problem,
         final,
@@ -1763,7 +1761,7 @@ def _validate_preview_contract(
     approvals: Sequence[ApprovalGrant],
     result: StoreResult,
     *,
-    evaluation_at: datetime,
+    problem: ScheduleProblem,
 ) -> ScheduleStageProblem | None:
     """Verify a repository preview against the trusted pure mutation engine."""
 
@@ -1834,10 +1832,7 @@ def _validate_preview_contract(
         expected_generation = current_generation + 1
         try:
             expected_state = plan_to_trip_state(expected_candidate)
-            expected_report = evaluate_timeline(
-                expected_state,
-                now=evaluation_at,
-            )
+            expected_report = evaluate_schedule_state(problem, expected_state)
         except (TypeError, ValueError) as exc:
             return ScheduleStageProblem(
                 "PREVIEW_CONTRACT_VALIDATION_FAILED",
@@ -1849,10 +1844,7 @@ def _validate_preview_contract(
         expected_generation = current_generation
         try:
             expected_state = plan_to_trip_state(expected_candidate)
-            expected_report = evaluate_timeline(
-                expected_state,
-                now=evaluation_at,
-            )
+            expected_report = evaluate_schedule_state(problem, expected_state)
         except (TypeError, ValueError) as exc:
             return ScheduleStageProblem(
                 "PREVIEW_CONTRACT_VALIDATION_FAILED",
@@ -2093,9 +2085,8 @@ def _confirmed_result(
             ),
         )
     if revision_is_current:
-        canonical_report = evaluate_timeline(
-            observed_state,
-            now=pending.problem.evaluation_at,
+        canonical_report = evaluate_schedule_state(
+            pending.problem, observed_state
         )
         report = canonical_report
         state_digest_matches = (
@@ -2160,13 +2151,24 @@ def _confirmed_result(
                 composed = compose_trip_state(
                     observed_plan, evidence_snapshot
                 )
-                report = evaluate_timeline(
+                current_problem = schedule_problem_from_composed(
+                    composed,
+                    scope=pending.problem.scope,
+                    preferences=pending.problem.preferences,
+                    limits=pending.problem.limits,
+                )
+                availability_matches = (
+                    current_problem.activity_availability
+                    == pending.problem.activity_availability
+                )
+                report = evaluate_schedule_state(
+                    current_problem,
                     composed.state,
-                    now=pending.problem.evaluation_at,
                 )
                 if (
                     composed.evidence.binding_digest
                     != pending.problem.evidence_binding.binding_digest
+                    or not availability_matches
                 ):
                     evidence_problem = True
                     candidate_is_current = False

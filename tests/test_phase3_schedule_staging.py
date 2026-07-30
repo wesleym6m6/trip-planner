@@ -195,6 +195,118 @@ def _route_snapshot(
     )
 
 
+def _hours_snapshot(
+    *,
+    closed: bool,
+    store_revision: str,
+) -> EvidenceSnapshot:
+    policies = ProviderPolicyRegistry(
+        policies=(
+            ProviderPolicy(
+                policy_id="schedule-hours-runtime-v1",
+                provider_id="schedule-hours",
+                adapter_id="schedule-hours",
+                adapter_version="v1",
+                contract_region="test",
+                allowed_fact_kinds=(FactKind.PLACE_OPENING_HOURS,),
+                allowed_value_fields=(
+                    "basis",
+                    "closed_dates",
+                    "coverage_end",
+                    "coverage_start",
+                    "intervals",
+                    "provider_place_id",
+                    "timezone",
+                ),
+                allowed_operations=("fetch-opening-hours",),
+                persistence=EvidencePersistence.MEMORY_ONLY,
+                max_validity_seconds=2 * 60 * 60,
+                max_retention_seconds=3 * 60 * 60,
+            ),
+        )
+    )
+    policy = policies.policy("schedule-hours-runtime-v1")
+    key = FactKey(
+        kind=FactKind.PLACE_OPENING_HOURS,
+        subject_ids=("location-alpha",),
+        qualifiers=(
+            ("basis", "current"),
+            ("identity_provider", "schedule-hours"),
+            ("provider_place_id", "place-alpha"),
+            ("target_end", "2026-07-28"),
+            ("target_start", "2026-07-28"),
+        ),
+    )
+    request = ProviderRequest(
+        provider_id="schedule-hours",
+        adapter_id="schedule-hours",
+        adapter_version="v1",
+        operation="fetch-opening-hours",
+        fact_keys=(key,),
+        policy_id=policy.policy_id,
+        policy_digest=policy.policy_digest,
+    )
+    retrieved_at = EVALUATION_AT - timedelta(minutes=1)
+    observation = FactObservation(
+        key=key,
+        value=FactValue.from_payload(
+            FactKind.PLACE_OPENING_HOURS,
+            {
+                "provider_place_id": "place-alpha",
+                "timezone": "Asia/Seoul",
+                "basis": "current",
+                "coverage_start": "2026-07-28",
+                "coverage_end": "2026-07-28",
+                "intervals": (
+                    []
+                    if closed
+                    else [
+                        {
+                            "start_at": "2026-07-28T08:00:00+09:00",
+                            "end_at": "2026-07-28T18:00:00+09:00",
+                        }
+                    ]
+                ),
+                "closed_dates": ["2026-07-28"] if closed else [],
+            },
+        ),
+        provenance=ProviderProvenance(
+            provider_id="schedule-hours",
+            adapter_id="schedule-hours",
+            adapter_version="v1",
+            request_fingerprint=request.request_fingerprint,
+            retention_policy_id=policy.policy_id,
+            response_id=("hours-closed" if closed else "hours-open"),
+            source_uri="https://example.test/hours-source",
+            attributions=(),
+        ),
+        retrieved_at=retrieved_at,
+        valid_until=EVALUATION_AT + timedelta(hours=1),
+        purge_at=EVALUATION_AT + timedelta(hours=2),
+        confidence=1.0,
+    )
+    result = ProviderResult(
+        request_fingerprint=request.request_fingerprint,
+        status=ProviderResultStatus.SUCCESS,
+        observations=(observation,),
+        problems=(),
+        attempts_used=1,
+        completed_at=EVALUATION_AT,
+    )
+    authorized = authorize_provider_result(request, result, policies)
+    merged = merge_provider_result(
+        EvidenceLedger(policies),
+        authorized,
+        purge_now=EVALUATION_AT,
+    )
+    return EvidenceSnapshot.from_ledger(
+        merged.ledger,
+        evaluation_at=EVALUATION_AT,
+        purge_now=EVALUATION_AT,
+        store_revision=store_revision,
+    )
+
+
 class _RecordingRepository:
     def __init__(self, store: TripStore) -> None:
         self.store = store
@@ -1038,6 +1150,54 @@ class Phase3ScheduleStagingTests(unittest.TestCase):
         self.assertEqual(
             ["09:00:00", "10:00:00"],
             [activity["time"] for activity in day["places"]],
+        )
+
+    def test_postcommit_hours_drift_reports_current_closure(self) -> None:
+        plan = self._plan()
+        plan["state"]["trip"]["date_range"] = "2026-07-28 ~ 2026-07-28"
+        plan["state"]["itinerary"]["days"][0]["date"] = "2026-07-28"
+        plan["revision"] = compute_revision(plan)
+        self._write_plan(plan)
+        open_hours = _hours_snapshot(closed=False, store_revision="1" * 64)
+        closed_hours = _hours_snapshot(closed=True, store_revision="2" * 64)
+        source = _SnapshotEvidenceSource(
+            open_hours,
+            open_hours,
+            open_hours,
+            closed_hours,
+        )
+        composed = compose_trip_state(
+            self._store().load_plan(),
+            source.snapshot(evaluation_at=EVALUATION_AT),
+        )
+        problem = schedule_problem_from_composed(composed)
+        candidate = build_schedule_candidate(
+            problem,
+            (
+                ScheduleAssignment("activity-alpha", "day-1", 0, time(9)),
+                ScheduleAssignment("activity-beta", "day-1", 1, time(10)),
+            ),
+            solver=SOLVER_VERSION,
+        )
+        stager = ScheduleStager(
+            _RecordingRepository(self._store()),
+            run_id="schedule-hours-postcommit-drift",
+            max_auto_changes=8,
+            evidence_source=source,
+        )
+
+        review = stager.stage_schedule_candidate(problem, candidate)
+        self.assertTrue(review.ready_to_commit, review.to_dict())
+        result = stager.commit(review.review_id or "")
+
+        self.assertTrue(result.applied, result.to_dict())
+        self.assertEqual(ScheduleStageState.WAITING_EXTERNAL, result.state)
+        self.assertIn("EVIDENCE_REVISION_CHANGED", _problem_codes(result))
+        self.assertFalse(result.candidate_is_current)
+        self.assertEqual(CheckStatus.INFEASIBLE, result.check_report.status)
+        self.assertIn(
+            "OPENING_HOURS_VIOLATION",
+            {item.code for item in result.check_report.issues},
         )
 
     def test_evidence_bound_public_values_redact_runtime_scores(

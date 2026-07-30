@@ -103,7 +103,17 @@ Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：
 duration/distance。missing、stale、conflicted、缺 receipt 或 endpoint drift 都只回
 `needs_verification` 與去重後的 refresh request，不會改寫 4.5A candidate。比較欄位
 只表達涵蓋晚數、住宿類型、位置精度、價格是否已知與 evidence readiness；「哪間最
-好」的共同 scoring 仍屬 Phase 4.5C。
+好」不在 4.5B 裡決定。
+
+Phase 4.5C 新增純 runtime 的 joint recommendation sidecar。Caller 先把已知的固定
+抵離交通、已訂活動、住宿候選錨點、Routes 與 current opening hours 組成同一
+`ComposedTripState`／exact `EvidenceSnapshot`，再為各住宿配置建立 detached
+`ScheduleProblem`。只有共同 route slots、solver required arcs 與 hours 都可由同一
+snapshot 重播時，才依固定 lexicographic vector 排出「優先 review」；missing、stale、
+conflicted、缺 receipt、reported booking claim、snapshot drift 或同分都不會產生
+winner。價格在有可比較且 scope 一致的 price evidence 前明確排除。結果永遠
+`supports_authoritative_use=false`，不含 `PlanPatch`、decision promotion 或 canonical
+writer；真正的住宿確認／套用仍由 Phase 4.5D 負責。
 
 4.5B 另提供純 offline 的 SerpApi hotel response normalizer，嚴格區分 metadata
 status、top-level error、empty success 與 partial result；query/search ID/token/位置

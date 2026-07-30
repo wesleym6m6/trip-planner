@@ -7,6 +7,12 @@ from dataclasses import replace
 from datetime import date, datetime, time, timezone
 from unittest.mock import patch
 
+import trip_planner
+from trip_planner.availability import (
+    ActivityAvailability,
+    AvailabilityDisposition,
+    AvailabilityInterval,
+)
 from trip_planner.composition import ComposedTripState, EvidenceBinding
 from trip_planner.models import (
     Activity,
@@ -38,6 +44,7 @@ from trip_planner.scheduling import (
     build_schedule_candidate,
     candidate_to_plan_patch,
     default_replan_scope,
+    evaluate_schedule_state,
     materialize_schedule,
     replay_schedule_candidate,
     schedule_problem_from_composed,
@@ -48,6 +55,7 @@ from trip_planner.timeline import evaluate_timeline
 
 
 EVALUATION_AT = datetime(2026, 7, 28, tzinfo=timezone.utc)
+HOURS_OBSERVATION_ID = "a" * 64
 VERIFIED = EvidenceState.VERIFIED
 HARD = ConstraintStrength.HARD
 
@@ -198,6 +206,26 @@ def problem(
     )
 
 
+def _hard_availability(
+    activity_id: str,
+    *,
+    start_hour_utc: int = 2,
+    end_hour_utc: int = 4,
+) -> ActivityAvailability:
+    return ActivityAvailability(
+        activity_id=activity_id,
+        disposition=AvailabilityDisposition.HARD_CURRENT,
+        intervals=(
+            AvailabilityInterval(
+                datetime(2026, 10, 1, start_hour_utc, tzinfo=timezone.utc),
+                datetime(2026, 10, 1, end_hour_utc, tzinfo=timezone.utc),
+            ),
+        ),
+        evidence_refs=(f"fact:{HOURS_OBSERVATION_ID}",),
+        fresh_until=datetime(2026, 10, 2, tzinfo=timezone.utc),
+    )
+
+
 class Phase3KernelSummaryTests(unittest.TestCase):
     def test_day_summary_includes_buffer_and_return_to_base(self) -> None:
         visit = activity(
@@ -227,6 +255,246 @@ class Phase3KernelSummaryTests(unittest.TestCase):
 
 
 class Phase3ProblemContractTests(unittest.TestCase):
+    def test_schedule_state_evaluator_is_exported(self) -> None:
+        self.assertIs(
+            evaluate_schedule_state,
+            trip_planner.evaluate_schedule_state,
+        )
+
+    def test_process_local_v2_problem_is_rejected_after_v3_bump(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ScheduleContractError,
+            "Unsupported schedule problem version",
+        ):
+            replace(
+                problem(
+                    state(
+                        days=(day(),),
+                        activities=(),
+                        travel=(),
+                    )
+                ),
+                contract_version="schedule-problem/v2",
+                problem_id="",
+            )
+
+    def test_problem_id_tracks_activity_availability_sidecar(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=complete_edges(("hotel", "loc-visit"), duration=0),
+        )
+        baseline = problem(trip)
+        with_availability = replace(
+            baseline,
+            activity_availability=(_hard_availability("visit"),),
+            problem_id="",
+        )
+
+        self.assertNotEqual(baseline.problem_id, with_availability.problem_id)
+        self.assertEqual(
+            (_hard_availability("visit"),),
+            with_availability.activity_availability,
+        )
+
+    def test_problem_rejects_unknown_or_duplicate_availability_activity(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=complete_edges(("hotel", "loc-visit"), duration=0),
+        )
+        with self.assertRaisesRegex(ScheduleContractError, "unknown activities"):
+            replace(
+                problem(trip),
+                activity_availability=(_hard_availability("missing"),),
+                problem_id="",
+            )
+        sidecar = _hard_availability("visit")
+        with self.assertRaisesRegex(ScheduleContractError, "must be unique"):
+            replace(
+                problem(trip),
+                activity_availability=(sidecar, sidecar),
+                problem_id="",
+            )
+
+    def test_composed_problem_carries_activity_availability(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        canonical = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=(),
+        )
+        revision = "1" * 64
+        composed_state = replace(canonical, revision=revision)
+        binding = EvidenceBinding(
+            policy_registry_revision="2" * 64,
+            store_revision="3" * 64,
+            evidence_revision="4" * 64,
+            evaluation_at=EVALUATION_AT,
+            purge_checked_at=EVALUATION_AT,
+            snapshot_id="5" * 64,
+            used_observation_ids=(HOURS_OBSERVATION_ID,),
+        )
+        composed = ComposedTripState(
+            state=composed_state,
+            trip_id="canonical-phase3-fixture",
+            plan_revision=revision,
+            canonical_state_digest=trip_state_digest(canonical),
+            composed_state_digest=trip_state_digest(composed_state),
+            evidence=binding,
+            activity_availability=(_hard_availability("visit"),),
+        )
+
+        self.assertEqual(
+            composed.activity_availability,
+            schedule_problem_from_composed(composed).activity_availability,
+        )
+
+    def test_evidence_bound_problem_rejects_unbound_hard_availability(
+        self,
+    ) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=(),
+        )
+        binding = EvidenceBinding(
+            policy_registry_revision="2" * 64,
+            store_revision="3" * 64,
+            evidence_revision="4" * 64,
+            evaluation_at=EVALUATION_AT,
+            purge_checked_at=EVALUATION_AT,
+            snapshot_id="5" * 64,
+        )
+
+        with self.assertRaisesRegex(
+            ScheduleContractError,
+            "absent from its evidence binding",
+        ):
+            replace(
+                problem(trip),
+                evidence_binding=binding,
+                activity_availability=(_hard_availability("visit"),),
+                problem_id="",
+            )
+
+    def test_problem_rechecks_hard_availability_reference_format(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=(),
+        )
+        malformed_refs = (
+            f"xxxxx{HOURS_OBSERVATION_ID}",
+            "fact:not-a-digest",
+        )
+
+        for reference in malformed_refs:
+            with self.subTest(reference=reference):
+                sidecar = _hard_availability("visit")
+                object.__setattr__(sidecar, "evidence_refs", (reference,))
+                with self.assertRaisesRegex(
+                    ScheduleContractError,
+                    r"fact:<sha256>",
+                ):
+                    replace(
+                        problem(trip),
+                        activity_availability=(sidecar,),
+                        problem_id="",
+                    )
+
+    def test_default_empty_sidecar_keeps_legacy_evaluation(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=(),
+        )
+        schedule_problem = problem(trip)
+
+        self.assertEqual(
+            evaluate_timeline(trip, now=EVALUATION_AT),
+            evaluate_schedule_state(schedule_problem, trip),
+        )
+
+    def test_current_availability_constrains_solver_and_replay(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=complete_edges(("hotel", "loc-visit"), duration=0),
+        )
+        schedule_problem = replace(
+            problem(trip),
+            activity_availability=(_hard_availability("visit"),),
+            problem_id="",
+        )
+
+        baseline = solve_schedule(problem(trip))
+        constrained = solve_schedule(schedule_problem)
+
+        self.assertEqual(ScheduleStatus.SOLVED, baseline.status)
+        self.assertNotEqual(ScheduleStatus.SOLVED, constrained.status)
+
+        valid_visit = activity(
+            "visit",
+            decision=DecisionState.SELECTED,
+            scheduled_start=time(11),
+        )
+        valid_trip = state(
+            days=(day("visit"),),
+            activities=(valid_visit,),
+            travel=complete_edges(("hotel", "loc-visit"), duration=0),
+        )
+        valid_problem = replace(
+            problem(valid_trip),
+            activity_availability=(_hard_availability("visit"),),
+            problem_id="",
+        )
+        result = solve_schedule(valid_problem)
+
+        self.assertEqual(ScheduleStatus.SOLVED, result.status)
+        replayed = replay_schedule_candidate(valid_problem, result.candidate)
+        self.assertEqual(
+            result.candidate.report,
+            evaluate_schedule_state(valid_problem, replayed),
+        )
+
+    def test_verification_availability_never_becomes_green(self) -> None:
+        visit = activity("visit", decision=DecisionState.SELECTED)
+        trip = state(
+            days=(day("visit"),),
+            activities=(visit,),
+            travel=complete_edges(("hotel", "loc-visit"), duration=0),
+        )
+        needs_verification = ActivityAvailability(
+            activity_id="visit",
+            disposition=AvailabilityDisposition.NEEDS_VERIFICATION,
+            evidence_refs=("fact:regular-hours",),
+            reason="regular_opening_hours",
+        )
+        schedule_problem = replace(
+            problem(trip),
+            activity_availability=(needs_verification,),
+            problem_id="",
+        )
+
+        result = solve_schedule(schedule_problem)
+        report = evaluate_schedule_state(schedule_problem, trip)
+
+        self.assertEqual(ScheduleStatus.NEEDS_EVIDENCE, result.status)
+        self.assertEqual(CheckStatus.NEEDS_VERIFICATION, report.status)
+        self.assertIn(
+            "OPENING_HOURS_NEEDS_VERIFICATION",
+            {item.code for item in report.issues},
+        )
+
     def test_composed_problem_binds_canonical_and_evidence_identity(
         self,
     ) -> None:
@@ -1972,8 +2240,8 @@ class Phase3AdversarialRegressionTests(unittest.TestCase):
         schedule_problem = problem(trip, evaluations=1)
 
         with patch(
-            "trip_planner.scheduler.evaluate_timeline",
-            wraps=evaluate_timeline,
+            "trip_planner.scheduler.evaluate_schedule_state",
+            wraps=evaluate_schedule_state,
         ) as evaluate:
             result = solve_schedule(schedule_problem)
 

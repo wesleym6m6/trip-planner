@@ -358,7 +358,7 @@ def compose_trip_state(
             superseded_unverified_refs,
         ),
     )
-    availability, availability_observations = _project_activity_availability(
+    availability, availability_observations = project_activity_availability(
         canonical_state, evidence_snapshot, availability_keys
     )
     used_by_id = {
@@ -414,11 +414,13 @@ def compose_trip_state(
     )
 
 
-def _project_activity_availability(
+def project_activity_availability(
     state: TripState,
     snapshot: EvidenceSnapshot,
-    availability_keys: tuple[FactKey, ...],
+    availability_keys: tuple[FactKey, ...] = (),
 ) -> tuple[tuple[ActivityAvailability, ...], tuple[FactObservation, ...]]:
+    """Project exact-snapshot opening hours into runtime scheduling inputs."""
+
     if (
         not isinstance(availability_keys, tuple)
         or any(
@@ -900,4 +902,5 @@ __all__ = [
     "EvidenceBinding",
     "LiveAttribution",
     "compose_trip_state",
+    "project_activity_availability",
 ]

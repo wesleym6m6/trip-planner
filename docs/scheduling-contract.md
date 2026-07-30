@@ -1,8 +1,8 @@
 # Phase 3 Scheduling Contract
 
-狀態：Phase 3A、Phase 3B、Phase 3C 與 Phase 4.1B offline evidence
-wiring complete；真實 provider adapters 尚未接入
-Contract version：`schedule-problem/v2`、`schedule-candidate/v1`
+狀態：Phase 3A、Phase 3B、Phase 3C、Phase 4.1B offline evidence wiring 與
+Phase 4.5C activity-availability replay complete；真實 provider exit gate仍需授權
+Contract version：`schedule-problem/v3`、`schedule-candidate/v1`
 Production solver：`bounded-deterministic-best-first/v2`；只可經 staging gate commit
 
 ## 目的
@@ -56,13 +56,14 @@ V1 candidate-to-patch 只允許：
 `ScheduleProblem` 至少包含：
 
 ```text
-contract_version = "schedule-problem/v2"
+contract_version = "schedule-problem/v3"
 problem_id
 trip_id                    canonical top-level plan identity, not slug
 base_revision
 base_state_digest             exact composed runtime state
 canonical_state_digest        exact durable plan state
 evidence_binding              optional redacted EvidenceBinding
+activity_availability         runtime-only exact ActivityAvailability tuple
 evaluation_at              aware datetime
 state                      immutable TripState
 scope                      ReplanScope
@@ -72,14 +73,34 @@ limits                     SearchLimits
 
 `problem_id` 由完整 semantic input 計算，不能由 solver 自填。Hash material
 包含 canonical `trip_id`、composed state、canonical state digest、stable evidence
-binding、固定 `evaluation_at`、scope、preferences、limits 與 contract version，
-但不含 solver 名稱或 wall clock。`schedule-problem/v2` 是加入 canonical /
-evidence 雙重身分後的版本；舊 `v1` problem 不可冒充或 replay 成 v2。
+binding、activity availability、固定 `evaluation_at`、scope、preferences、limits
+與 contract version，但不含 solver 名稱或 wall clock。`schedule-problem/v2` 曾加入
+canonical / evidence 雙重身分；v3再把opening-hours sidecar納入replay identity。
+`ScheduleProblem`沒有codec或durable store path，刻意是process-local contract；
+舊v1/v2 problem一律`UNSUPPORTED_VERSION`，不能冒充或自動migration成v3。
 
 Canonical caller 必須用 `schedule_problem_from_plan()` 從嚴格驗證後的
 top-level `plan.trip_id` 與 `plan_to_trip_state()` 建立 problem，不可從 slug
 猜 identity。Digest encoding 保留 scalar type；例如 numeric `10.0` 與文字
 `"10.0"` 必須有不同 state digest/problem ID，避免 replay 身分碰撞。
+
+### ActivityAvailability
+
+- `activity_availability`只接受exact、unique且指向已知activity的sidecar，並以
+  `activity_id`穩定排序；
+- `HARD_CURRENT`必須帶`fact:<sha256>` refs與freshness；evidence-bound problem還要求
+  每個hard ref出現在`EvidenceBinding.used_observation_ids`。完整snapshot語意由
+  `compose_trip_state()`／`project_activity_availability()`建立，4.5C joint scorer會
+  再以exact snapshot重投影驗證；
+- solver、candidate build、replay、preview與post-commit validation一律呼叫
+  `evaluate_schedule_state(problem, state)`，不得繞過problem sidecar直接呼叫
+  `evaluate_timeline()`；
+- post-commit若current hours改變，report使用重新compose後的current sidecar，
+  同時回`EVIDENCE_REVISION_CHANGED`並撤銷`candidate_is_current`；已知完成的canonical
+  write不會被誤報成未套用；
+- 無evidence binding的手工problem可承載caller-owned runtime constraint，但不構成
+  provider provenance或canonical authority。需要evidence-backed決策時必須從
+  `ComposedTripState`建立。
 
 ### ReplanScope
 

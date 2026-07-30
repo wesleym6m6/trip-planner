@@ -33,13 +33,13 @@ from .scheduling import (
     ScheduleStatus,
     assignments_from_state,
     build_schedule_candidate,
+    evaluate_schedule_state,
     materialize_schedule,
     _project_schedule_operations,
     schedule_key,
     score_schedule,
     validate_schedule_problem,
 )
-from .timeline import evaluate_timeline
 
 
 SOLVER_VERSION = "bounded-deterministic-best-first/v2"
@@ -662,9 +662,7 @@ def _evaluate_assignment_variant(
         assignments,
         layout.promoted_activity_ids,
     )
-    provisional_report = evaluate_timeline(
-        provisional, now=problem.evaluation_at
-    )
+    provisional_report = evaluate_schedule_state(problem, provisional)
     final_assignments = assignments_from_state(
         problem, provisional, provisional_report
     )
@@ -673,7 +671,7 @@ def _evaluate_assignment_variant(
         final_assignments,
         layout.promoted_activity_ids,
     )
-    final_report = evaluate_timeline(final_state, now=problem.evaluation_at)
+    final_report = evaluate_schedule_state(problem, final_state)
     score = score_schedule(
         problem,
         final_state,

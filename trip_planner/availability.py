@@ -107,6 +107,18 @@ class ActivityAvailability:
                 raise ValueError(
                     "HARD_CURRENT availability requires evidence_refs"
                 )
+            if any(
+                not ref.startswith("fact:")
+                or len(ref) != 69
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in ref[5:]
+                )
+                for ref in refs
+            ):
+                raise ValueError(
+                    "HARD_CURRENT availability requires fact digest references"
+                )
             if self.reason is not None:
                 raise ValueError(
                     "HARD_CURRENT availability cannot declare a warning reason"

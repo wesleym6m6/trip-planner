@@ -86,9 +86,10 @@ authorization、cache、evidence、receipt或住宿決策依據。
   已選擇不等於已驗證。Phase 4.5A intake 一律是 `unverified`，不得自行填
   `verified`。4.5B只在獨立comparison sidecar投影identity／route evidence，不會
   回寫candidate的evidence state；
-- Phase 4.5A/B 的上述draft、claim與sidecar只在 runtime 使用，不能改 canonical
-  plan。住宿專用的 human confirmation / apply gate 尚未落地，不得直接用 generic
-  `PlanPatch` 代替。
+- Phase 4.5A/B/C 的draft、claim、evidence與joint recommendation sidecar只在
+  runtime 使用，不能改 canonical plan。4.5C的`ranked`只表示優先review，固定
+  `supports_authoritative_use=false`；住宿專用的human confirmation / apply gate
+  尚未落地，不得直接用generic `PlanPatch`代替。
 
 ### 行程組裝
 
@@ -260,14 +261,19 @@ decision（`candidate` / `selected` / `fixed` / `booked`）與 evidence
    evidence readiness。只有fresh location identity可成為route endpoint；route
    observation還必須附原request receipt，且endpoint observation/value未漂移，
    才可使用duration/distance。缺receipt、missing、stale或conflicted只要求refresh。
-3. 4.5B只顯示涵蓋夜晚、位置精度、已知價格flags、個別已驗證route與
-   `needs_verification`；換宿、總移動／最長單段、晚到／早離風險與預算彙總屬
-   4.5C。在此之前不宣稱kernel已選出最佳住宿，也不要把低價或 AI 偏好冒充最佳解。
-4. 4.5B正常流程只能normalize caller-supplied raw response。Legacy
+3. 用4.5C joint sidecar把固定抵離／booked活動、每日住宿anchor、Routes、
+   current hours與明示換宿／冬季buffer放進同一exact composed snapshot。只有所有
+   option共享可比較route slots、solver required arcs都fresh且replay成功時，才可顯示
+   `priority_review_option_id`。missing、stale、conflicted、缺receipt、reported
+   booking claim、mixed snapshot或同分都不能選winner；價格在有同scope evidence前
+   顯示`LODGING_PRICE_NOT_SCORED`。
+4. 4.5C結果不是使用者選擇。不得把`ranked`寫成selected/fixed/booked，不得建立
+   `PlanPatch`或替換使用者已決定住宿；真正confirmation/apply留到4.5D。
+5. 4.5B正常流程只能normalize caller-supplied raw response。Legacy
    `search_hotels.py`會實際呼叫provider並寫cache，只有使用者明確授權live provider、
    已確認成本與retention policy時才可執行，且不屬4.5B exit gate；結果仍與手動候選
    同為`candidate`，價格、房態與取消條件需重新確認。
-5. 只有使用者明確選擇、鎖定或完成交易，才可把候選升為 `selected`、`fixed` 或
+6. 只有使用者明確選擇、鎖定或完成交易，才可把候選升為 `selected`、`fixed` 或
    `booked`；Phase 4.5A只把這段明確語意保留為reported claim並顯示
    `awaiting_confirmation`，不能真正升級。4.5D host confirmation完成後，此決定仍
    不得被AI的更高分候選自動取代。

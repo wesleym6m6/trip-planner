@@ -22,7 +22,10 @@ from trip_planner.availability import (
     AvailabilityInterval,
 )
 from trip_planner.codec import build_plan
-from trip_planner.composition import compose_trip_state
+from trip_planner.composition import (
+    compose_trip_state,
+    project_activity_availability,
+)
 from trip_planner.models import (
     Activity,
     DaySpec,
@@ -112,7 +115,7 @@ def _interval(
 def _hard(
     *intervals: AvailabilityInterval,
     fresh_until: datetime = datetime(2026, 10, 4, tzinfo=UTC),
-    refs: tuple[str, ...] = ("fact:hours",),
+    refs: tuple[str, ...] = ("fact:" + "a" * 64,),
 ) -> ActivityAvailability:
     return ActivityAvailability(
         activity_id="visit",
@@ -271,6 +274,14 @@ class ActivityAvailabilityTests(unittest.TestCase):
                 activity_id="visit",
                 disposition=AvailabilityDisposition.HARD_CURRENT,
             )
+        with self.assertRaisesRegex(ValueError, "fact digest"):
+            ActivityAvailability(
+                activity_id="visit",
+                disposition=AvailabilityDisposition.HARD_CURRENT,
+                intervals=(_interval(9, 18),),
+                evidence_refs=("fact:not-a-digest",),
+                fresh_until=datetime(2026, 10, 4, tzinfo=UTC),
+            )
         with self.assertRaises(ValueError):
             ActivityAvailability(
                 activity_id="visit",
@@ -290,6 +301,24 @@ class ActivityAvailabilityTests(unittest.TestCase):
 
 
 class AvailabilityCompositionTests(unittest.TestCase):
+    def test_public_projection_default_is_empty_and_rejects_non_hours_key(
+        self,
+    ) -> None:
+        fixture = _Fixture()
+        projected = project_activity_availability(
+            _state(),
+            fixture.snapshot,
+        )
+        self.assertEqual(((), ()), projected)
+        with self.assertRaisesRegex(TypeError, "opening-hours"):
+            project_activity_availability(
+                _state(),
+                fixture.snapshot,
+                availability_keys=(
+                    fixture.snapshot.observations[0].key,
+                ),
+            )
+
     def _compose_current_pair(
         self,
         *,

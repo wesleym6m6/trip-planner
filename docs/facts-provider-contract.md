@@ -794,15 +794,32 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   response轉成provider-discovered candidate + unverified。Success、partial、
   empty、provider error與invalid response有互斥shape；raw query、provider status
   payload、search/property token、位置與價格amount不進safe view；
-- 4.5C才把住宿錨點、固定交通、景點、Routes、hours、冬季／換宿buffer放入共同
-  scoring；4.5D再加入住宿專用canonical confirmation/apply gate；
-- 後續4.5C exit gate才加入Busan住宿比較與Hokkaido冬季跨城換宿canned acceptance；
-  不搬動固定抵離／活動或已訂住宿，全套須離線、deterministic且real-trip files
-  byte-for-byte不變。
+- 4.5C以runtime-only joint recommendation把住宿錨點、固定交通、景點、Routes、
+  current hours、冬季／換宿buffer放入同一detached `ScheduleProblem`。所有option
+  必須共享exact policy/store/evidence/outcome revisions、evaluation／purge clocks、
+  snapshot ID、composed canonical identity、scope、preferences與limits；solver
+  candidate須在同一problem replay。Option state只能等於composed state加明示住宿
+  anchors，不能夾帶其他day／location mutation；
+- 每個可比較route slot需有相同day、direction、mode、anchor、departure context與
+  minimum buffer，且duration只能來自fresh exact request receipt及未漂移endpoint。
+  所有solver required arcs與`HARD_CURRENT` activity availability都須綁同一snapshot；
+  stale、conflicted、missing、缺receipt、reported decision claim或snapshot drift
+  一律不產生numeric winner。Price在有同scope可比較price evidence前只回
+  `LODGING_PRICE_NOT_SCORED`；
+- 4.5C輸出只表示`priority_review_option_id`，固定
+  `supports_authoritative_use=false`，沒有`PlanPatch`、decision promotion、
+  reservation writer或canonical mutation。Busan／Hokkaido canned acceptance已涵蓋
+  固定抵達、booked活動、每日anchor、split stay、冬季跨城buffer與同分不選；
+  4.5D才加入住宿專用canonical confirmation/apply gate；
+- 全套須離線、deterministic且real-trip files byte-for-byte不變。Provider refresh
+  可在caller明確授權後另行執行，但4.5C scorer本身沒有HTTP、cache或provider fan-out。
 
-目前Phase 4.5已完成55個A/B專項回歸；全套569個offline tests、三個real-trip
-validators與Python compile通過。未呼叫provider、未render、未deploy、未修改
-`trips/`；下一個slice是4.5C joint lodging / itinerary scoring。
+目前Phase 4.5已完成A/B/C runtime intake、evidence與joint recommendation：
+63個Phase 4.5專項、全套589個offline tests、三個real-trip validators與Python
+compile通過；29個trip files hash aggregate維持
+`8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5D
+canonical lodging confirmation / apply。
 
 ### Phase 4.6 — readiness與 compliance preview
 
