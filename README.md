@@ -130,6 +130,13 @@ provider token與process-local candidate ID不進plan、receipt、history或safe
 idempotency request重播；不同trip、revision、patch、anchor、selection binding或
 簽章一律fail closed。
 
+可用純離線 walkthrough 查看這條路徑的實際結果；它只建立temporary plans，不讀寫
+`trips/`、不呼叫provider，也不render或deploy：
+
+```bash
+.venv/bin/python scripts/phase45_acceptance.py
+```
+
 4.5B 另提供純 offline 的 SerpApi hotel response normalizer，嚴格區分 metadata
 status、top-level error、empty success 與 partial result；query/search ID/token/位置
 與價格原值不進 safe view，所有結果仍只產生 provider-discovered candidate +

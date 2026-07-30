@@ -718,6 +718,21 @@ Exit gate：
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
 
+### 2026-07-30 — Phase 4.5 product acceptance gate 完成
+
+- 新增`phase45_acceptance.py`，只用temporary `TripStore`、canned
+  Busan／Hokkaido itinerary fixtures與public confirmation APIs輸出繁中safe
+  transcript；不讀寫`trips/`、不呼叫provider、不render或deploy。
+- Busan實際走過直接指定住宿、未確認不寫入、一次host確認、canonical apply與
+  receipt replay，並保留10:00 booked抵達及18:00 booked晚餐。
+- Hokkaido實際走過兩段split stay及換宿日不同start/end anchors，並保留16:00
+  booked ryokan check-in。既有對抗性tests繼續覆蓋同分不自選、evidence缺口、
+  expired review、forged grant與lost ACK。
+- 2個walkthrough tests加入離線suite；74個Phase 4.5專項、全套600個offline tests、
+  三個real-trip validators及Python compile全過。29個trip files hash aggregate
+  維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+
 ### 2026-07-30 — Phase 4.5D canonical lodging confirmation / apply 完成
 
 - 新增`LodgingConfirmationRequest`、30分鐘safe review、externally signed host

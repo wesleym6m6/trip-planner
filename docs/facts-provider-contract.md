@@ -830,7 +830,8 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   可在caller明確授權後另行執行，但4.5C scorer本身沒有HTTP、cache或provider fan-out。
 
 目前Phase 4.5已完成A/B/C/D runtime intake、evidence、joint recommendation與
-host-confirmed canonical apply：72個Phase 4.5專項、全套598個offline tests、三個
+host-confirmed canonical apply，並通過可讀的Busan／Hokkaido離線walkthrough：
+74個Phase 4.5專項、全套600個offline tests、三個
 real-trip validators與Python
 compile通過；29個trip files hash aggregate維持
 `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
