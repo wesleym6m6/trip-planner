@@ -81,15 +81,18 @@ authorization、cache、evidence、receipt或住宿決策依據。
 
 - decision：`candidate` / `selected` / `fixed` / `booked`；搜尋與 AI 建議只能是
   `candidate`。Phase 4.5A 沒有升級路徑；使用者明確說出的 selected / fixed /
-  booked 只保存為 `ReportedDecisionClaim`，等待4.5D真正host-owned確認；
+  booked 先保存為 `ReportedDecisionClaim`；只有4.5D safe review後由AI process外
+  的host signer簽發exact grant，並通過`TripStore` verifier，才可寫成canonical
+  decision；
 - evidence：`unverified` / `verified` / `stale` / `conflicted`；與 decision 分開，
   已選擇不等於已驗證。Phase 4.5A intake 一律是 `unverified`，不得自行填
   `verified`。4.5B只在獨立comparison sidecar投影identity／route evidence，不會
   回寫candidate的evidence state；
 - Phase 4.5A/B/C 的draft、claim、evidence與joint recommendation sidecar只在
   runtime 使用，不能改 canonical plan。4.5C的`ranked`只表示優先review，固定
-  `supports_authoritative_use=false`；住宿專用的human confirmation / apply gate
-  尚未落地，不得直接用generic `PlanPatch`代替。
+  `supports_authoritative_use=false`。4.5D只接受使用者直接指定或明選option後產生的
+  exact `LodgingConfirmationRequest`；不得用generic `PlanPatch`／`ApprovalGrant`、
+  reported claim或ranking代替host-signed confirmation。
 
 ### 行程組裝
 
@@ -267,16 +270,25 @@ decision（`candidate` / `selected` / `fixed` / `booked`）與 evidence
    `priority_review_option_id`。missing、stale、conflicted、缺receipt、reported
    booking claim、mixed snapshot或同分都不能選winner；價格在有同scope evidence前
    顯示`LODGING_PRICE_NOT_SCORED`。
-4. 4.5C結果不是使用者選擇。不得把`ranked`寫成selected/fixed/booked，不得建立
-   `PlanPatch`或替換使用者已決定住宿；真正confirmation/apply留到4.5D。
+4. 4.5C結果不是使用者選擇。不得把`ranked`寫成selected/fixed/booked，也不得替換
+   使用者已決定住宿。使用者直接指定或明選option後，才建立4.5D
+   `LodgingConfirmationRequest`並stage safe review；review需顯示日期、kind、
+   decision與每日anchor，但不能暴露raw地址、座標、價格、link、provider token或
+   candidate ID。
 5. 4.5B正常流程只能normalize caller-supplied raw response。Legacy
    `search_hotels.py`會實際呼叫provider並寫cache，只有使用者明確授權live provider、
    已確認成本與retention policy時才可執行，且不屬4.5B exit gate；結果仍與手動候選
    同為`candidate`，價格、房態與取消條件需重新確認。
 6. 只有使用者明確選擇、鎖定或完成交易，才可把候選升為 `selected`、`fixed` 或
-   `booked`；Phase 4.5A只把這段明確語意保留為reported claim並顯示
-   `awaiting_confirmation`，不能真正升級。4.5D host confirmation完成後，此決定仍
-   不得被AI的更高分候選自動取代。
+   `booked`。Phase 4.5A先保留reported claim並顯示`awaiting_confirmation`；使用者
+   確認exact 4.5D review後，trusted host才可用AI process外的signer簽grant。
+   `TripStore`必須配置對應verifier；沒有verifier、generic approval、builder、
+   stale scope或錯誤簽章都拒絕。一次住宿確認可同時涵蓋同effect的protected gate，
+   不重複詢問。
+7. Apply後canonical lodging的decision依使用者原話保存，但evidence固定仍為
+   `unverified`。位置只存不可逆opaque ID；lost ACK必須保留pending review並以同一
+   review／idempotency request重試。確認後的住宿不得被AI較高分候選自動取代；
+   rollback也需新的exact host-signed grant。
 
 ### Step 2: 生成候選景點清單
 

@@ -34,7 +34,7 @@ import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import MappingProxyType
@@ -53,6 +53,22 @@ MIGRATION_META_KEY = "_trip_planner"
 _REVISION_RE = re.compile(r"^[0-9a-f]{64}$")
 _REQUEST_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _TRANSACTION_ID_RE = re.compile(r"^tx-[0-9a-f]{32}$")
+_CANONICAL_LODGING_LOCATION_RE = re.compile(
+    r"^lodging-location-[0-9a-f]{64}$"
+)
+_LODGING_KINDS = frozenset(
+    {
+        "unspecified",
+        "hotel",
+        "hostel",
+        "ryokan",
+        "guesthouse",
+        "short_term_rental",
+        "apartment",
+        "homestay",
+        "other",
+    }
+)
 _RECEIPT_KINDS = {"patch", "rollback"}
 _RECEIPT_STATUSES = {"applied", "rolled_back"}
 _RECEIPT_REQUIRED_FIELDS = {
@@ -334,6 +350,18 @@ def validate_plan(plan: Mapping[str, Any]) -> None:
                 "legacy day id alias does not match day_id",
                 path=f"{day_path}.id",
             )
+        for role in ("start", "end"):
+            lodging_id = day.get(f"{role}_lodging_id")
+            location_id = day.get(f"{role}_location_id")
+            if lodging_id is not None:
+                if location_id is None:
+                    raise PlanCodecError(
+                        "MALFORMED_LODGING",
+                        "day lodging reference requires a location",
+                        path=day_path,
+                    )
+                _require_text(lodging_id, f"{day_path}.{role}_lodging_id")
+                _require_text(location_id, f"{day_path}.{role}_location_id")
 
         places = _require_list(day.get("places"), f"{day_path}.places")
         ordered_activity_ids: list[str] = []
@@ -412,6 +440,190 @@ def validate_plan(plan: Mapping[str, Any]) -> None:
                         f"recommended mode {recommended_text!r} has no estimate",
                         path=f"{edge_path}.recommended_mode",
                     )
+
+    lodgings_value = trip.get("lodgings", [])
+    lodgings = _require_list(lodgings_value, "$.state.trip.lodgings")
+    lodging_by_id: dict[str, Mapping[str, Any]] = {}
+    parsed_lodgings: list[
+        tuple[date, date, str, Mapping[str, Any]]
+    ] = []
+    for index, value in enumerate(lodgings):
+        path = f"$.state.trip.lodgings[{index}]"
+        item = _require_mapping(value, path)
+        expected_fields = {
+            "lodging_id",
+            "location_id",
+            "check_in",
+            "check_out",
+            "kind",
+            "decision_state",
+            "evidence_state",
+        }
+        if set(item) != expected_fields:
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "lodging has invalid fields",
+                path=path,
+            )
+        lodging_id = _require_text(item["lodging_id"], f"{path}.lodging_id")
+        if lodging_id in lodging_by_id:
+            raise PlanCodecError(
+                "DUPLICATE_ID",
+                "duplicate lodging ID",
+                path=f"{path}.lodging_id",
+            )
+        location_id = _require_text(
+            item["location_id"],
+            f"{path}.location_id",
+        )
+        if _CANONICAL_LODGING_LOCATION_RE.fullmatch(location_id) is None:
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "lodging location ID must be privacy-safe and canonical",
+                path=f"{path}.location_id",
+            )
+        try:
+            check_in = date.fromisoformat(item["check_in"])
+            check_out = date.fromisoformat(item["check_out"])
+        except (TypeError, ValueError) as exc:
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "lodging dates must be ISO dates",
+                path=path,
+            ) from exc
+        if (
+            check_in.isoformat() != item["check_in"]
+            or check_out.isoformat() != item["check_out"]
+            or check_out <= check_in
+        ):
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "lodging stay dates are invalid",
+                path=path,
+            )
+        if (
+            item["kind"] not in _LODGING_KINDS
+            or item["decision_state"] not in {"selected", "fixed", "booked"}
+            or item["evidence_state"] != "unverified"
+        ):
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "lodging enum values are invalid",
+                path=path,
+            )
+        lodging_by_id[lodging_id] = item
+        parsed_lodgings.append(
+            (check_in, check_out, lodging_id, item)
+        )
+
+    parsed_lodgings.sort(key=lambda value: (value[0], value[1], value[2]))
+    for previous, current in zip(
+        parsed_lodgings,
+        parsed_lodgings[1:],
+    ):
+        if previous[1] != current[0]:
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "lodging stays must be contiguous without gaps or overlaps",
+                path="$.state.trip.lodgings",
+            )
+
+    day_by_date: dict[str, Mapping[str, Any]] = {}
+    for day_index, day_value in enumerate(days):
+        day_path = f"$.state.itinerary.days[{day_index}]"
+        day = _require_mapping(day_value, day_path)
+        day_date = day.get("date")
+        if parsed_lodgings:
+            if type(day_date) is not str:
+                raise PlanCodecError(
+                    "MALFORMED_LODGING",
+                    "lodging confirmation requires exact ISO itinerary dates",
+                    path=f"{day_path}.date",
+                )
+            try:
+                parsed_day_date = date.fromisoformat(day_date)
+            except ValueError as exc:
+                raise PlanCodecError(
+                    "MALFORMED_LODGING",
+                    "lodging confirmation requires exact ISO itinerary dates",
+                    path=f"{day_path}.date",
+                ) from exc
+            if parsed_day_date.isoformat() != day_date:
+                raise PlanCodecError(
+                    "MALFORMED_LODGING",
+                    "lodging confirmation requires exact ISO itinerary dates",
+                    path=f"{day_path}.date",
+                )
+            if day_date in day_by_date:
+                raise PlanCodecError(
+                    "MALFORMED_LODGING",
+                    "lodging confirmation requires unique itinerary dates",
+                    path=day_path,
+                )
+            day_by_date[day_date] = day
+        elif isinstance(day_date, str):
+            day_by_date[day_date] = day
+        for role in ("start", "end"):
+            lodging_id = day.get(f"{role}_lodging_id")
+            if lodging_id is None:
+                continue
+            item = lodging_by_id.get(lodging_id)
+            if (
+                item is None
+                or item["location_id"]
+                != day.get(f"{role}_location_id")
+            ):
+                raise PlanCodecError(
+                    "MALFORMED_REFERENCE",
+                    "day lodging reference does not match lodging location",
+                    path=day_path,
+                )
+
+    expected_end: dict[str, str] = {}
+    expected_start: dict[str, str] = {}
+    for check_in, check_out, lodging_id, _ in parsed_lodgings:
+        cursor = check_in
+        while cursor < check_out:
+            day_date = cursor.isoformat()
+            if day_date not in day_by_date:
+                raise PlanCodecError(
+                    "MALFORMED_LODGING",
+                    "every lodging night must have an itinerary day",
+                    path="$.state.trip.lodgings",
+                )
+            expected_end[day_date] = lodging_id
+            next_date = date.fromordinal(cursor.toordinal() + 1)
+            next_text = next_date.isoformat()
+            if next_text in day_by_date:
+                expected_start[next_text] = lodging_id
+            cursor = next_date
+
+    first_date = (
+        parsed_lodgings[0][0].isoformat()
+        if parsed_lodgings
+        else None
+    )
+    for day_date, day in day_by_date.items():
+        if day.get("end_lodging_id") != expected_end.get(day_date):
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "day end lodging does not exactly cover its night",
+                path="$.state.itinerary.days",
+            )
+        actual_start = day.get("start_lodging_id")
+        expected = expected_start.get(day_date)
+        if (
+            first_date is not None
+            and day_date == first_date
+            and actual_start == expected_end.get(day_date)
+        ):
+            expected = actual_start
+        if actual_start != expected:
+            raise PlanCodecError(
+                "MALFORMED_LODGING",
+                "day start lodging does not exactly cover the preceding night",
+                path="$.state.itinerary.days",
+            )
 
     constraints_value = trip.get("constraints", [])
     if constraints_value is None:

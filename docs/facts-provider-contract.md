@@ -559,9 +559,10 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
 - 搜尋或 AI 建議都不是已訂位。Phase 4.5A 的所有 binder 只能建立 process-local
   candidate + unverified；清楚的使用者 selected / fixed / booked 語意只保留為
   non-authoritative `ReportedDecisionClaim`與opaque source ref，不能提升candidate；
-- canonical lodging mutation 必須等 Phase 4.5D 的住宿專用 confirmation grant 與
-  apply gate，再疊加既有 PlanPatch / preview / approval / validation；不能直接把
-  generic PlanPatch 當成住宿決定的充分授權。
+- canonical lodging mutation 必須經 Phase 4.5D 的住宿專用safe review、externally
+  signed confirmation grant與host verifier，再疊加既有PlanPatch／preview／approval／
+  validation；generic PlanPatch、generic approval、reported claim或ranking都不是住宿
+  決定的充分授權。
 
 參考：
 
@@ -775,9 +776,10 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
 - candidate 的 decision 與 evidence 是獨立維度。4.5A不提供任何decision或evidence
   promotion function；即使caller能直接import module，也只能產生candidate +
   unverified。使用者明確語意留在reported claim並回`awaiting_confirmation`，
-  snapshot-bound evidence projection由4.5B sidecar處理，真正host-owned decision
-  boundary留給4.5D。missing或概略位置一律揭露`needs_verification`，但可參與保守
-  runtime比較；
+  snapshot-bound evidence projection由4.5B sidecar處理；4.5D的host-owned
+  decision boundary只在explicit user confirmation與external verifier均通過後
+  promotion。missing或概略位置一律揭露`needs_verification`，但可參與保守runtime
+  比較；
 - Phase 4.5A 所有 draft、binding 與 assessment 都是 process-local，不建立
   `FactKey`、`ProviderRequest`、`PlanPatch`，也不修改 canonical plan。私人位置、
   label、時間與價格不進safe view；公開binding ID使用process-secret keyed digest，
@@ -810,16 +812,30 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
   `supports_authoritative_use=false`，沒有`PlanPatch`、decision promotion、
   reservation writer或canonical mutation。Busan／Hokkaido canned acceptance已涵蓋
   固定抵達、booked活動、每日anchor、split stay、冬季跨城buffer與同分不選；
-  4.5D才加入住宿專用canonical confirmation/apply gate；
+- 4.5D把使用者直接指定或明選的4.5C option投影成exact
+  `LodgingConfirmationRequest`。4.5C source assessment／option／comparison／snapshot／
+  endpoint／schedule binding只以opaque digest綁入`SetLodgingSelection`，不持久化
+  process-local candidate ID。非confirmation evidence缺口仍阻止projection；同分可由
+  使用者明選，但不會自動選；
+- `TripStore`只有在externally signed／host-registered grant通過注入的verifier後才
+  可寫住宿；沒有verifier預設拒絕。Grant綁trip、base revision、patch、exact lodging
+  diff、review expiry與issuer。一次host confirmation可衍生同一effect的generic
+  protected approval，但generic approval單獨永遠不足。Lost ACK以相同review、
+  idempotency key與receipt-first replay收斂；
+- canonical住宿只保存opaque location ID、`[check_in, check_out)`、kind、
+  selected/fixed/booked decision與固定`evidence_state=unverified`。Raw地址、座標、
+  label、價格、booking link、provider token與candidate ID不得進plan、receipt、
+  history、safe serialization或error；
 - 全套須離線、deterministic且real-trip files byte-for-byte不變。Provider refresh
   可在caller明確授權後另行執行，但4.5C scorer本身沒有HTTP、cache或provider fan-out。
 
-目前Phase 4.5已完成A/B/C runtime intake、evidence與joint recommendation：
-63個Phase 4.5專項、全套589個offline tests、三個real-trip validators與Python
+目前Phase 4.5已完成A/B/C/D runtime intake、evidence、joint recommendation與
+host-confirmed canonical apply：72個Phase 4.5專項、全套598個offline tests、三個
+real-trip validators與Python
 compile通過；29個trip files hash aggregate維持
 `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
-未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5D
-canonical lodging confirmation / apply。
+未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.6 readiness /
+compliance preview。
 
 ### Phase 4.6 — readiness與 compliance preview
 

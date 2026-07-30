@@ -14,8 +14,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
+from datetime import date, datetime, timezone
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence, TypeAlias
@@ -30,6 +32,43 @@ _MAX_REQUEST_ID_LENGTH = 256
 _MAX_PATCH_VERSION_LENGTH = 64
 _MAX_PATCH_INTENT_LENGTH = 4096
 _MAX_SERIALIZED_PATCH_BYTES = 1024 * 1024
+_LODGING_GRANT_TOKEN = object()
+_CANONICAL_LODGING_LOCATION_RE = re.compile(
+    r"lodging-location-[0-9a-f]{64}"
+)
+_SHA256_RE = re.compile(r"(?:sha256:)?[0-9a-f]{64}")
+_LODGING_KINDS = frozenset(
+    {
+        "unspecified",
+        "hotel",
+        "hostel",
+        "ryokan",
+        "guesthouse",
+        "short_term_rental",
+        "apartment",
+        "homestay",
+        "other",
+    }
+)
+_LODGING_ACTIVITY_TYPES = frozenset(
+    {
+        "accommodation",
+        "airbnb",
+        "apartment",
+        "guesthouse",
+        "homestay",
+        "hostel",
+        "hotel",
+        "inn",
+        "lodging",
+        "motel",
+        "resort",
+        "ryokan",
+        "short_term_rental",
+        "stay",
+        "vacation_rental",
+    }
+)
 
 ACTIVITY_MUTABLE_FIELDS = frozenset(
     {
@@ -61,8 +100,6 @@ DAY_MUTABLE_FIELDS = frozenset(
         "available_start",
         "date",
         "day",
-        "end_location_id",
-        "start_location_id",
         "subtitle",
         "timezone",
         "title",
@@ -166,6 +203,101 @@ class AddActivity:
         object.__setattr__(self, "position", _coerce_placement(self.position))
         _optional_request_id(
             self.anchor_activity_id, "AddActivity.anchor_activity_id"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedLodgingStay:
+    """One privacy-safe canonical stay chosen by a human."""
+
+    lodging_id: str
+    location_id: str
+    check_in: str
+    check_out: str
+    kind: str
+    decision_state: str
+    evidence_state: str = "unverified"
+
+    def __post_init__(self) -> None:
+        _require_request_id(
+            self.lodging_id,
+            "ConfirmedLodgingStay.lodging_id",
+        )
+        _require_canonical_lodging_location_id(
+            self.location_id,
+            "ConfirmedLodgingStay.location_id",
+        )
+        for value, name in (
+            (self.check_in, "check_in"),
+            (self.check_out, "check_out"),
+        ):
+            _lodging_date(value, f"ConfirmedLodgingStay.{name}")
+        if self.check_out <= self.check_in:
+            raise ValueError(
+                "ConfirmedLodgingStay.check_out must follow check_in"
+            )
+        if self.kind not in _LODGING_KINDS:
+            raise ValueError("Unsupported confirmed lodging kind")
+        if self.decision_state not in {"selected", "fixed", "booked"}:
+            raise ValueError(
+                "Confirmed lodging decision must be selected, fixed, or booked"
+            )
+        if self.evidence_state != "unverified":
+            raise ValueError("Confirmed lodging evidence_state must be unverified")
+
+
+@dataclass(frozen=True, slots=True)
+class LodgingAnchorAssignment:
+    day_id: str
+    start_lodging_id: str | None = None
+    end_lodging_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_request_id(self.day_id, "LodgingAnchorAssignment.day_id")
+        _optional_request_id(
+            self.start_lodging_id,
+            "LodgingAnchorAssignment.start_lodging_id",
+        )
+        _optional_request_id(
+            self.end_lodging_id,
+            "LodgingAnchorAssignment.end_lodging_id",
+        )
+        if self.start_lodging_id is None and self.end_lodging_id is None:
+            raise ValueError(
+                "LodgingAnchorAssignment requires a start or end lodging"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class SetLodgingSelection:
+    """Replace canonical lodging and its day anchors as one typed operation."""
+
+    op_id: str
+    stays: tuple[ConfirmedLodgingStay, ...]
+    anchors: tuple[LodgingAnchorAssignment, ...]
+    selection_binding_digest: str
+
+    def __post_init__(self) -> None:
+        _require_request_id(self.op_id, "SetLodgingSelection.op_id")
+        object.__setattr__(self, "stays", tuple(self.stays))
+        object.__setattr__(self, "anchors", tuple(self.anchors))
+        if not self.stays or any(
+            type(item) is not ConfirmedLodgingStay for item in self.stays
+        ):
+            raise TypeError(
+                "SetLodgingSelection.stays must contain confirmed stays"
+            )
+        if any(
+            type(item) is not LodgingAnchorAssignment
+            for item in self.anchors
+        ):
+            raise TypeError(
+                "SetLodgingSelection.anchors must contain lodging anchors"
+            )
+        _require_sha256_digest(
+            self.selection_binding_digest,
+            "SetLodgingSelection.selection_binding_digest",
+            prefixed=False,
         )
 
 
@@ -275,6 +407,7 @@ PatchOperation: TypeAlias = (
     | AddConstraint
     | UpdateConstraint
     | RemoveConstraint
+    | SetLodgingSelection
 )
 
 
@@ -335,6 +468,111 @@ class ApprovalGrant:
         _require_text(self.scope_digest, "ApprovalGrant.scope_digest")
         _require_text(self.approved_by, "ApprovalGrant.approved_by")
         _require_text(self.approved_at, "ApprovalGrant.approved_at")
+
+
+@dataclass(frozen=True, slots=True)
+class LodgingConfirmationGrant:
+    """Externally signed authority for one exact lodging mutation.
+
+    Construction alone is never authorization.  A persistence host must also
+    configure :class:`TripStore` with a verifier whose signing key or
+    host-side grant registry is unavailable to the AI process.
+    """
+
+    review_id: str
+    trip_id: str
+    base_revision: str
+    request_digest: str
+    scope_digest: str
+    confirmed_by: str
+    confirmed_at: datetime
+    expires_at: datetime
+    issuer_id: str
+    signature: str = field(repr=False)
+    grant_id: str = field(init=False)
+    _token: InitVar[object | None] = None
+
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _LODGING_GRANT_TOKEN:
+            raise ValueError("Lodging confirmation grants must be host-minted")
+        _require_sha256_digest(
+            self.review_id,
+            "LodgingConfirmationGrant.review_id",
+            prefixed=False,
+        )
+        _require_request_id(
+            self.trip_id,
+            "LodgingConfirmationGrant.trip_id",
+        )
+        _require_sha256_digest(
+            self.base_revision,
+            "LodgingConfirmationGrant.base_revision",
+            prefixed=False,
+        )
+        _require_sha256_digest(
+            self.request_digest,
+            "LodgingConfirmationGrant.request_digest",
+            prefixed=True,
+        )
+        _require_sha256_digest(
+            self.scope_digest,
+            "LodgingConfirmationGrant.scope_digest",
+            prefixed=True,
+        )
+        _require_request_id(
+            self.confirmed_by,
+            "LodgingConfirmationGrant.confirmed_by",
+        )
+        _require_request_id(
+            self.issuer_id,
+            "LodgingConfirmationGrant.issuer_id",
+        )
+        _require_request_id(
+            self.signature,
+            "LodgingConfirmationGrant.signature",
+            max_length=1024,
+        )
+        confirmed_at = _aware_utc_datetime(
+            self.confirmed_at,
+            "LodgingConfirmationGrant.confirmed_at",
+        )
+        expires_at = _aware_utc_datetime(
+            self.expires_at,
+            "LodgingConfirmationGrant.expires_at",
+        )
+        if expires_at <= confirmed_at:
+            raise ValueError(
+                "LodgingConfirmationGrant.expires_at must follow confirmed_at"
+            )
+        object.__setattr__(self, "confirmed_at", confirmed_at)
+        object.__setattr__(self, "expires_at", expires_at)
+        object.__setattr__(
+            self,
+            "grant_id",
+            _digest(
+                {
+                    "payload_sha256": hashlib.sha256(
+                        self.verification_payload()
+                    ).hexdigest(),
+                    "signature": self.signature,
+                }
+            ),
+        )
+
+    def verification_payload(self) -> bytes:
+        """Return the exact public bytes an external host must verify."""
+
+        return lodging_confirmation_grant_payload(
+            review_id=self.review_id,
+            trip_id=self.trip_id,
+            base_revision=self.base_revision,
+            request_digest=self.request_digest,
+            scope_digest=self.scope_digest,
+            confirmed_by=self.confirmed_by,
+            confirmed_at=self.confirmed_at,
+            expires_at=self.expires_at,
+            issuer_id=self.issuer_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,6 +643,8 @@ class PatchDraft:
     invalidated_day_ids: tuple[str, ...] = ()
     required_approval_scope: str | None = None
     approval_granted: bool = False
+    required_lodging_confirmation_scope: str | None = None
+    lodging_confirmation_granted: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "plan", _freeze_mapping(self.plan, "PatchDraft.plan"))
@@ -426,6 +666,12 @@ class PatchDraft:
         )
         if not isinstance(self.approval_granted, bool):
             raise TypeError("PatchDraft.approval_granted must be bool")
+        _optional_text(
+            self.required_lodging_confirmation_scope,
+            "PatchDraft.required_lodging_confirmation_scope",
+        )
+        if not isinstance(self.lodging_confirmation_granted, bool):
+            raise TypeError("PatchDraft.lodging_confirmation_granted must be bool")
 
     @property
     def can_apply(self) -> bool:
@@ -498,6 +744,34 @@ def patch_to_dict(patch: PlanPatch) -> dict[str, Any]:
                 "op_id": operation.op_id,
                 "day_id": operation.day_id,
                 "fields": _thaw_json(operation.fields),
+            }
+        elif isinstance(operation, SetLodgingSelection):
+            value = {
+                "op": "set_lodging_selection",
+                "op_id": operation.op_id,
+                "selection_binding_digest": (
+                    operation.selection_binding_digest
+                ),
+                "stays": [
+                    {
+                        "lodging_id": stay.lodging_id,
+                        "location_id": stay.location_id,
+                        "check_in": stay.check_in,
+                        "check_out": stay.check_out,
+                        "kind": stay.kind,
+                        "decision_state": stay.decision_state,
+                        "evidence_state": stay.evidence_state,
+                    }
+                    for stay in operation.stays
+                ],
+                "anchors": [
+                    {
+                        "day_id": anchor.day_id,
+                        "start_lodging_id": anchor.start_lodging_id,
+                        "end_lodging_id": anchor.end_lodging_id,
+                    }
+                    for anchor in operation.anchors
+                ],
             }
         elif isinstance(operation, AddConstraint):
             value = {
@@ -575,11 +849,133 @@ def approval_scope_digest(
     )
 
 
+def lodging_confirmation_scope_digest(
+    *,
+    trip_id: str,
+    base_revision: str,
+    request_digest: str,
+    lodging_changes: Sequence[ChangeRecord],
+) -> str:
+    """Exact human-confirmation binding for canonical lodging changes."""
+    return _digest(
+        {
+            "trip_id": trip_id,
+            "base_revision": base_revision,
+            "patch_digest": request_digest,
+            "lodging_changes": sorted(
+                (item.to_dict() for item in lodging_changes),
+                key=_canonical_json,
+            ),
+        }
+    )
+
+
+def lodging_confirmation_grant_payload(
+    *,
+    review_id: str,
+    trip_id: str,
+    base_revision: str,
+    request_digest: str,
+    scope_digest: str,
+    confirmed_by: str,
+    confirmed_at: datetime,
+    expires_at: datetime,
+    issuer_id: str,
+) -> bytes:
+    """Return deterministic public bytes for an external host signature."""
+
+    return _canonical_json(
+        {
+            "contract": "trip-planner.lodging-confirmation-grant/v1",
+            "review_id": review_id,
+            "trip_id": trip_id,
+            "base_revision": base_revision,
+            "request_digest": request_digest,
+            "scope_digest": scope_digest,
+            "confirmed_by": confirmed_by,
+            "confirmed_at": _aware_utc_datetime(
+                confirmed_at,
+                "confirmed_at",
+            ).isoformat(),
+            "expires_at": _aware_utc_datetime(
+                expires_at,
+                "expires_at",
+            ).isoformat(),
+            "issuer_id": issuer_id,
+        }
+    ).encode("utf-8")
+
+
+def _mint_lodging_confirmation_grant(
+    *,
+    review_id: str,
+    trip_id: str,
+    base_revision: str,
+    request_digest: str,
+    scope_digest: str,
+    confirmed_by: str,
+    confirmed_at: datetime,
+    expires_at: datetime,
+    issuer_id: str,
+    signature: str,
+) -> LodgingConfirmationGrant:
+    """Build a signed grant value; persistence still verifies the signature."""
+
+    return LodgingConfirmationGrant(
+        review_id=review_id,
+        trip_id=trip_id,
+        base_revision=base_revision,
+        request_digest=request_digest,
+        scope_digest=scope_digest,
+        confirmed_by=confirmed_by,
+        confirmed_at=confirmed_at,
+        expires_at=expires_at,
+        issuer_id=issuer_id,
+        signature=signature,
+        _token=_LODGING_GRANT_TOKEN,
+    )
+
+
+def build_signed_lodging_confirmation_grant(
+    *,
+    review_id: str,
+    trip_id: str,
+    base_revision: str,
+    request_digest: str,
+    scope_digest: str,
+    confirmed_by: str,
+    confirmed_at: datetime,
+    expires_at: datetime,
+    issuer_id: str,
+    signature: str,
+) -> LodgingConfirmationGrant:
+    """Build a signed envelope for later host verification.
+
+    This builder does not confer authority.  ``TripStore`` accepts the value
+    only when its separately configured host verifier validates the issuer,
+    signature, lifetime, and any host-side revocation or one-time policy.
+    """
+
+    return _mint_lodging_confirmation_grant(
+        review_id=review_id,
+        trip_id=trip_id,
+        base_revision=base_revision,
+        request_digest=request_digest,
+        scope_digest=scope_digest,
+        confirmed_by=confirmed_by,
+        confirmed_at=confirmed_at,
+        expires_at=expires_at,
+        issuer_id=issuer_id,
+        signature=signature,
+    )
+
+
 def apply_patch_to_plan(
     plan: JsonMapping,
     patch: PlanPatch,
     *,
     approvals: Sequence[ApprovalGrant] = (),
+    lodging_confirmations: Sequence[LodgingConfirmationGrant] = (),
 ) -> PatchDraft:
     """Apply ``patch`` to a deep JSON copy and return a non-persistent draft."""
 
@@ -730,6 +1126,15 @@ def apply_patch_to_plan(
                         affected_days,
                         invalidation_sources,
                     )
+                elif isinstance(operation, SetLodgingSelection):
+                    _apply_set_lodging_selection(
+                        candidate,
+                        operation,
+                        problems,
+                        changes,
+                        affected_days,
+                        invalidation_sources,
+                    )
                 elif isinstance(operation, AddConstraint):
                     _apply_add_constraint(candidate, operation, problems, changes)
                 elif isinstance(operation, UpdateConstraint):
@@ -822,6 +1227,44 @@ def apply_patch_to_plan(
                 )
             )
 
+    lodging_changes = tuple(
+        change
+        for change in changes
+        if change.kind == "lodging_anchor"
+        or change.entity_type == "lodging"
+    )
+    lodging_scope: str | None = None
+    lodging_granted = False
+    if lodging_changes and request_digest:
+        lodging_scope = lodging_confirmation_scope_digest(
+            trip_id=patch.trip_id,
+            base_revision=patch.base_revision,
+            request_digest=request_digest,
+            lodging_changes=lodging_changes,
+        )
+        lodging_granted = any(
+            type(grant) is LodgingConfirmationGrant
+            and grant.trip_id == patch.trip_id
+            and grant.base_revision == patch.base_revision
+            and grant.request_digest == request_digest
+            and grant.scope_digest == lodging_scope
+            for grant in lodging_confirmations
+        )
+        if not lodging_granted:
+            problems.append(
+                MutationProblem(
+                    code=(
+                        "LODGING_CONFIRMATION_MISMATCH"
+                        if lodging_confirmations
+                        else "LODGING_CONFIRMATION_REQUIRED"
+                    ),
+                    message=(
+                        "Canonical lodging changes require an exact "
+                        "lodging confirmation grant."
+                    ),
+                    details={"required_scope_digest": lodging_scope},
+                )
+            )
     return PatchDraft(
         plan=candidate,
         patch_digest=request_digest,
@@ -832,6 +1275,8 @@ def apply_patch_to_plan(
         invalidated_day_ids=tuple(sorted(invalidation_sources)),
         required_approval_scope=required_scope,
         approval_granted=approval_granted,
+        required_lodging_confirmation_scope=lodging_scope,
+        lodging_confirmation_granted=lodging_granted,
     )
 
 
@@ -848,6 +1293,17 @@ def _apply_add_activity(
     affected_days: set[str],
     invalidation_sources: dict[str, set[str]],
 ) -> None:
+    if _is_lodging_activity_type(operation.fields.get("type")):
+        problems.append(
+            _problem(
+                "LODGING_OPERATION_REQUIRED",
+                "Lodging must be set through SetLodgingSelection.",
+                operation,
+                "activity",
+                operation.activity_id,
+            )
+        )
+        return
     index = _operation_index(plan, operation.op_id, problems)
     if index is None:
         return
@@ -952,6 +1408,17 @@ def _apply_update_activity(
     affected_days: set[str],
     invalidation_sources: dict[str, set[str]],
 ) -> None:
+    if _is_lodging_activity_type(operation.fields.get("type")):
+        problems.append(
+            _problem(
+                "LODGING_OPERATION_REQUIRED",
+                "Lodging must be set through SetLodgingSelection.",
+                operation,
+                "activity",
+                operation.activity_id,
+            )
+        )
+        return
     index = _operation_index(plan, operation.op_id, problems)
     if index is None:
         return
@@ -1182,6 +1649,20 @@ def _apply_update_day(
     affected_days: set[str],
     invalidation_sources: dict[str, set[str]],
 ) -> None:
+    if {"start_location_id", "end_location_id"} & set(operation.fields):
+        problems.append(
+            _problem(
+                "LODGING_OPERATION_REQUIRED",
+                (
+                    "Day lodging anchors may only be changed by "
+                    "SetLodgingSelection."
+                ),
+                operation,
+                "day",
+                operation.day_id,
+            )
+        )
+        return
     index = _operation_index(plan, operation.op_id, problems)
     if index is None:
         return
@@ -1228,6 +1709,265 @@ def _apply_update_day(
     affected_days.add(operation.day_id)
     if invalidates:
         _mark_invalidation(invalidation_sources, operation.day_id, operation.op_id)
+
+
+def _apply_set_lodging_selection(
+    plan: dict[str, Any],
+    operation: SetLodgingSelection,
+    problems: list[MutationProblem],
+    changes: list[ChangeRecord],
+    affected_days: set[str],
+    invalidation_sources: dict[str, set[str]],
+) -> None:
+    index = _operation_index(plan, operation.op_id, problems)
+    if index is None:
+        return
+
+    stays = sorted(
+        operation.stays,
+        key=lambda item: (item.check_in, item.lodging_id),
+    )
+    if len({item.lodging_id for item in stays}) != len(stays):
+        problems.append(
+            _problem(
+                "DUPLICATE_LODGING_ID",
+                "Lodging selection contains duplicate lodging IDs.",
+                operation,
+                "lodging",
+                None,
+            )
+        )
+        return
+    for previous, current in zip(stays, stays[1:]):
+        if previous.check_out != current.check_in:
+            problems.append(
+                _problem(
+                    "LODGING_STAY_COVERAGE_INVALID",
+                    "Confirmed stays must be contiguous without gaps or overlaps.",
+                    operation,
+                    "lodging",
+                    None,
+                )
+            )
+            return
+
+    anchors = {item.day_id: item for item in operation.anchors}
+    if len(anchors) != len(operation.anchors) or any(
+        day_id not in index.days for day_id in anchors
+    ):
+        problems.append(
+            _problem(
+                "LODGING_ANCHOR_INVALID",
+                "Lodging anchors must uniquely reference known days.",
+                operation,
+                "lodging",
+                None,
+            )
+        )
+        return
+
+    stay_by_id = {item.lodging_id: item for item in stays}
+    if any(
+        (
+            anchor.start_lodging_id is not None
+            and anchor.start_lodging_id not in stay_by_id
+        )
+        or (
+            anchor.end_lodging_id is not None
+            and anchor.end_lodging_id not in stay_by_id
+        )
+        for anchor in anchors.values()
+    ):
+        problems.append(
+            _problem(
+                "LODGING_ANCHOR_INVALID",
+                "Lodging anchor references an unknown stay.",
+                operation,
+                "lodging",
+                None,
+            )
+        )
+        return
+
+    by_date: dict[str, str] = {}
+    for day_id, day in index.days.items():
+        raw_date = day.get("date")
+        if not isinstance(raw_date, str):
+            continue
+        if raw_date in by_date:
+            problems.append(
+                _problem(
+                    "LODGING_ANCHOR_INVALID",
+                    "Lodging confirmation requires unique itinerary dates.",
+                    operation,
+                    "lodging",
+                    None,
+                )
+            )
+            return
+        by_date[raw_date] = day_id
+
+    expected_end: dict[str, str] = {}
+    expected_start: dict[str, str] = {}
+    for stay in stays:
+        cursor = date.fromisoformat(stay.check_in)
+        checkout = date.fromisoformat(stay.check_out)
+        while cursor < checkout:
+            day_id = by_date.get(cursor.isoformat())
+            anchor = anchors.get(day_id) if day_id else None
+            if anchor is None or anchor.end_lodging_id != stay.lodging_id:
+                problems.append(
+                    _problem(
+                        "LODGING_ANCHOR_COVERAGE_INVALID",
+                        (
+                            "Every lodging night requires its day's end "
+                            "lodging anchor."
+                        ),
+                        operation,
+                        "lodging",
+                        stay.lodging_id,
+                    )
+                )
+                return
+            assert day_id is not None
+            expected_end[day_id] = stay.lodging_id
+            next_date = date.fromordinal(cursor.toordinal() + 1)
+            next_day = by_date.get(next_date.isoformat())
+            if next_day is not None:
+                next_anchor = anchors.get(next_day)
+                if (
+                    next_anchor is None
+                    or next_anchor.start_lodging_id != stay.lodging_id
+                ):
+                    problems.append(
+                        _problem(
+                            "LODGING_ANCHOR_COVERAGE_INVALID",
+                            (
+                                "Every following lodging day requires its "
+                                "start lodging anchor."
+                            ),
+                            operation,
+                            "lodging",
+                            stay.lodging_id,
+                        )
+                    )
+                    return
+                expected_start[next_day] = stay.lodging_id
+            cursor = next_date
+
+    first_day_id = by_date.get(stays[0].check_in)
+    for day_id, anchor in anchors.items():
+        if (
+            anchor.end_lodging_id is not None
+            and anchor.end_lodging_id != expected_end.get(day_id)
+        ):
+            problems.append(
+                _problem(
+                    "LODGING_ANCHOR_COVERAGE_INVALID",
+                    "Day end lodging is not the stay covering that night.",
+                    operation,
+                    "lodging",
+                    anchor.end_lodging_id,
+                )
+            )
+            return
+        allowed_start = expected_start.get(day_id)
+        if (
+            day_id == first_day_id
+            and anchor.start_lodging_id == stays[0].lodging_id
+        ):
+            allowed_start = stays[0].lodging_id
+        if (
+            anchor.start_lodging_id is not None
+            and anchor.start_lodging_id != allowed_start
+        ):
+            problems.append(
+                _problem(
+                    "LODGING_ANCHOR_COVERAGE_INVALID",
+                    (
+                        "Day start lodging is not the stay covering the "
+                        "preceding night."
+                    ),
+                    operation,
+                    "lodging",
+                    anchor.start_lodging_id,
+                )
+            )
+            return
+
+    trip = plan["state"]["trip"]
+    assert isinstance(trip, dict)
+    before_lodgings = _thaw_json(trip.get("lodgings", []))
+    after_lodgings = [
+        {
+            "lodging_id": stay.lodging_id,
+            "location_id": stay.location_id,
+            "check_in": stay.check_in,
+            "check_out": stay.check_out,
+            "kind": stay.kind,
+            "decision_state": stay.decision_state,
+            "evidence_state": stay.evidence_state,
+        }
+        for stay in stays
+    ]
+    if not _json_equal(before_lodgings, after_lodgings):
+        trip["lodgings"] = after_lodgings
+        changes.append(
+            ChangeRecord(
+                operation.op_id,
+                "lodging",
+                "lodgings",
+                "lodgings",
+                before_lodgings,
+                after_lodgings,
+                "set",
+            )
+        )
+
+    for day_id, day in index.days.items():
+        anchor = anchors.get(day_id)
+        for role in ("start", "end"):
+            lodging_id = (
+                getattr(anchor, f"{role}_lodging_id")
+                if anchor is not None
+                else None
+            )
+            old_id = day.get(f"{role}_lodging_id")
+            old_location = day.get(f"{role}_location_id")
+            new_location = (
+                stay_by_id[lodging_id].location_id
+                if lodging_id is not None
+                else None
+            )
+            if lodging_id is None and old_id is None:
+                continue
+            for field, before, after in (
+                (f"{role}_lodging_id", old_id, lodging_id),
+                (f"{role}_location_id", old_location, new_location),
+            ):
+                if _json_equal(before, after):
+                    continue
+                if after is None:
+                    day.pop(field, None)
+                else:
+                    day[field] = after
+                changes.append(
+                    ChangeRecord(
+                        operation.op_id,
+                        "day",
+                        day_id,
+                        field,
+                        before,
+                        after,
+                        "lodging_anchor",
+                    )
+                )
+                affected_days.add(day_id)
+                _mark_invalidation(
+                    invalidation_sources,
+                    day_id,
+                    operation.op_id,
+                )
 
 
 def _apply_add_constraint(
@@ -2501,6 +3241,60 @@ def _optional_text(value: object, name: str) -> None:
         _require_text(value, name)
 
 
+def _require_sha256_digest(
+    value: object,
+    name: str,
+    *,
+    prefixed: bool,
+) -> None:
+    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+        raise ValueError(f"{name} must be a SHA-256 digest")
+    if prefixed != value.startswith("sha256:"):
+        prefix = "prefixed" if prefixed else "unprefixed"
+        raise ValueError(f"{name} must be a {prefix} SHA-256 digest")
+
+
+def _require_canonical_lodging_location_id(
+    value: object,
+    name: str,
+) -> None:
+    if (
+        not isinstance(value, str)
+        or _CANONICAL_LODGING_LOCATION_RE.fullmatch(value) is None
+    ):
+        raise ValueError(
+            f"{name} must be a privacy-safe canonical lodging location ID"
+        )
+
+
+def _aware_utc_datetime(value: object, name: str) -> datetime:
+    if (
+        type(value) is not datetime
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise ValueError(f"{name} must be a timezone-aware datetime")
+    return value.astimezone(timezone.utc)
+
+
+def _is_lodging_activity_type(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().casefold().replace("-", "_").replace(" ", "_")
+    return normalized in _LODGING_ACTIVITY_TYPES
+
+
+def _lodging_date(value: object, name: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be an ISO date")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an ISO date") from exc
+    if parsed.isoformat() != value:
+        raise ValueError(f"{name} must be an ISO date")
+
+
 def _freeze_mapping(value: object, name: str) -> JsonMapping:
     if not isinstance(value, Mapping):
         raise TypeError(f"{name} must be a mapping")
@@ -2577,12 +3371,15 @@ __all__ = [
     "AddActivity",
     "AddConstraint",
     "ApprovalGrant",
+    "ConfirmedLodgingStay",
     "ChangeRecord",
     "CONSTRAINT_IDENTITY_FIELDS",
     "CONSTRAINT_MUTABLE_FIELDS",
     "DAY_IDENTITY_FIELDS",
     "DAY_MUTABLE_FIELDS",
     "MutationProblem",
+    "LodgingAnchorAssignment",
+    "LodgingConfirmationGrant",
     "PATCH_VERSION",
     "PatchDraft",
     "PatchOperation",
@@ -2591,6 +3388,7 @@ __all__ = [
     "PlanPatch",
     "RemoveActivity",
     "RemoveConstraint",
+    "SetLodgingSelection",
     "UNSET",
     "UpdateActivity",
     "UpdateConstraint",
@@ -2598,7 +3396,10 @@ __all__ = [
     "apply_patch_to_plan",
     "apply_plan_patch",
     "approval_scope_digest",
+    "build_signed_lodging_confirmation_grant",
     "hard_constraint_protected_changes",
+    "lodging_confirmation_grant_payload",
+    "lodging_confirmation_scope_digest",
     "patch_digest",
     "patch_to_dict",
     "preview_patch",

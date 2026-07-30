@@ -51,7 +51,9 @@ Operations 不接受 array index 或 JSON path 作 identity。支援的最小集
 
 - add / update / place / remove activity；
 - update day；
-- add / update / remove constraint。
+- add / update / remove constraint；
+- `SetLodgingSelection`：一次替換canonical lodging segments及其day
+  start/end anchors，並綁一個safe selection-manifest digest。
 
 Mutation engine 是純函式：不讀檔、不寫檔、不呼叫 provider，也不增加 generation。
 它只產生 detached `PatchDraft`、machine-readable problems、net changes、travel
@@ -67,19 +69,22 @@ invalidation 與精確 approval scope。
 4. **先查 receipt**：同 key、同 digest 回 replay；同 key、不同 digest 拒絕。
 5. 驗證 `trip_id` 與 `base_revision`。
 6. 在 detached copy 套用完整 patch；任何 operation 失敗則整包拒絕。
-7. 對 fixed、booked、migration-unclassified activity 或既有 hard constraint
+7. 若patch改動canonical lodging，先要求exact `LodgingConfirmationGrant`通過
+   `TripStore`注入的external host verifier；未配置verifier預設拒絕。Preview可顯示
+   candidate與required scope，但不構成寫入授權。
+8. 對 fixed、booked、migration-unclassified activity 或既有 hard constraint
    的破壞性 net change 驗證外部 `ApprovalGrant`。AI-authored patch 本身不能
    攜帶或升級 approval。
-8. 清除因 net topology / time / location 變動而失效的 derived travel。
-9. 用 planning kernel 檢查 candidate：
+9. 清除因 net topology / time / location 變動而失效的 derived travel。
+10. 用 planning kernel 檢查 candidate：
    - `infeasible`：拒絕；
    - `needs_verification`：可保存，但不能宣稱 travel-ready；
    - `feasible`：可保存。
-10. 增加 generation、計算 revision，將 receipt 與 semantic state 放入同一份
+11. 增加 generation、計算 revision，將 receipt 與 semantic state 放入同一份
     candidate bytes。
-11. fsync 同目錄 temporary file。
-12. fsync exact before-snapshot 至 hidden history。
-13. `os.replace()` 原子替換 `plan.json`，再 fsync data directory。
+12. fsync 同目錄 temporary file。
+13. fsync exact before-snapshot 至 hidden history。
+14. `os.replace()` 原子替換 `plan.json`，再 fsync data directory。
 
 Dry-run 執行相同 semantic validation，但不鎖定、不建立 receipt/history、不寫檔。
 No-op 不增加 generation，也不建立 transaction。
@@ -102,6 +107,36 @@ trusted provider/evidence boundary 可以再次標成 verified。
 
 既有 hard constraint 的更新、弱化或刪除同樣進入 exact approval scope，避免 AI
 藉由刪規則讓 infeasible plan 看似恢復正常。
+
+## Lodging confirmation contract
+
+`SetLodgingSelection`是唯一可改`state.trip.lodgings`與day lodging reference的
+operation。Generic `UpdateDay`不能改住宿anchor；lodging／hotel／Airbnb等
+case-insensitive activity alias也不能建立第二條canonical lodging路徑。
+
+Confirmation分成兩個互不取代的層次：
+
+- `LodgingConfirmationReview`綁trip、base revision、exact patch、canonical state
+  digest、day anchors、selection-manifest digest與30分鐘expiry；
+- `LodgingConfirmationGrant`是externally signed envelope。Signing key或host-side
+  opaque grant registry必須位於AI可執行process之外；`TripStore`只持有／呼叫
+  verifier。Module-level builder只建立待驗證資料，不能產生authority；
+- verifier必須驗issuer、signature、`confirmed_at <= now <= expires_at`、revocation
+  與需要的one-time policy。沒有verifier、錯issuer／signature或verifier exception
+  一律`UNTRUSTED_LODGING_CONFIRMATION`；
+- grant及scope完整綁trip ID、base revision、patch digest與exact lodging net diff，
+  因此不能跨trip、revision、option、anchor或idempotency request重用；
+- 同一host lodging confirmation可在stager內衍生同effect的普通protected approval，
+  避免要求使用者重複確認；store仍分別驗證lodging與generic兩道policy。Generic
+  `ApprovalGrant`單獨永遠不足。
+
+Canonical lodging只允許host配置、不可由原始位置推導的隨機opaque location ID、
+住宿日期、kind、selected／fixed／booked decision與固定
+`evidence_state=unverified`。已選或已訂是
+human decision，不代表location／route／price／availability已驗證。Raw label、地址、
+座標、價格、booking link、provider token與process-local candidate ID不得進patch
+safe view、plan、receipt、history或error；4.5C來源只以opaque selection binding
+digest進patch。
 
 需要 freshness 判斷時，preview、apply 與 rollback 共用 caller 提供的 timezone-aware
 `evaluation_at`；store 會正規化成 UTC、傳給 kernel，並記入成功 receipt。Naive
@@ -133,6 +168,8 @@ Rollback 是新的 transaction，不是覆寫舊 revision：
 - 原 patch receipt 改成 `rolled_back`，避免舊 request replay 後復活；
 - rollback 自己增加 generation、取得新 revision 與新 receipt；
 - 若 rollback 會改動 protected state，仍需 exact external approval。
+- 若 rollback 會改動canonical lodging，還需要針對rollback request與反向exact
+  lodging diff重新簽發的host grant；原apply grant不能重用。
 
 ## Migration contract
 
@@ -159,8 +196,10 @@ decision/flexibility 欄位誤解為「AI 可以自由移動」。
 - trip/data/plan/lock/history target 不接受 symlink 或非 regular file。
 - Canonical file malformed、future schema、duplicate key、non-finite number、broken
   reference 或 revision mismatch 一律 fail closed，不 fallback 至 legacy。
-- 這是本機 correctness boundary，不是對同帳號惡意操作者的 cryptographic
-  security boundary；目前不加入簽章、database、journal 或 event sourcing。
+- Filesystem本身仍是本機correctness boundary，不防同帳號操作者直接改檔。住宿
+  human-confirmation另外支援external signature／host registry verifier，使AI tool
+  contract不能只靠import builder取得寫入authority；signer不可與AI process共置。
+  本階段仍不加入database、journal或event sourcing。
 
 ## Phase 1 exit evidence
 

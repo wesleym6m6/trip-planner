@@ -49,12 +49,14 @@ from .models import CheckReport, CheckStatus
 from .mutations import (
     ApprovalGrant,
     ChangeRecord,
+    LodgingConfirmationGrant,
+    MutationProblem,
     PatchDraft,
     PlanPatch,
-    MutationProblem,
     apply_patch_to_plan,
     approval_scope_digest,
     hard_constraint_protected_changes,
+    lodging_confirmation_scope_digest,
     patch_digest,
 )
 from .timeline import evaluate_timeline
@@ -74,6 +76,7 @@ _O_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 _O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 
 FaultHook = Callable[[str], None]
+LodgingConfirmationVerifier = Callable[[LodgingConfirmationGrant], bool]
 
 
 class StoreError(PlanCodecError):
@@ -124,6 +127,8 @@ class StoreResult:
     changed: bool = False
     check_status: str | None = None
     required_approval_scope: str | None = None
+    required_lodging_confirmation_scope: str | None = None
+    lodging_confirmation_granted: bool = False
     problems: tuple[StoreProblem, ...] = ()
     draft: PatchDraft | None = None
     candidate_plan: FrozenJsonValue | None = None
@@ -185,6 +190,8 @@ class StoreResult:
             "changed": self.changed,
             "check_status": self.check_status,
             "required_approval_scope": self.required_approval_scope,
+            "required_lodging_confirmation_scope": self.required_lodging_confirmation_scope,
+            "lodging_confirmation_granted": self.lodging_confirmation_granted,
             "problems": [problem.to_dict() for problem in self.problems],
         }
         if self.receipt is not None:
@@ -208,11 +215,25 @@ class TripStore:
         trips_root: str | Path,
         slug: str,
         fault_hook: FaultHook | None = None,
+        *,
+        lodging_confirmation_verifier: (
+            LodgingConfirmationVerifier | None
+        ) = None,
     ) -> None:
         self.slug = _validate_slug(slug)
         if fault_hook is not None and not callable(fault_hook):
             raise TypeError("fault_hook must be callable or None")
+        if (
+            lodging_confirmation_verifier is not None
+            and not callable(lodging_confirmation_verifier)
+        ):
+            raise TypeError(
+                "lodging_confirmation_verifier must be callable or None"
+            )
         self._fault_hook = fault_hook
+        self._lodging_confirmation_verifier = (
+            lodging_confirmation_verifier
+        )
 
         try:
             root = Path(trips_root).resolve(strict=True)
@@ -384,6 +405,7 @@ class TripStore:
         self,
         patch: PlanPatch,
         approvals: Sequence[ApprovalGrant] = (),
+        lodging_confirmations: Sequence[LodgingConfirmationGrant] = (),
         *,
         evaluation_at: datetime | None = None,
     ) -> StoreResult:
@@ -402,6 +424,7 @@ class TripStore:
             plan,
             patch,
             approvals=approvals,
+            lodging_confirmations=lodging_confirmations,
             request_digest=request_digest,
             dry_run=True,
             evaluation_at=normalized_evaluation_at,
@@ -411,6 +434,7 @@ class TripStore:
         self,
         patch: PlanPatch,
         approvals: Sequence[ApprovalGrant] = (),
+        lodging_confirmations: Sequence[LodgingConfirmationGrant] = (),
         *,
         dry_run: bool = False,
         evaluation_at: datetime | None = None,
@@ -423,6 +447,7 @@ class TripStore:
             return self.preview_patch(
                 patch,
                 approvals,
+                lodging_confirmations,
                 evaluation_at=evaluation_at,
             )
 
@@ -450,11 +475,24 @@ class TripStore:
                 )
                 if replay is not None:
                     return replay
+                verified_lodging = self._verify_lodging_confirmations(
+                    lodging_confirmations
+                )
+                if verified_lodging is None:
+                    return self._rejected(
+                        "patch",
+                        "UNTRUSTED_LODGING_CONFIRMATION",
+                        (
+                            "The lodging confirmation was not verified by "
+                            "the trusted persistence host."
+                        ),
+                    )
 
                 evaluated = self._evaluate_patch(
                     current,
                     patch,
                     approvals=approvals,
+                    lodging_confirmations=verified_lodging,
                     request_digest=request_digest,
                     dry_run=False,
                     skip_receipt_lookup=True,
@@ -476,6 +514,17 @@ class TripStore:
                     "applied_generation": candidate["generation"],
                     "check_status": evaluated.check_status,
                     "required_approval_scope": evaluated.required_approval_scope,
+                    "required_lodging_confirmation_scope": (
+                        evaluated.required_lodging_confirmation_scope
+                    ),
+                    "lodging_confirmation_grant_ids": [
+                        grant.grant_id
+                        for grant in verified_lodging
+                        if (
+                            grant.scope_digest
+                            == evaluated.required_lodging_confirmation_scope
+                        )
+                    ],
                     "approval_ids": [
                         grant.approval_id
                         for grant in approvals
@@ -517,6 +566,15 @@ class TripStore:
                         base_revision=patch.base_revision,
                         applied_revision=str(candidate["revision"]),
                         receipt=receipt,
+                        required_approval_scope=(
+                            evaluated.required_approval_scope
+                        ),
+                        required_lodging_confirmation_scope=(
+                            evaluated.required_lodging_confirmation_scope
+                        ),
+                        lodging_confirmation_granted=(
+                            evaluated.lodging_confirmation_granted
+                        ),
                     )
 
                 return StoreResult(
@@ -532,6 +590,10 @@ class TripStore:
                     changed=True,
                     check_status=evaluated.check_status,
                     required_approval_scope=evaluated.required_approval_scope,
+                    required_lodging_confirmation_scope=(
+                        evaluated.required_lodging_confirmation_scope
+                    ),
+                    lodging_confirmation_granted=evaluated.lodging_confirmation_granted,
                     draft=evaluated.draft,
                     candidate_plan=candidate,
                     receipt=receipt,
@@ -546,6 +608,7 @@ class TripStore:
         base_revision: str,
         idempotency_key: str,
         approvals: Sequence[ApprovalGrant] = (),
+        lodging_confirmations: Sequence[LodgingConfirmationGrant] = (),
         *,
         evaluation_at: datetime | None = None,
     ) -> StoreResult:
@@ -561,6 +624,7 @@ class TripStore:
             base_revision,
             idempotency_key,
             approvals,
+            lodging_confirmations,
             evaluation_at=evaluation_at,
         )
 
@@ -570,6 +634,7 @@ class TripStore:
         patch: PlanPatch,
         *,
         approvals: Sequence[ApprovalGrant],
+        lodging_confirmations: Sequence[LodgingConfirmationGrant] = (),
         request_digest: str,
         dry_run: bool,
         skip_receipt_lookup: bool = False,
@@ -586,7 +651,12 @@ class TripStore:
             if replay is not None:
                 return replay
 
-        draft = apply_patch_to_plan(plan, patch, approvals=approvals)
+        draft = apply_patch_to_plan(
+            plan,
+            patch,
+            approvals=approvals,
+            lodging_confirmations=lodging_confirmations,
+        )
         if draft.problems:
             return StoreResult(
                 success=False,
@@ -599,6 +669,8 @@ class TripStore:
                 dry_run=dry_run,
                 changed=False,
                 required_approval_scope=draft.required_approval_scope,
+                required_lodging_confirmation_scope=draft.required_lodging_confirmation_scope,
+                lodging_confirmation_granted=draft.lodging_confirmation_granted,
                 problems=tuple(
                     _mutation_problem(problem) for problem in draft.problems
                 ),
@@ -624,6 +696,8 @@ class TripStore:
                 dry_run=dry_run,
                 changed=False,
                 required_approval_scope=draft.required_approval_scope,
+                required_lodging_confirmation_scope=draft.required_lodging_confirmation_scope,
+                lodging_confirmation_granted=draft.lodging_confirmation_granted,
                 draft=draft,
                 candidate_plan=plan,
             )
@@ -660,6 +734,8 @@ class TripStore:
                 dry_run=dry_run,
                 changed=False,
                 required_approval_scope=draft.required_approval_scope,
+                required_lodging_confirmation_scope=draft.required_lodging_confirmation_scope,
+                lodging_confirmation_granted=draft.lodging_confirmation_granted,
                 problems=(report_or_problem,),
                 draft=draft,
                 candidate_plan=candidate,
@@ -675,6 +751,8 @@ class TripStore:
                 dry_run=dry_run,
                 draft=draft,
                 required_approval_scope=draft.required_approval_scope,
+                required_lodging_confirmation_scope=draft.required_lodging_confirmation_scope,
+                lodging_confirmation_granted=draft.lodging_confirmation_granted,
             )
 
         return StoreResult(
@@ -690,6 +768,8 @@ class TripStore:
             changed=True,
             check_status=report.status.value,
             required_approval_scope=draft.required_approval_scope,
+            required_lodging_confirmation_scope=draft.required_lodging_confirmation_scope,
+            lodging_confirmation_granted=draft.lodging_confirmation_granted,
             draft=draft,
             candidate_plan=candidate,
             check_report=report,
@@ -777,6 +857,16 @@ class TripStore:
             ),
             required_approval_scope=_optional_string(
                 receipt_value.get("required_approval_scope")
+            ),
+            required_lodging_confirmation_scope=_optional_string(
+                receipt_value.get(
+                    "required_lodging_confirmation_scope"
+                )
+            ),
+            lodging_confirmation_granted=bool(
+                receipt_value.get(
+                    "required_lodging_confirmation_scope"
+                )
             ),
             candidate_plan=plan,
             receipt=receipt_value,
@@ -993,12 +1083,36 @@ class TripStore:
         if self._fault_hook is not None:
             self._fault_hook(stage)
 
+    def _verify_lodging_confirmations(
+        self,
+        grants: Sequence[LodgingConfirmationGrant],
+    ) -> tuple[LodgingConfirmationGrant, ...] | None:
+        """Fail closed unless every supplied grant passes the host verifier."""
+
+        values = tuple(grants)
+        if not values:
+            return ()
+        verifier = self._lodging_confirmation_verifier
+        if verifier is None:
+            return None
+        for grant in values:
+            if type(grant) is not LodgingConfirmationGrant:
+                return None
+            try:
+                verified = verifier(grant)
+            except Exception:
+                return None
+            if verified is not True:
+                return None
+        return values
+
     def _rollback_latest(
         self,
         transaction_id: str,
         base_revision: str,
         idempotency_key: str,
         approvals: Sequence[ApprovalGrant],
+        lodging_confirmations: Sequence[LodgingConfirmationGrant],
         *,
         evaluation_at: datetime | None,
     ) -> StoreResult:
@@ -1034,6 +1148,18 @@ class TripStore:
                 )
                 if replay is not None:
                     return replay
+                verified_lodging = self._verify_lodging_confirmations(
+                    lodging_confirmations
+                )
+                if verified_lodging is None:
+                    return self._rejected(
+                        "rollback",
+                        "UNTRUSTED_LODGING_CONFIRMATION",
+                        (
+                            "The lodging confirmation was not verified by "
+                            "the trusted persistence host."
+                        ),
+                    )
 
                 if current["revision"] != base_revision:
                     return self._rejected(
@@ -1120,6 +1246,42 @@ class TripStore:
                     current, candidate
                 )
                 required_scope: str | None = None
+                lodging_changes = _rollback_lodging_changes(current, candidate)
+                lodging_scope: str | None = None
+                matching_lodging: list[LodgingConfirmationGrant] = []
+                if lodging_changes:
+                    lodging_scope = lodging_confirmation_scope_digest(
+                        trip_id=str(current["trip_id"]),
+                        base_revision=base_revision,
+                        request_digest=request_digest,
+                        lodging_changes=lodging_changes,
+                    )
+                    matching_lodging = [
+                        grant
+                        for grant in verified_lodging
+                        if (
+                            grant.trip_id == current["trip_id"]
+                            and grant.base_revision == base_revision
+                            and grant.request_digest == request_digest
+                            and grant.scope_digest == lodging_scope
+                        )
+                    ]
+                    if not matching_lodging:
+                        return self._rejected(
+                            "rollback",
+                            (
+                                "LODGING_CONFIRMATION_MISMATCH"
+                                if lodging_confirmations
+                                else "LODGING_CONFIRMATION_REQUIRED"
+                            ),
+                            (
+                                "Rollback changes canonical lodging and "
+                                "requires an exact lodging confirmation."
+                            ),
+                            details={
+                                "required_scope_digest": lodging_scope
+                            },
+                        )
                 matching_approvals: list[ApprovalGrant] = []
                 if protected_changes:
                     required_scope = approval_scope_digest(
@@ -1187,6 +1349,8 @@ class TripStore:
                         base_revision=base_revision,
                         current_revision=str(current["revision"]),
                         required_approval_scope=required_scope,
+                        required_lodging_confirmation_scope=lodging_scope,
+                        lodging_confirmation_granted=bool(matching_lodging),
                     )
 
                 rollback_transaction_id = _new_transaction_id()
@@ -1211,6 +1375,10 @@ class TripStore:
                     "applied_generation": candidate["generation"],
                     "check_status": report.status.value,
                     "required_approval_scope": required_scope,
+                    "required_lodging_confirmation_scope": lodging_scope,
+                    "lodging_confirmation_grant_ids": [
+                        grant.grant_id for grant in matching_lodging
+                    ],
                     "approval_ids": [
                         grant.approval_id for grant in matching_approvals
                     ],
@@ -1241,6 +1409,9 @@ class TripStore:
                         base_revision=base_revision,
                         applied_revision=str(candidate["revision"]),
                         receipt=rollback_receipt,
+                        required_approval_scope=required_scope,
+                        required_lodging_confirmation_scope=lodging_scope,
+                        lodging_confirmation_granted=bool(matching_lodging),
                     )
                 return StoreResult(
                     success=True,
@@ -1255,6 +1426,8 @@ class TripStore:
                     changed=True,
                     check_status=report.status.value,
                     required_approval_scope=required_scope,
+                    required_lodging_confirmation_scope=lodging_scope,
+                    lodging_confirmation_granted=bool(matching_lodging),
                     candidate_plan=candidate,
                     receipt=rollback_receipt,
                     check_report=report,
@@ -1345,6 +1518,8 @@ class TripStore:
         dry_run: bool = False,
         draft: PatchDraft | None = None,
         required_approval_scope: str | None = None,
+        required_lodging_confirmation_scope: str | None = None,
+        lodging_confirmation_granted: bool = False,
     ) -> StoreResult:
         return StoreResult(
             success=False,
@@ -1358,6 +1533,8 @@ class TripStore:
             changed=False,
             check_status=report.status.value,
             required_approval_scope=required_approval_scope,
+            required_lodging_confirmation_scope=required_lodging_confirmation_scope,
+            lodging_confirmation_granted=lodging_confirmation_granted,
             problems=(
                 StoreProblem(
                     code="PLAN_INFEASIBLE",
@@ -1384,6 +1561,9 @@ class TripStore:
         base_revision: str | None = None,
         applied_revision: str | None = None,
         receipt: Mapping[str, Any] | None = None,
+        required_approval_scope: str | None = None,
+        required_lodging_confirmation_scope: str | None = None,
+        lodging_confirmation_granted: bool = False,
     ) -> StoreResult:
         assert outcome.problem is not None
         return StoreResult(
@@ -1407,6 +1587,11 @@ class TripStore:
             generation=_optional_int(plan.get("generation")),
             changed=outcome.replaced,
             check_status=report.status.value if report is not None else None,
+            required_approval_scope=required_approval_scope,
+            required_lodging_confirmation_scope=(
+                required_lodging_confirmation_scope
+            ),
+            lodging_confirmation_granted=lodging_confirmation_granted,
             problems=(outcome.problem,),
             candidate_plan=plan,
             receipt=receipt,
@@ -1672,6 +1857,47 @@ def _rollback_protected_changes(
     )
 
 
+def _rollback_lodging_changes(
+    current: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> tuple[ChangeRecord, ...]:
+    """Represent the full lodging binding as one exact rollback scope item."""
+
+    def binding(plan: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "lodgings": plan["state"]["trip"].get("lodgings", []),
+            "days": [
+                {
+                    key: day.get(key)
+                    for key in (
+                        "day_id",
+                        "start_lodging_id",
+                        "end_lodging_id",
+                        "start_location_id",
+                        "end_location_id",
+                    )
+                }
+                for day in plan["state"]["itinerary"]["days"]
+            ],
+        }
+
+    before = binding(current)
+    after = binding(candidate)
+    if canonical_json_bytes(before) == canonical_json_bytes(after):
+        return ()
+    return (
+        ChangeRecord(
+            "rollback-policy",
+            "lodging",
+            "lodgings",
+            "selection",
+            before,
+            after,
+            "lodging_rollback",
+        ),
+    )
+
+
 def _rollback_entity_index(
     plan: Mapping[str, Any],
 ) -> tuple[
@@ -1848,6 +2074,7 @@ def _mutation_problem(problem: MutationProblem) -> StoreProblem:
 
 __all__ = [
     "FaultHook",
+    "LodgingConfirmationVerifier",
     "StoreError",
     "StoreProblem",
     "StoreResult",

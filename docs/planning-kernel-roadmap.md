@@ -8,9 +8,9 @@ trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
 revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
 exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
 natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
-comparison candidate、Phase 4.5C joint lodging / itinerary recommendation
-已完成；真實provider驗收尚待明確授權；下一個code slice是Phase 4.5D
-canonical lodging confirmation / apply
+comparison candidate、Phase 4.5C joint lodging / itinerary recommendation與
+Phase 4.5D host-signed canonical lodging confirmation / apply已完成；真實provider
+驗收尚待明確授權；下一個code slice是Phase 4.6 readiness / compliance preview
 
 ## 產品目標
 
@@ -334,11 +334,13 @@ Exit gate：
   reported claim、同分或mixed snapshot都不產生winner，價格在可比較evidence完成前
   明確排除。Result只表示priority review，不含decision/canonical authority。
 
-Phase 4.5 remaining slice：
+Phase 4.5已完成：
 
-- **4.5D — canonical lodging confirmation/apply**：住宿專用human confirmation
-  authority、review、typed mutation與既有TripStore protection整合；4.5A的reported
-  claim不能取代此gate。
+- **4.5D — canonical lodging confirmation/apply**：住宿專用safe review、
+  externally signed host authority、typed `SetLodgingSelection`與既有TripStore
+  CAS／approval／receipt／rollback protection整合。Generic approval、4.5C rank、
+  reported claim與可import的builder都不能取代host verifier；decision升級後
+  evidence仍為`unverified`。
 
 ### Phase 5 — Product Interface and Skill
 
@@ -715,6 +717,36 @@ Exit gate：
   `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
+
+### 2026-07-30 — Phase 4.5D canonical lodging confirmation / apply 完成
+
+- 新增`LodgingConfirmationRequest`、30分鐘safe review、externally signed host
+  authority與one-pending-review stager。Direct manual choice與4.5C option projection
+  共用同一條路徑；4.5C的assessment／option／comparison／snapshot／endpoint與
+  schedule binding只以opaque digest進入typed patch，不把process-local candidate
+  ID寫入durable state。
+- 新增`SetLodgingSelection`，以一次operation替換contiguous lodging segments與每日
+  start/end anchors。Codec要求每個住宿夜晚有exact end anchor、次日在行程內時有
+  preceding-stay start anchor，並支援Hokkaido換宿日start A／end B。Generic day
+  location update與lodging-shaped activity add/update均不能繞過typed operation。
+- Canonical住宿只保存host配置、不可由原始位置推導的隨機opaque location ID、
+  日期、kind、selected/fixed/booked decision與固定`evidence_state=unverified`。
+  Raw label、地址、
+  座標、價格、booking link、provider token及candidate ID不進request safe view、
+  plan、receipt、history或error。
+- `TripStore`在寫入與rollback前驗證host注入的external signature／registry
+  verifier；未配置verifier預設拒絕，module-level builder或generic approval都不構成
+  authority。Host的一次exact住宿確認會衍生同scope protected approval，避免重複詢問，
+  但兩項store policy仍分別驗證。Grant完整綁trip、base revision、patch、lodging
+  diff、review lifetime與issuer；receipt-first exact replay仍可安全恢復lost ACK。
+- Busan驗收保留10:00 booked抵達與18:00 booked晚餐；Hokkaido驗收保留split stay及
+  16:00 booked ryokan check-in。同分可由使用者明選但仍需grant；非confirmation
+  evidence缺口會阻止4.5C projection。
+- 9個4.5D專項、72個Phase 4.5專項與全套598個offline tests、三個real-trip
+  validators及Python compile全過；29個trip files hash aggregate維持
+  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.6
+  readiness / compliance preview。
 
 ### 2026-07-30 — Phase 4.5C joint lodging / itinerary recommendation 完成
 

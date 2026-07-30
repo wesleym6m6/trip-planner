@@ -113,7 +113,22 @@ snapshot 重播時，才依固定 lexicographic vector 排出「優先 review」
 conflicted、缺 receipt、reported booking claim、snapshot drift 或同分都不會產生
 winner。價格在有可比較且 scope 一致的 price evidence 前明確排除。結果永遠
 `supports_authoritative_use=false`，不含 `PlanPatch`、decision promotion 或 canonical
-writer；真正的住宿確認／套用仍由 Phase 4.5D 負責。
+writer。
+
+Phase 4.5D 新增住宿專用的 review／confirmation／canonical apply seam。使用者可直接
+指定住宿，或從4.5C option明選；兩者都會先轉成只含日期、住宿類型、opaque location
+與每日anchor的`LodgingConfirmationRequest`。只有trusted host在AI process外簽發、
+且`TripStore`以注入的verifier驗證通過的exact grant，才能套用
+`SetLodgingSelection`；generic `ApprovalGrant`、4.5C排名、reported claim或可import
+的內部builder都不能取代。一次明確住宿確認可同時滿足同一exact effect的既有
+protected-change gate，不要求使用者重複確認。
+
+Canonical lodging的decision可為`selected`／`fixed`／`booked`，但evidence固定仍是
+`unverified`；已決定不等於資料已驗證。Raw地址、座標、label、價格、booking link、
+provider token與process-local candidate ID不進plan、receipt、history或safe output；
+住宿位置會先轉成不可逆的canonical opaque ID。Lost-ACK保留pending review並以同一
+idempotency request重播；不同trip、revision、patch、anchor、selection binding或
+簽章一律fail closed。
 
 4.5B 另提供純 offline 的 SerpApi hotel response normalizer，嚴格區分 metadata
 status、top-level error、empty success 與 partial result；query/search ID/token/位置
@@ -121,7 +136,8 @@ status、top-level error、empty success 與 partial result；query/search ID/to
 unverified。Result 只是 non-provenance DTO；status 與 process-local diagnostic ref
 不可作 authorization、cache、evidence、receipt 或住宿決策依據。此 normalizer 沒有
 HTTP、cache、`HOTEL_OFFER` fact、房態或訂位語意。
-真正 host-owned 的住宿確認／canonical apply gate 仍留在 Phase 4.5D。舊
+Phase 4.5D的host-owned住宿確認只接受上述exact request，不會把discovery result
+直接promotion。舊
 `search_flights.py` 與其 cache 保留資料相容性但已 quarantine；`search_hotels.py`
 也只可在使用者明確授權 live provider、成本與資料保留政策後，作 exit gate 外的
 legacy 候選 discovery；不能代表房態、訂位或可直接寫入計畫。一般 4.5B 流程只離線
