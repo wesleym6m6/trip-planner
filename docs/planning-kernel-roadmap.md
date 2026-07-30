@@ -751,6 +751,12 @@ Exit gate：
   provider、未render、未deploy、未修改`trips/`；下一個slice是4.6B legacy evidence
   migration / cleanup preview。
 
+**遠端 closure checkpoint：** 2026-07-30 已將經過低成本架構、安全與產品複審的
+Phase 4.6A implementation commit `4368a64`推送至
+`origin/feat/tainan-2026-revival`。此點視為read-only readiness projection的封版
+邊界；後續工作從4.6B另起，不在4.6A內默默擴張provider、confirmation或mutation
+authority。
+
 ### 2026-07-30 — Phase 4.5 product acceptance gate 完成
 
 - 新增`phase45_acceptance.py`，只用temporary `TripStore`、canned
