@@ -1,0 +1,2617 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>石垣島家庭度假</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%23f5f5f5'/><text x='90' y='130' font-size='120' text-anchor='middle'>🏝️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text x='16' y='26' font-size='28' text-anchor='middle'>🏝️</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#333}
+
+.sticky-header{position:sticky;top:0;z-index:200}
+.top-bar{background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;padding:14px 20px 10px;text-align:center;position:relative}
+.top-bar h1{font-size:18px;font-weight:600}
+.top-bar p{font-size:12px;opacity:.85;margin-top:2px}
+.back-home{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.85);text-decoration:none;font-size:22px;line-height:1;padding:4px;border-radius:6px;transition:.15s}
+.back-home:hover{color:#fff;background:rgba(255,255,255,.12)}
+.top-legend{display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:11px;opacity:.8;flex-wrap:wrap}
+
+.tab-nav{display:flex;background:#fff;border-bottom:1px solid #ddd}
+.tab-btn{flex:1;padding:10px;border:none;background:#fff;font-size:13px;font-weight:500;cursor:pointer;border-bottom:3px solid transparent;color:#666;transition:.2s}
+.tab-btn.active{color:#1a73e8;border-bottom-color:#1a73e8}
+
+/* (legend strip moved into top-bar as .top-legend) */
+
+/* Itinerary */
+#itin{display:none;padding-bottom:30px}
+#itin.active{display:block}
+
+.day-sec{margin:16px 12px 0}
+.day-hdr{background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;padding:12px 16px;border-radius:10px 10px 0 0;font-size:15px;font-weight:600}
+.day-hdr .sub{font-size:12px;opacity:.8;margin-top:2px;font-weight:400}
+.day-body{background:#fff;border-radius:0 0 10px 10px;overflow:hidden}
+
+/* Place card - entire thing clickable */
+a.place{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid #f0f0f0;text-decoration:none;color:inherit;transition:background .12s;cursor:pointer}
+a.place:last-child{border-bottom:none}
+a.place:hover{background:#f0f6ff}
+a.place:active{background:#e3edfa}
+
+.pc{flex:1;min-width:0}
+.pc-time{font-size:12px;color:#1a5276;font-weight:600;font-variant-numeric:tabular-nums;margin-right:4px}
+.pc-title{font-size:14px;font-weight:600;margin-bottom:2px}
+.pc-note{font-size:12px;color:#666;line-height:1.5}
+.pc-user-note{font-size:12px;color:#1a73e8;line-height:1.5;margin-top:2px;font-style:italic}
+.arrow{color:#bbb;font-size:16px;margin-top:3px;flex-shrink:0}
+
+/* Place edit button */
+.place-edit-btn{width:32px;height:32px;border:none;background:none;color:#bbb;font-size:20px;cursor:pointer;flex-shrink:0;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:.15s;text-decoration:none}
+.place-edit-btn:hover{color:#1a73e8;background:#e8f0fe}
+.place-edit-btn.has-note{color:#1a73e8}
+
+/* Place note editor */
+.place-note-editor{padding:8px 14px;background:#fafbfc;border-bottom:1px solid #f0f0f0;display:none}
+.place-note-editor textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;outline:none;box-sizing:border-box}
+.place-note-editor textarea:focus{border-color:#1a73e8}
+.place-note-editor button{margin-top:6px;padding:8px 16px;background:#1a73e8;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer}
+
+/* Travel segment between places */
+.travel-seg{display:flex;flex-direction:column;gap:2px;padding:6px 14px 6px 28px;background:#fafbfc;border-bottom:1px solid #f0f0f0;font-size:11px;color:#888}
+.travel-seg .seg-main{display:flex;align-items:center;gap:8px}
+.travel-seg .seg-icon{font-size:14px}
+.travel-seg .seg-line{flex:1;height:1px;background:#e0e0e0}
+.travel-seg .seg-info{white-space:nowrap;color:#555;font-weight:500}
+.travel-seg .seg-transit{display:flex;flex-direction:column;gap:2px;padding:2px 0 2px 22px;font-size:10px;color:#666}
+.travel-seg .seg-transit-step{display:flex;align-items:center;gap:5px;line-height:1.5}
+.travel-seg .seg-transit-line{background:#1a73e8;color:#fff;padding:1px 6px;border-radius:8px;font-weight:600;font-size:9px;white-space:nowrap}
+.travel-seg .seg-transit-line.bus{background:#0d7a3e}
+.travel-seg .seg-transit-line.rail{background:#1a5276}
+.travel-seg .seg-transit-stops{color:#555}
+.travel-seg .seg-transit-time{color:#999;margin-left:auto;white-space:nowrap}
+
+/* Map */
+#map-panel{display:none}
+#map-panel.active{display:block}
+#map{width:100%;height:calc(100vh - 135px)}
+.map-ctrl{display:flex;gap:5px;padding:8px 10px;background:#fff;overflow-x:auto;flex-wrap:nowrap;position:sticky;top:0;z-index:150;border-bottom:1px solid #ddd}
+.map-ctrl button{padding:4px 10px;border:1.5px solid #ddd;border-radius:14px;background:#fff;font-size:11px;cursor:pointer;white-space:nowrap;transition:.2s}
+.map-ctrl button.active{background:#1a73e8;color:#fff;border-color:#1a73e8}
+
+/* Checklist tab */
+#checklist{display:none;padding:16px 12px 30px}
+#checklist.active{display:block}
+.cl-sec{margin-bottom:20px}
+.cl-hdr{display:flex;align-items:center;gap:8px;padding:12px 16px;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border-radius:10px 10px 0 0;font-size:15px;font-weight:600;cursor:pointer;-webkit-user-select:none;user-select:none}
+.cl-hdr .cl-emoji{font-size:18px}
+.cl-hdr .cl-arrow{margin-left:auto;font-size:12px;transition:transform .2s}
+.cl-body{background:#fff;border-radius:0 0 10px 10px;overflow:hidden}
+.cl-body.collapsed{display:none}
+.cl-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid #f0f0f0;transition:background .12s;-webkit-user-select:none;user-select:none}
+.cl-item:hover{background:#f8f9fa}
+.cl-item.checked{opacity:.55}
+.cl-item.checked .cl-label{text-decoration:line-through}
+.cl-check{width:20px;height:20px;border:2px solid #ccc;border-radius:5px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:.15s;font-size:13px;color:#fff;background:#fff;cursor:pointer}
+.cl-item.checked .cl-check{background:#27ae60;border-color:#27ae60}
+.cl-info{flex:1;min-width:0}
+.cl-label{font-size:13px;font-weight:500;color:#333}
+.cl-hint{font-size:11px;color:#999;margin-top:2px;line-height:1.4}
+.cl-meta{font-size:11px;color:#888;margin-top:3px;line-height:1.4}
+.cl-del{width:28px;height:28px;border:none;background:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:.15s;margin-top:-1px;min-height:44px}
+.cl-del:hover{color:#e74c3c;background:#fdecea}
+/* Pencil edit button - same as del but blue on hover */
+.cl-edit-btn{width:28px;height:28px;border:none;background:none;color:#ccc;font-size:20px;cursor:pointer;flex-shrink:0;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:.15s;margin-top:-1px;min-height:44px}
+.cl-edit-btn:hover{color:#1a73e8;background:#e8f0fe}
+.cl-progress{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#f8f9fa;border-bottom:1px solid #eee}
+.cl-bar{flex:1;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden}
+.cl-bar-fill{height:100%;background:linear-gradient(90deg,#27ae60,#2ecc71);border-radius:3px;transition:width .3s}
+.cl-pct{font-size:11px;color:#888;white-space:nowrap}
+.cl-add{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px dashed #ddd;cursor:pointer;color:#1a73e8;font-size:13px;transition:background .12s}
+.cl-add:hover{background:#f0f6ff}
+.cl-add-icon{font-size:18px;line-height:1}
+.cl-add-form{display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-top:1px dashed #ddd}
+.cl-add-form input,.cl-add-form textarea{width:100%;max-width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:16px;outline:none;font-family:inherit;box-sizing:border-box}
+.cl-add-form input:focus,.cl-add-form textarea:focus{border-color:#1a73e8}
+.cl-add-form .cl-add-btns{display:flex;gap:6px;justify-content:flex-end}
+.cl-add-form button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-add-form .cl-btn-ok{background:#1a73e8;color:#fff}
+.cl-add-form .cl-btn-cancel{background:#f0f0f0;color:#666}
+.cl-edit-form{padding:10px 14px;border-bottom:1px solid #f0f0f0;background:#fafbfc}
+.cl-edit-form input,.cl-edit-form textarea{width:100%;max-width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:16px;outline:none;font-family:inherit;margin-bottom:6px;box-sizing:border-box;-webkit-appearance:none;appearance:none;min-height:44px}
+.cl-edit-form input:focus,.cl-edit-form textarea:focus{border-color:#1a73e8}
+.cl-edit-form .cl-edit-btns{display:flex;gap:6px;justify-content:flex-end}
+.cl-edit-form button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-edit-form .cl-btn-ok{background:#1a73e8;color:#fff}
+.cl-edit-form .cl-btn-cancel{background:#f0f0f0;color:#666}
+.cl-edit-form .cl-edit-hint{font-size:12px;color:#999}
+
+/* ===== Packing section - TREK style ===== */
+.pk-card{background:#fff;border-radius:14px;border:1px solid #e8e8e8;margin-bottom:8px;overflow:visible}
+.pk-card-hdr{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;-webkit-user-select:none;user-select:none}
+.pk-card-hdr.open{border-bottom:1px solid #e8e8e8}
+.pk-chevron{font-size:10px;color:#999;transition:transform .2s;flex-shrink:0;width:14px;text-align:center}
+.pk-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.pk-cat-name{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#666;flex:1;min-width:0}
+.pk-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:#f0f0f0;color:#888;flex-shrink:0}
+.pk-count.all-done{background:rgba(22,163,74,0.12);color:#16a34a}
+.pk-menu-btn{width:28px;height:28px;border:none;background:none;color:#999;font-size:16px;cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.pk-menu-btn:hover{background:#f0f0f0;color:#666}
+.pk-card-body{overflow:hidden}
+.pk-card-body.collapsed{display:none}
+.pk-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;position:relative;transition:background .12s}
+.pk-item:hover{background:#f8f9fa}
+.pk-item.checked .pk-name{opacity:.55;text-decoration:line-through}
+.pk-item.checked .cl-check{background:#27ae60;border-color:#27ae60}
+.pk-name{flex:1;font-size:13.5px;min-width:0}
+.pk-edit-input{flex:1;font-size:13.5px;padding:2px 8px;border-radius:6px;border:1px solid #1a73e8;outline:none;font-family:inherit;box-sizing:border-box}
+.pk-actions{display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .12s}
+.pk-item:hover .pk-actions{opacity:1}
+@media(max-width:767px){.pk-actions{opacity:1!important}}
+.pk-act-btn{width:28px;height:28px;border:none;background:none;color:#ccc;font-size:20px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:.15s;min-height:44px}
+.pk-act-btn:hover{color:#1a73e8;background:#e8f0fe}
+.pk-act-btn.del:hover{color:#e74c3c;background:#fdecea}
+.pk-inline-add{display:flex;align-items:center;gap:8px;padding:6px 10px;color:#1a73e8;font-size:13px;cursor:pointer;transition:background .12s;border-radius:0 0 14px 14px}
+.pk-inline-add:hover{background:#f0f6ff}
+.pk-inline-add-form{display:flex;align-items:center;gap:6px;padding:6px 10px}
+.pk-inline-add-form input{flex:1;padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13.5px;outline:none;font-family:inherit}
+.pk-inline-add-form input:focus{border-color:#1a73e8}
+.pk-inline-add-form button{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;min-height:44px}
+.pk-inline-add-form .pk-add-ok{background:#1a73e8;color:#fff}
+.pk-inline-add-form .pk-add-cancel{background:#f0f0f0;color:#666}
+
+/* Packing dropdown menu */
+.pk-dropdown{display:none;position:absolute;top:100%;right:0;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100;min-width:140px;overflow:hidden}
+.pk-dropdown.open{display:block}
+.pk-dropdown button{display:block;width:100%;padding:10px 14px;border:none;background:none;text-align:left;font-size:13px;cursor:pointer;font-family:inherit;color:#333}
+.pk-dropdown button:hover{background:#f0f6ff}
+.pk-dropdown button.danger{color:#e74c3c}
+.pk-dropdown button.danger:hover{background:#fdecea}
+
+/* Add category button */
+.pk-add-cat{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;color:#1a73e8;font-size:13px;transition:background .12s;border-radius:10px;margin-top:4px}
+.pk-add-cat:hover{background:#f0f6ff}
+.pk-add-cat-form{display:flex;align-items:center;gap:6px;padding:10px 14px;margin-top:4px}
+.pk-add-cat-form input{flex:1;padding:10px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:14px;outline:none;font-family:inherit}
+.pk-add-cat-form input:focus{border-color:#1a73e8}
+.pk-add-cat-form button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
+.pk-add-cat-form .pk-btn-ok{background:#1a73e8;color:#fff}
+.pk-add-cat-form .pk-btn-cancel{background:#f0f0f0;color:#666}
+
+/* Info */
+#info{display:none;padding:16px 12px 30px}
+#info.active{display:block}
+.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card h3{font-size:15px;font-weight:600;color:#1a5276;margin-bottom:8px}
+.card p{font-size:13px;line-height:1.7;color:#555}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{padding:7px 10px;text-align:left;border-bottom:1px solid #eee}
+.tbl th{background:#f8f9fa;font-weight:600;color:#1a5276}
+.tbl .total{font-weight:700;color:#1a73e8}
+.cw-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.cw-tbl th,.cw-tbl td{padding:5px 7px;text-align:left;border-bottom:1px solid #eee;vertical-align:top}
+.cw-tbl th{background:#e8f0fe;font-weight:600;color:#1a5276;white-space:nowrap}
+
+/* Read-only timeline review */
+#review{display:none;padding:16px 12px 30px}
+#review.active{display:block}
+.review-hero{background:#fff;border:1px solid #d9e6f2;border-radius:12px;padding:18px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.review-hero.needs_verification{border-left:5px solid #e67e22}
+.review-hero.infeasible,.review-hero.repair_required{border-left:5px solid #d35400}
+.review-hero.feasible{border-left:5px solid #27ae60}
+.review-hero.unavailable{border-left:5px solid #95a5a6}
+.review-kicker{font-size:12px;font-weight:600;color:#1a5276;letter-spacing:.04em;margin-bottom:6px}
+.review-hero h2{font-size:18px;line-height:1.35;color:#234;letter-spacing:.01em}
+.review-hero p{font-size:13px;line-height:1.7;color:#555;margin-top:8px}
+.review-card{background:#fff;border-radius:10px;padding:15px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.review-card h3{font-size:14px;font-weight:600;color:#1a5276;margin-bottom:8px}
+.review-card p{font-size:13px;line-height:1.7;color:#555}
+.review-list{list-style:none}
+.review-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #edf0f2;font-size:13px;color:#333}
+.review-item:first-child{border-top:none;padding-top:0}
+.review-item:last-child{padding-bottom:0}
+.review-count{flex-shrink:0;color:#a15c00;background:#fff2df;border-radius:999px;padding:3px 8px;font-size:12px;font-variant-numeric:tabular-nums}
+.review-note{font-size:12px;line-height:1.65;color:#7b8790;padding:2px 4px}
+
+/* Floating notes button */
+.notes-fab{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border:none;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:300;display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s}
+.notes-fab:hover{transform:scale(1.08);box-shadow:0 6px 16px rgba(0,0,0,.3)}
+.notes-panel{display:none;position:fixed;bottom:80px;right:16px;width:320px;max-width:calc(100vw - 32px);max-height:60vh;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:300;overflow:hidden;display:flex;flex-direction:column}
+.notes-panel:not(.open){display:none}
+.notes-panel.open{display:flex}
+.notes-panel-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;font-size:14px;font-weight:600;flex-shrink:0}
+.notes-panel-hdr button{background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:.8;transition:opacity .15s}
+.notes-panel-hdr button:hover{opacity:1}
+.notes-panel textarea{width:100%;height:200px;border:none;padding:12px 16px;font-size:13px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;color:#333;flex:1;overflow-y:auto}
+.notes-panel textarea::placeholder{color:#bbb}
+
+/* Date badge for reservations */
+.res-date-badge{font-size:11px;color:#1a73e8;background:#e8f0fe;padding:2px 6px;border-radius:4px;margin-left:6px;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="sticky-header">
+<div class="top-bar">
+  <a href="../" class="back-home" title="返回首頁">←</a>
+  <h1>石垣島家庭度假</h1>
+  <p>2026/10 ｜ 水上活動 × 購物 × 石垣牛與島料理</p>
+  <div class="top-legend">
+    <span>🏨 住宿</span>
+    <span>🍜 美食</span>
+    <span>📍 景點</span>
+    <span>☕ 飲品</span>
+    <span>🚊 交通</span>
+  </div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="sw('itin',this)">行程</button>
+  <button class="tab-btn" onclick="sw('map-panel',this)">地圖</button>
+  <button class="tab-btn" onclick="sw('checklist',this)">清單</button>
+  <button class="tab-btn" data-panel="review" onclick="sw('review',this)">檢查</button>
+  <button class="tab-btn" onclick="sw('info',this)">實用資訊</button>
+</div>
+</div><!-- /sticky-header -->
+
+<!-- ==================== 行程 TAB ==================== -->
+<div id="itin" class="active">
+
+
+
+<!-- ===== DAY 1 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 1 — 抵達石垣島，先度假再吃石垣牛<div class="sub">桃園直飛石垣 × 三台小車取車 × 市區採買</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=25.0797,121.2342" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">✈️ 台灣虎航 TPE → ISG</div>
+    <div class="pc-note"><span class="pc-time">06:35</span>固定交通：10/2 桃園出發，暫記 06:35 起飛、08:35 抵達；票價 NT$4,799/人，不含託運行李。登機時間以實際票面為準。</div>
+    <div class="pc-user-note" id="pn-1-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon"></span>
+    <span class="seg-info">60 分鐘 ｜ 270 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=New%20Ishigaki%20Airport%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJa7axH-HjXzQRXZuqNDWZgzc" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 抵達新石垣機場，三台小車取車</div>
+    <div class="pc-note"><span class="pc-time">08:35</span>12成人+1幼童，三台小車省錢主案；需3位駕駛，幼童座椅先預約。取車公司待比價。</div>
+    <div class="pc-user-note" id="pn-1-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">20 分鐘 ｜ 12.1 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Tofu%20no%20Higa%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJff-LcgTgXzQR5BsBI2HQW_8" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 島早餐/早午餐：とうふの比嘉</div>
+    <div class="pc-note"><span class="pc-time">10:00</span>第一餐走石垣島特色，吃ゆし豆腐、島豆腐。若排隊或太累，改市區八重山そば。</div>
+    <div class="pc-user-note" id="pn-1-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,2)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">8 分鐘 ｜ 4.3 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Grandvrio%20Resort%20Ishigaki%20Island%20Ocean%27s%20Wing%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEbS_4YnfXzQRm_CLzpP-AX0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🏨 住宿候選主案：Grandvrio Ocean's Wing</div>
+    <div class="pc-note"><span class="pc-time">15:00</span>尚未說死。暫以 Grandvrio 作為路線基準：度假感較強、海景/泳池/大浴場，缺點是比 Art Hotel 貴。</div>
+    <div class="pc-user-note" id="pn-1-3"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,3)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-3">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,3)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">10 分鐘 ｜ 4.3 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Euglena%20Mall%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJkQwhw60KYDQRAnMh4v-3FvM" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 730交差點、Euglena Mall、公設市場</div>
+    <div class="pc-note"><span class="pc-time">16:30</span>第一輪採買與伴手禮偵查：鹽、黑糖、泡盛、石垣牛零食、島辣椒。先不要買太多，10/4還有最後採買。</div>
+    <div class="pc-user-note" id="pn-1-4"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,4)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-4">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,4)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚶</span>
+    <span class="seg-info">16 分鐘 ｜ 1.2 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Yakiniku%20Yamamoto%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJc9G3QlJ1YDQR_VvYv5AIn60" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 石垣牛晚餐候選：Yamamoto / MARU</div>
+    <div class="pc-note"><span class="pc-time">18:30</span>第一晚排重點美食。13人需預約，接受拆2-3桌；若預算要控，訂套餐或控制點肉量。</div>
+    <div class="pc-user-note" id="pn-1-5"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,5)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-5">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,5)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">8 分鐘 ｜ 3.9 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Grandvrio%20Resort%20Ishigaki%20Island%20Ocean%27s%20Wing%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEbS_4YnfXzQRm_CLzpP-AX0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🏨 回飯店休息</div>
+    <div class="pc-note"><span class="pc-time">20:30</span>早班機日不要再塞景點。確認隔天水上活動集合時間、泳衣、防曬、暈船藥。</div>
+    <div class="pc-user-note" id="pn-1-6"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,6)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-6">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,6)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 2 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 2 — 水上活動主日<div class="sub">幻之島/石西礁湖浮潛 × 飯店泳池 × 夕陽</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Grandvrio%20Resort%20Ishigaki%20Island%20Ocean%27s%20Wing%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEbS_4YnfXzQRm_CLzpP-AX0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🏨 飯店早餐與水上裝備確認</div>
+    <div class="pc-note"><span class="pc-time">07:30</span>泳衣可先穿在裡面；帶防曬、毛巾、換洗衣物、幼童防曬帽、防水袋。非泳者可選留船/沙洲。</div>
+    <div class="pc-user-note" id="pn-2-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">11 分鐘 ｜ 4.5 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Ishigaki%20Port%20Remote%20Island%20Terminal%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJWa6czBkLYDQRSgao3_cyiZE" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 水上活動集合：石垣港周邊</div>
+    <div class="pc-note"><span class="pc-time">08:30</span>集合點依業者而定。13人大團優先問半日包船或可處理幼童/不下水者的團。</div>
+    <div class="pc-user-note" id="pn-2-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon"></span>
+    <span class="seg-info">35 分鐘 ｜ 15 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=24.3405,124.017" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 幻之島浜島 + 石西礁湖浮潛</div>
+    <div class="pc-note"><span class="pc-time">09:15</span>本趟核心體驗。此為示意錨點，實際航線與下水點依當日海況與業者安排；颱風/浪況不佳改川平灣玻璃船+飯店泳池。</div>
+    <div class="pc-user-note" id="pn-2-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,2)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon"></span>
+    <span class="seg-info">35 分鐘 ｜ 15 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Ishigaki%20Port%20Remote%20Island%20Terminal%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJWa6czBkLYDQRSgao3_cyiZE" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 市區午餐：八重山そば或海鮮定食</div>
+    <div class="pc-note"><span class="pc-time">13:00</span>水上活動後不要排太遠。先回市區吃午餐，餐廳依團體可訂位性決定。</div>
+    <div class="pc-user-note" id="pn-2-3"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,3)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-3">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,3)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">11 分鐘 ｜ 4.5 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Grandvrio%20Resort%20Ishigaki%20Island%20Ocean%27s%20Wing%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEbS_4YnfXzQRm_CLzpP-AX0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🏨 飯店泳池/大浴場休息</div>
+    <div class="pc-note"><span class="pc-time">15:00</span>家庭團水上活動後保留休息時間，比塞景點更有度假感。</div>
+    <div class="pc-user-note" id="pn-2-4"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,4)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-4">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,4)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">4 分鐘 ｜ 2.3 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Fusaki%20Beach%20Resort%20Hotel%20%26%20Villas%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJiQk2UpvfXzQR-r2e92IQxWE" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Fusaki Beach / Angel Pier 夕陽</div>
+    <div class="pc-note"><span class="pc-time">17:20</span>靠近Grandvrio，移動成本低。若雲多或大家累，改飯店內看海休息。</div>
+    <div class="pc-user-note" id="pn-2-5"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,5)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-5">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,5)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">13 分鐘 ｜ 7.0 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Hitoshi%20Ishiganto%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJs8T_e64KYDQRiUKvQg-kMN8" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 海鮮/島料理晚餐候選：ひとし或大型居酒屋</div>
+    <div class="pc-note"><span class="pc-time">19:00</span>ひとし熱門且13人難訂，備案找可收大團的島料理/海鮮居酒屋。這晚主打鮪魚、海葡萄、島豆腐、泡盛。</div>
+    <div class="pc-user-note" id="pn-2-6"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,6)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-6">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,6)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">9 分鐘 ｜ 4.4 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Grandvrio%20Resort%20Ishigaki%20Island%20Ocean%27s%20Wing%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEbS_4YnfXzQRm_CLzpP-AX0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🏨 回飯店整理行李</div>
+    <div class="pc-note"><span class="pc-time">20:45</span>隔天退房並搭船，晚上先分好船上用品、護照、藥品與換洗衣物。</div>
+    <div class="pc-user-note" id="pn-2-7"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,7)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-7">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,7)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 3 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 3 — 川平灣與最後採買，晚上搭Yaima Line<div class="sub">北西岸輕鬆線 × 還車 × 18:00報到</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Grandvrio%20Resort%20Ishigaki%20Island%20Ocean%27s%20Wing%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEbS_4YnfXzQRm_CLzpP-AX0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🏨 早餐、退房、寄放/上車</div>
+    <div class="pc-note"><span class="pc-time">09:00</span>把船上用品獨立成一袋：護照、船票、外套、暈船藥、充電線、幼童用品。</div>
+    <div class="pc-user-note" id="pn-3-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">24 分鐘 ｜ 16.8 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Kabira%20Bay%20Glass%20Boat%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJi4dhr8vdXzQRl94HDIlx7eA" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 川平灣玻璃船</div>
+    <div class="pc-note"><span class="pc-time">10:15</span>低體力、長輩與幼童友善；不排自行下水。若10/3水上活動取消，這裡升級為主要看海體驗。</div>
+    <div class="pc-user-note" id="pn-3-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">12 分鐘 ｜ 8.5 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Yonehara%20Beach%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJEfdRTQXnXzQRwWgakTbPGL0" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 米原海岸短停</div>
+    <div class="pc-note"><span class="pc-time">12:00</span>看海、拍照、上廁所。不建議家庭大團自行浮潛，海況與離岸流風險需尊重現場告示。</div>
+    <div class="pc-user-note" id="pn-3-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,2)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">8 分鐘 ｜ 4.6 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Kabira%20Bay%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJq3PQEe7dXzQR8VwfG5-d-Jo" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 午餐：川平/市區八重山そば</div>
+    <div class="pc-note"><span class="pc-time">13:00</span>看店家可否接大團；如果川平周邊排隊，直接回市區吃。</div>
+    <div class="pc-user-note" id="pn-3-3"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,3)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-3">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,3)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">29 分鐘 ｜ 19.3 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Euglena%20Mall%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJkQwhw60KYDQRAnMh4v-3FvM" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 最後採買：Euglena Mall / Donki / MaxValu</div>
+    <div class="pc-note"><span class="pc-time">15:00</span>集中買伴手禮與船上補給。注意液體、易碎品與回台攜帶限制。</div>
+    <div class="pc-user-note" id="pn-3-4"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,4)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-4">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,4)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">3 分鐘 ｜ 0.6 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Ishigaki%20Port%20Remote%20Island%20Terminal%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJWa6czBkLYDQRSgao3_cyiZE" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 三台小車還車</div>
+    <div class="pc-note"><span class="pc-time">16:45</span>優先找市區/港口可還車店。若只能機場還車，需把本日節奏提前約45分鐘並安排計程車回港口。</div>
+    <div class="pc-user-note" id="pn-3-5"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,5)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-5">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,5)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">8 分鐘 ｜ 3.4 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Ishigaki%20Port%20International%20Terminal%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJw5p-aWx1YDQRCwCUDoYgfO8" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 Yaima Line 報到/安檢/出境</div>
+    <div class="pc-note"><span class="pc-time">18:00</span>固定交通：10/4 18:00開始報到、20:00截止；船票與護照必帶。碼頭可能為石垣港碼頭或石垣港國際碼頭，依官方公告。</div>
+    <div class="pc-user-note" id="pn-3-6"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,6)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-6">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,6)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚶</span>
+    <span class="seg-info">0 分鐘 ｜ 0 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Ishigaki%20Port%20International%20Terminal%2C%20Ishigaki%2C%20Okinawa%2C%20Japan&query_place_id=ChIJw5p-aWx1YDQRCwCUDoYgfO8" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 Yaima Line 石垣島 → 基隆</div>
+    <div class="pc-note"><span class="pc-time">21:00</span>固定交通：推定10/4 21:00石垣出發，10/5 08:00基隆到達。目標艙等 Standard G 15人通鋪；含7月起稅金估 NT$38,450/團。</div>
+    <div class="pc-user-note" id="pn-3-7"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,7)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-7">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,7)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 4 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 4 — 抵達基隆返家<div class="sub">08:00到港 × 轉乘台鐵/客運/包車</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Keelung%20Port%20East%20Side%20Visitor%20Center%2C%20Keelung%2C%20Taiwan&query_place_id=ChIJwU1FHu5PXTQRQcBJxmPlh0s" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 Yaima Line 抵達基隆</div>
+    <div class="pc-note"><span class="pc-time">08:00</span>固定交通：預計08:00到港。實際下船與入境時間依現場作業；船靠泊後可能接駁至東岸或西岸旅客中心。</div>
+    <div class="pc-user-note" id="pn-4-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(4,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-4-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(4,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚶</span>
+    <span class="seg-info">20 分鐘 ｜ 1.4 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Keelung%20Station%2C%20Keelung%2C%20Taiwan&query_place_id=ChIJK17Q2BROXTQRUAheqvBKqj4" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🚊 基隆車站/轉運站返家</div>
+    <div class="pc-note"><span class="pc-time">09:15</span>可搭台鐵/客運回台北，或13人直接預約接駁車。若行李多，包車會比多人拖行李轉乘舒服。</div>
+    <div class="pc-user-note" id="pn-4-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(4,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-4-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(4,1)">儲存</button>
+</div>
+
+
+</div></div>
+
+</div>
+
+<!-- ==================== 地圖 TAB ==================== -->
+<div id="map-panel">
+  <div class="map-ctrl" id="mapBtns">
+    <button class="active" onclick="mf('all',this)">全部</button>
+    
+    <button onclick="mf('d1',this)">Day 1</button>
+    
+    <button onclick="mf('d2',this)">Day 2</button>
+    
+    <button onclick="mf('d3',this)">Day 3</button>
+    
+    <button onclick="mf('d4',this)">Day 4</button>
+    
+  </div>
+  <div id="map"></div>
+</div>
+
+<!-- ==================== 清單 TAB ==================== -->
+<div id="checklist">
+  <div class="cl-sec" id="cl-todo"></div>
+  <div class="cl-sec" id="cl-reservations"></div>
+  <div class="cl-sec" id="cl-packing"></div>
+</div>
+
+<!-- ==================== 行程檢查 TAB ==================== -->
+<div id="review">
+  <section class="review-hero needs_verification">
+    <div class="review-kicker">行程檢查 · 尚有待確認事項</div>
+    <h2>行程還不能視為已準備完成</h2>
+    <p>這是離線時間線檢查；待確認事項完成前，不代表交通、營業或預訂已確認。</p>
+  </section>
+
+  <section class="review-card">
+    <h3>下一步</h3>
+    <p>先補齊或確認下列項目，再重新檢查。</p>
+  </section>
+
+  
+  <section class="review-card">
+    <h3>需要處理的項目</h3>
+    <ul class="review-list">
+      
+      <li class="review-item review-warning">
+        <span>每日可用時間尚未設定</span>
+        <span class="review-count">4 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>景點停留時間尚未補齊</span>
+        <span class="review-count">25 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>每日起點尚未設定</span>
+        <span class="review-count">4 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>每日終點尚未設定</span>
+        <span class="review-count">4 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>交通時間尚未估算</span>
+        <span class="review-count">4 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>時區仍使用暫定設定</span>
+        <span class="review-count">1 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>景點或交通資訊尚待確認</span>
+        <span class="review-count">45 項</span>
+      </li>
+      
+    </ul>
+  </section>
+  
+
+  <p class="review-note">此頁為產生頁面時的離線檢查摘要；不會確認即時交通、營業、空位或訂位。更新資料後請重新產生頁面。</p>
+</div>
+
+<!-- ==================== 實用資訊 TAB ==================== -->
+<div id="info">
+<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;gap:12px;overflow:hidden">
+  <span style="font-size:14px;font-weight:500;color:#1a5276;white-space:nowrap">📅 行程日曆</span>
+  <a href="calendar.ics" download="ishigaki-2026-10.ics" style="flex-shrink:0;padding:8px 16px;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;white-space:nowrap">📥 下載 .ics</a>
+</div>
+
+  <div class="card">
+    <h3>已固定的交通</h3>
+    
+      
+        
+        
+        <table class="tbl">
+          
+          <tr>
+            
+            <th>項目</th>
+            
+            <th>內容</th>
+            
+            <th>狀態</th>
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>去程機票</td>
+              
+            
+              
+            <td>2026/10/2 台灣虎航 TPE → ISG，暫記06:35-08:35，NT$4,799/人，不含託運行李</td>
+              
+            
+              
+            <td>固定，待實際票面確認</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>回程郵輪</td>
+              
+            
+              
+            <td>2026/10/4 Yaima Line 石垣島21:00 → 2026/10/5 基隆08:00</td>
+              
+            
+              
+            <td>固定規劃，10月班表待開賣確認</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>郵輪艙等</td>
+              
+            
+              
+            <td>目標 Standard G 15人通鋪包房</td>
+              
+            
+              
+            <td>省錢主案</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>郵輪含稅估算</td>
+              
+            
+              
+            <td>NT$30,000/房 + NT$650 x 13 = NT$38,450，約NT$2,958/人</td>
+              
+            
+              
+            <td>用7月起石垣回基隆稅金估</td>
+              
+            
+          </tr>
+          
+        </table>
+      
+      
+      <p style="margin-top:8px;font-size:12px;color:#888">Yaima Line官方目前公告到7月型態，10月需等開賣後確認實際航班與碼頭。</p>
+      
+    
+  </div>
+
+  <div class="card">
+    <h3>住宿候選</h3>
+    
+      
+        
+        
+        <table class="tbl">
+          
+          <tr>
+            
+            <th>候選</th>
+            
+            <th>定位</th>
+            
+            <th>優點</th>
+            
+            <th>風險/代價</th>
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>Grandvrio Resort Ishigaki Island Ocean's Wing</td>
+              
+            
+              
+            <td>度假感主案</td>
+              
+            
+              
+            <td>海景、泳池、大浴場，西岸夕陽方便，兩晚住得有感</td>
+              
+            
+              
+            <td>比Art Hotel貴，需確認6間房價格</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>Art Hotel Ishigakijima</td>
+              
+            
+              
+            <td>省錢方便備案</td>
+              
+            
+              
+            <td>市區近、吃飯購物方便、價格通常較友善</td>
+              
+            
+              
+            <td>度假感比Grandvrio弱</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>Ishigakijima Beach Hotel Sunshine</td>
+              
+            
+              
+            <td>安靜海景備案</td>
+              
+            
+              
+            <td>西岸海景和夕陽氛圍好</td>
+              
+            
+              
+            <td>房量和價格需早查</td>
+              
+            
+          </tr>
+          
+        </table>
+      
+      
+      <p style="margin-top:8px;font-size:12px;color:#888">飯店先不說死；目前行程路線暫用Grandvrio作為地圖基準。</p>
+      
+    
+  </div>
+
+  <div class="card">
+    <h3>租車策略</h3>
+    
+      
+        
+        
+        <table class="tbl">
+          
+          <tr>
+            
+            <th>項目</th>
+            
+            <th>規劃</th>
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>車型</td>
+              
+            
+              
+            <td>三台小車，省錢優先</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>駕駛</td>
+              
+            
+              
+            <td>至少3位駕駛，每位需台灣駕照正本、日文譯本、護照</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>幼童</td>
+              
+            
+              
+            <td>需預約兒童座椅</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>還車</td>
+              
+            
+              
+            <td>優先找市區/港口可還車；若只能機場還車，10/4行程需提前</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>預算</td>
+              
+            
+              
+            <td>含基本保險、油資、停車粗估NT$1,300-1,700/人，需以實際報價修正</td>
+              
+            
+          </tr>
+          
+        </table>
+      
+      
+    
+  </div>
+
+  <div class="card">
+    <h3>預算概覽</h3>
+    
+      
+        
+        
+        <table class="tbl">
+          
+          <tr>
+            
+            <th>項目</th>
+            
+            <th>估算/人</th>
+            
+            <th>備註</th>
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>虎航去程</td>
+              
+            
+              
+            <td>NT$4,799</td>
+              
+            
+              
+            <td>不含託運行李</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>託運行李均攤</td>
+              
+            
+              
+            <td>NT$600-1,000</td>
+              
+            
+              
+            <td>建議全團4-5件共享</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>住宿兩晚</td>
+              
+            
+              
+            <td>NT$4,000-5,500</td>
+              
+            
+              
+            <td>依飯店最後選擇</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>Yaima Line Standard G含稅</td>
+              
+            
+              
+            <td>NT$2,958</td>
+              
+            
+              
+            <td>13人包15人通鋪房估算</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>三台小車</td>
+              
+            
+              
+            <td>NT$1,300-1,700</td>
+              
+            
+              
+            <td>待報價</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>水上活動</td>
+              
+            
+              
+            <td>NT$2,500-3,500</td>
+              
+            
+              
+            <td>半日團/半包團</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>餐食</td>
+              
+            
+              
+            <td>NT$4,000-5,000</td>
+              
+            
+              
+            <td>含一餐石垣牛、一餐海鮮島料理</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr class="total">
+            
+            
+              
+            <td>合計</td>
+              
+            
+              
+            <td>約NT$20,000-24,500</td>
+              
+            
+              
+            <td>不含購物</td>
+              
+            
+          </tr>
+          
+        </table>
+      
+      
+      <p style="margin-top:8px;font-size:12px;color:#888">要壓預算，優先控餐食、水上活動與飯店價差；不建議砍掉水上活動，因為這是本趟差異化體驗。</p>
+      
+    
+  </div>
+
+  <div class="card">
+    <h3>風險與備案</h3>
+    
+      <p>10月仍有颱風與海況風險。10/3水上活動若取消，改成川平灣玻璃船、飯店泳池/大浴場、市區採買與美食。Yaima Line 10月班表尚未正式開賣，需在搭船日前約3個月開始盯票並透過指定旅行社或Klook等通路確認。Google Places與Routes已完成主要地點與自駕/步行段落驗證；桃園飛石垣、幻之島海上移動、Yaima Line航段仍保留人工交通估算。</p>
+    
+  </div>
+
+  <div class="card">
+    <h3>資料來源</h3>
+    
+      <p>Yaima Line官方時刻表、預約購票與搭船資訊；台灣虎航/Skyscanner查得去程機票資訊；Tripadvisor即時飯店搜尋；Grandvrio、Art Hotel、Beach Hotel Sunshine官方/訂房頁；石垣觀光與川平灣資料。</p>
+    
+  </div>
+
+</div>
+
+<!-- ==================== Floating Notes Button ==================== -->
+<button class="notes-fab" onclick="toggleNotes()" title="筆記">&#128221;</button>
+<div class="notes-panel" id="notesPanel">
+  <div class="notes-panel-hdr">
+    <span>&#128221; 旅行筆記</span>
+    <button onclick="toggleNotes()">&#215;</button>
+  </div>
+  <textarea id="notesArea" placeholder="在這裡記錄你的旅行筆記..."></textarea>
+</div>
+
+<script>
+// Tab switch
+function sw(id,btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['itin','map-panel','checklist','review','info'].forEach(p=>document.getElementById(p).classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='map-panel'&&!mapReady)initMap();
+}
+
+// Direct review links open the same read-only tab without changing page data.
+(function(){
+  if(window.location.hash!=='#review')return;
+  var reviewBtn=document.querySelector('[data-panel="review"]');
+  if(reviewBtn)sw('review',reviewBtn);
+})();
+
+// ===== Notes =====
+const NOTES_KEY='trip-plan:ishigaki-2026-10:notes';
+function toggleNotes(){
+  const panel=document.getElementById('notesPanel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){
+    const area=document.getElementById('notesArea');
+    try{area.value=localStorage.getItem(NOTES_KEY)||''}catch(e){}
+    area.focus();
+  }
+}
+document.getElementById('notesArea').addEventListener('input',function(){
+  try{localStorage.setItem(NOTES_KEY,this.value)}catch(e){}
+});
+
+// Click outside to close notes panel
+document.addEventListener('click',function(e){
+  var panel=document.getElementById('notesPanel');
+  var fab=document.querySelector('.notes-fab');
+  if(panel.classList.contains('open')&&!panel.contains(e.target)&&!fab.contains(e.target)){
+    panel.classList.remove('open');
+  }
+});
+
+// ===== Place Notes =====
+const PLACE_NOTES_KEY='trip-plan:ishigaki-2026-10:place-notes';
+function getPlaceNotes(){try{var s=localStorage.getItem(PLACE_NOTES_KEY);if(s)return JSON.parse(s)}catch(e){}return{}}
+function savePlaceNotes(data){try{localStorage.setItem(PLACE_NOTES_KEY,JSON.stringify(data))}catch(e){}}
+
+function togglePlaceNote(day,idx){
+  var editorId='pne-'+day+'-'+idx;
+  var editor=document.getElementById(editorId);
+  if(!editor)return;
+  var isOpen=editor.style.display==='block';
+  // Close all editors first
+  document.querySelectorAll('.place-note-editor').forEach(function(el){el.style.display='none'});
+  if(!isOpen){
+    editor.style.display='block';
+    var notes=getPlaceNotes();
+    var key=day+'-'+idx;
+    var ta=editor.querySelector('textarea');
+    ta.value=notes[key]||'';
+    ta.focus();
+  }
+}
+
+function savePlaceNote(day,idx){
+  var editorId='pne-'+day+'-'+idx;
+  var editor=document.getElementById(editorId);
+  if(!editor)return;
+  var ta=editor.querySelector('textarea');
+  var val=ta.value.trim();
+  var notes=getPlaceNotes();
+  var key=day+'-'+idx;
+  if(val){
+    notes[key]=val;
+  } else {
+    delete notes[key];
+  }
+  savePlaceNotes(notes);
+  editor.style.display='none';
+  // Update display
+  var dispEl=document.getElementById('pn-'+day+'-'+idx);
+  if(dispEl){dispEl.textContent=val}
+  // Update pencil icon
+  var editBtn=editor.previousElementSibling;
+  if(editBtn){
+    var pencilBtn=editBtn.querySelector('.place-edit-btn');
+    if(!pencilBtn){
+      // The editBtn IS the <a>, look within it
+      pencilBtn=editBtn.querySelector('.place-edit-btn');
+    }
+  }
+  updatePlaceNoteIndicators();
+}
+
+function updatePlaceNoteIndicators(){
+  var notes=getPlaceNotes();
+  document.querySelectorAll('.place-edit-btn').forEach(function(btn){
+    // Get day,idx from the sibling editor
+    var onclick=btn.getAttribute('onclick');
+    var match=onclick&&onclick.match(/togglePlaceNote\((\d+),(\d+)\)/);
+    if(match){
+      var key=match[1]+'-'+match[2];
+      if(notes[key]){
+        btn.classList.add('has-note');
+      } else {
+        btn.classList.remove('has-note');
+      }
+    }
+  });
+  // Also update display text
+  Object.keys(notes).forEach(function(key){
+    var el=document.getElementById('pn-'+key);
+    if(el)el.textContent=notes[key];
+  });
+}
+
+// Init place notes on load
+document.addEventListener('DOMContentLoaded',function(){updatePlaceNoteIndicators()});
+
+// ===== Checklist: three sections =====
+const defaultReservations=[{"label": "\u53f0\u7063\u864e\u822a TPE \u2192 ISG", "note": "\u56fa\u5b9a\uff1a2026/10/2 \u6843\u5712\u98db\u77f3\u57a3\uff0c\u66ab\u8a1806:35-08:35\uff0cNT$4,799/\u4eba\uff0c\u4e0d\u542b\u8a17\u904b\u884c\u674e\u3002\u4e0b\u4e00\u6b65\uff1a\u78ba\u8a8d\u7968\u9762\u6642\u9593\u3001\u8b77\u7167\u82f1\u6587\u59d3\u540d\u3001\u884c\u674e\u4ef6\u6578\u8207\u9078\u4f4d\u3002"}, {"label": "Yaima Line \u77f3\u57a3\u5cf6 \u2192 \u57fa\u9686", "note": "\u56fa\u5b9a\u898f\u5283\uff1a2026/10/4 21:00\u77f3\u57a3\u51fa\u767c\uff0c2026/10/5 08:00\u62b5\u9054\u57fa\u9686\u3002\u76ee\u6a19Standard G 15\u4eba\u901a\u92ea\u5305\u623f\uff0c\u542b\u7a05\u4f30NT$38,450/\u5718\u300210\u6708\u73ed\u8868/\u7968\u50f9\u5f85\u958b\u8ce3\u5f8c\u78ba\u8a8d\u3002"}, {"label": "\u4f4f\u5bbf\u5019\u9078\uff1aGrandvrio / Art Hotel / Beach Hotel Sunshine", "note": "\u98ef\u5e97\u5148\u4e0d\u8aaa\u6b7b\u3002\u5148\u67e510/2-10/4\u30016\u9593\u623f\u300112\u6210\u4eba+1\u5e7c\u7ae5\u3001\u53ef\u53d6\u6d88\u3001\u505c\u8eca\u3001\u65e9\u9910\u3001\u6cf3\u6c60/\u5927\u6d74\u5834\u3002Grandvrio\u662f\u5ea6\u5047\u611f\u4e3b\u6848\u3002"}, {"label": "\u79df\u8eca\uff1a\u4e09\u53f0\u5c0f\u8eca", "note": "\u53d6\u8eca10/2\u65b0\u77f3\u57a3\u6a5f\u5834\uff0c\u9084\u8eca10/4\u508d\u665a\u512a\u5148\u5e02\u5340/\u6e2f\u53e3\u3002\u5fc5\u554f\uff1a\u5152\u7ae5\u5ea7\u6905\u3001\u514d\u8cac/NOC\u3001\u8de8\u5e97\u9084\u8eca\u8cbb\u3001\u71df\u696d\u6642\u9593\u3001\u4e09\u53f0\u8eca\u662f\u5426\u540c\u6642\u53ef\u53d6\u3002"}, {"label": "\u6c34\u4e0a\u6d3b\u52d5\uff1a\u5e7b\u4e4b\u5cf6\u6d5c\u5cf6 + \u77f3\u897f\u7901\u6e56\u6d6e\u6f5b", "note": "\u639210/3\u4e0a\u5348\u6216\u4e2d\u5348\u300213\u4eba\u5927\u5718\u512a\u5148\u554f\u534a\u65e5\u5305\u8239/\u534a\u5305\u5718\u3001\u5e7c\u7ae5\u80fd\u5426\u540c\u884c\u3001\u975e\u6cf3\u8005\u5b89\u6392\u3001\u53d6\u6d88\u898f\u5247\u3001\u96e8\u5929/\u6d77\u6cc1\u6539\u671f\u3002"}, {"label": "10/2\u77f3\u57a3\u725b\u665a\u9910", "note": "\u5019\u9078Yakiniku Yamamoto\u3001Ishigaki Beef MARU\u6216\u53ef\u63a5\u5927\u5718\u71d2\u8089\u5e97\u300213\u4eba\u9700\u65e9\u8a02\uff0c\u63a5\u53d7\u62c6\u684c\u3002"}, {"label": "10/3\u6d77\u9bae/\u5cf6\u6599\u7406\u665a\u9910", "note": "\u5019\u9078\u3072\u3068\u3057\u6216\u53ef\u63a5\u5927\u5718\u5c45\u9152\u5c4b\u3002\u91cd\u9ede\uff1a\u9baa\u9b5a\u3001\u6d77\u8461\u8404\u3001\u5cf6\u8c46\u8150\u3001\u6ce1\u76db\u3002\u82e5\u71b1\u9580\u5e97\u4e0d\u53ef\u8a02\uff0c\u627e\u5927\u578b\u5e97\u5099\u6848\u3002"}];
+const defaultPacking=[{"category": "\u8b49\u4ef6", "label": "\u8b77\u7167"}, {"category": "\u8b49\u4ef6", "label": "\u864e\u822a\u6a5f\u7968/\u8a02\u4f4d\u4ee3\u865f"}, {"category": "\u8b49\u4ef6", "label": "Yaima Line\u8239\u7968/\u8a02\u4f4d\u8cc7\u6599"}, {"category": "\u8b49\u4ef6", "label": "\u53f0\u7063\u99d5\u7167\u6b63\u672c"}, {"category": "\u8b49\u4ef6", "label": "\u53f0\u7063\u99d5\u7167\u65e5\u6587\u8b6f\u672c"}, {"category": "\u8b49\u4ef6", "label": "\u98ef\u5e97\u8a02\u623f\u78ba\u8a8d"}, {"category": "\u8b49\u4ef6", "label": "\u79df\u8eca\u9810\u7d04\u78ba\u8a8d"}, {"category": "\u8b49\u4ef6", "label": "\u6c34\u4e0a\u6d3b\u52d5\u9810\u7d04\u78ba\u8a8d"}, {"category": "\u8ca1\u52d9", "label": "\u4fe1\u7528\u5361"}, {"category": "\u8ca1\u52d9", "label": "\u65e5\u5e63\u73fe\u91d1"}, {"category": "\u8ca1\u52d9", "label": "\u53f0\u5e63\u73fe\u91d1\uff08\u8239\u4e0a/\u56de\u53f0\u5099\u7528\uff09"}, {"category": "\u6c34\u4e0a\u6d3b\u52d5", "label": "\u6cf3\u8863"}, {"category": "\u6c34\u4e0a\u6d3b\u52d5", "label": "\u9632\u66ec\u4e73"}, {"category": "\u6c34\u4e0a\u6d3b\u52d5", "label": "\u9632\u66ec\u5e3d/\u592a\u967d\u773c\u93e1"}, {"category": "\u6c34\u4e0a\u6d3b\u52d5", "label": "\u9632\u6c34\u624b\u6a5f\u888b"}, {"category": "\u6c34\u4e0a\u6d3b\u52d5", "label": "\u5152\u7ae5\u6cf3\u5177/\u9632\u66ec\u8863"}, {"category": "\u91ab\u7642", "label": "\u6688\u8239\u85e5"}, {"category": "\u91ab\u7642", "label": "\u8178\u80c3\u85e5"}, {"category": "\u91ab\u7642", "label": "\u6b62\u75db\u9000\u71d2\u85e5"}, {"category": "\u91ab\u7642", "label": "OK\u7e43/\u9632\u6c34\u6577\u6599"}, {"category": "\u5176\u4ed6", "label": "\u8f15\u4fbf\u96e8\u5177"}, {"category": "\u8863\u7269", "label": "\u8584\u5916\u5957\uff08\u8239\u4e0a\u7a7a\u8abf/\u591c\u9593\uff09"}, {"category": "\u8863\u7269", "label": "\u63db\u6d17\u8863\u7269"}, {"category": "\u8863\u7269", "label": "\u62d6\u978b/\u6dbc\u978b"}, {"category": "\u96fb\u5b50", "label": "\u624b\u6a5f\u5145\u96fb\u5668"}, {"category": "\u96fb\u5b50", "label": "\u884c\u52d5\u96fb\u6e90"}, {"category": "\u96fb\u5b50", "label": "\u8eca\u7528\u624b\u6a5f\u67b6/\u5145\u96fb\u7dda"}, {"category": "\u89aa\u5b50", "label": "\u5e7c\u7ae5\u7528\u54c1\u8207\u5e38\u5099\u85e5"}, {"category": "\u89aa\u5b50", "label": "\u6fd5\u7d19\u5dfe/\u5851\u81a0\u888b"}, {"category": "\u90f5\u8f2a", "label": "\u8239\u4e0a\u904e\u591c\u5c0f\u5305"}, {"category": "\u90f5\u8f2a", "label": "\u8033\u585e/\u773c\u7f69"}, {"category": "\u90f5\u8f2a", "label": "\u7c21\u6613\u76e5\u6d17\u7528\u54c1"}];
+const defaultTodo=[{"hint": "\u6a5f\u7968\u8207Yaima Line\u8239\u7968\u90fd\u9700\u8981\u6b63\u78ba\u59d3\u540d\uff1b\u8b77\u7167\u6548\u671f\u4e0d\u8db3\u8005\u5148\u8655\u7406\u3002", "label": "\u78ba\u8a8d13\u4eba\u8b77\u7167\u6548\u671f\u8207\u82f1\u6587\u59d3\u540d"}, {"hint": "\u53bb\u7a0b\u4e0d\u542b\u884c\u674e\uff0c\u5efa\u8b70\u5168\u5718\u5171\u75284-5\u4ef6\u8a17\u904b\uff0c\u964d\u4f4e\u6bcf\u4eba\u6210\u672c\u3002", "label": "\u6c7a\u5b9a\u864e\u822a\u8a17\u904b\u884c\u674e\u4ef6\u6578"}, {"hint": "Grandvrio\u4e3b\u6848\uff0c\u4f46\u540c\u6642\u67e5Art Hotel\u8207Beach Hotel Sunshine\uff1b\u5148\u5361\u53ef\u53d6\u6d88\u623f\u3002", "label": "\u67e56\u9593\u623f\u53ef\u53d6\u6d88\u98ef\u5e97"}, {"hint": "\u6bd4\u8f03Toyota/ORIX/Times/Nissan/\u5728\u5730\u79df\u8eca\uff1b\u78ba\u8a8d\u53ef\u5426\u5e02\u5340\u6216\u6e2f\u53e3\u9644\u8fd1\u9084\u8eca\u3002", "label": "\u627e\u4e09\u53f0\u5c0f\u8eca\u5831\u50f9"}, {"hint": "\u53f0\u7063\u99d5\u7167\u6b63\u672c+\u65e5\u6587\u8b6f\u672c+\u8b77\u7167\uff1b\u65e5\u672c\u81ea\u99d5\u4e0d\u662f\u7528\u570b\u969b\u99d5\u7167\u3002", "label": "\u4e09\u4f4d\u99d5\u99db\u8fa6\u65e5\u6587\u8b6f\u672c"}, {"hint": "\u5b98\u65b9\u5beb\u642d\u8239\u65e5\u524d3\u500b\u6708\u8d77\u53d7\u7406\uff0c10/4\u8239\u73ed\u7d047/4\u524d\u5f8c\u958b\u59cb\u76ef\u7968\uff1b\u4e0d\u53ef\u7576\u65e5\u8cfc\u7968\u3002", "label": "\u8a2d\u5b9aYaima Line\u958b\u8ce3\u63d0\u9192"}, {"hint": "13\u4eba\u30011\u5e7c\u7ae5\u3001\u5bb6\u5ead\u5718\u3001\u5e0c\u671b\u5e7b\u4e4b\u5cf6+\u6d6e\u6f5b\u3001\u7701\u9322\u4f46\u5b89\u5168\uff1b\u554f\u534a\u65e5\u5305\u8239\u8207\u53d6\u6d88\u898f\u5247\u3002", "label": "\u8a62\u554f\u6c34\u4e0a\u6d3b\u52d5\u696d\u8005"}, {"hint": "13\u4eba\u8981\u65e9\u8a02\uff0c\u71b1\u9580\u5e97\u53ef\u62c6\u684c\uff1b\u82e5\u50f9\u683c\u592a\u9ad8\uff0c\u6539\u5957\u9910\u6216\u4e2d\u50f9\u4f4d\u71d2\u8089\u3002", "label": "\u9810\u7d0410/2\u77f3\u57a3\u725b\u665a\u9910"}, {"hint": "\u3072\u3068\u3057\u82e5\u4e0d\u53ef\u8a02\uff0c\u627e\u5927\u578b\u5c45\u9152\u5c4b\u5099\u6848\u3002", "label": "\u9810\u7d0410/3\u6d77\u9bae/\u5cf6\u6599\u7406\u665a\u9910"}, {"hint": "Yaima Line\u78bc\u982d\u53ef\u80fd\u70ba\u77f3\u57a3\u6e2f\u78bc\u982d\u6216\u77f3\u57a3\u6e2f\u570b\u969b\u78bc\u982d\uff1b18:00-20:00\u5831\u5230\u3002", "label": "\u78ba\u8a8d10/4\u78bc\u982d\u8207\u5831\u5230\u6642\u9593"}, {"hint": "Yaima Line\u5b98\u65b9\u642d\u8239\u8cc7\u8a0a\u63d0\u9192\uff0c\u81ea2025/10\u8d77\u5165\u5883\u53f0\u7063\u9700\u7dda\u4e0a\u7533\u5831\u3002", "label": "\u51fa\u767c\u524d7\u5929\u586b\u53f0\u7063\u7dda\u4e0a\u5165\u5883\u5361"}];
+
+const RES_KEY='trip-plan:ishigaki-2026-10:reservations';
+const PACK_KEY='trip-plan:ishigaki-2026-10:packing';
+const TODO_KEY='trip-plan:ishigaki-2026-10:todo';
+const COLLAPSE_KEY='trip-plan:ishigaki-2026-10:cl-collapse';
+
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function escAttr(s){return esc(s).replace(/"/g,'&quot;')}
+
+function lsGet(key,fallback){try{var s=localStorage.getItem(key);if(s)return JSON.parse(s)}catch(e){}return fallback}
+function lsSet(key,val){try{localStorage.setItem(key,JSON.stringify(val))}catch(e){}}
+
+function getCollapse(){return lsGet(COLLAPSE_KEY,{reservations:false,packing:false,todo:false})}
+function setCollapse(c){lsSet(COLLAPSE_KEY,c)}
+function toggleCollapse(sec){var c=getCollapse();c[sec]=!c[sec];setCollapse(c);renderAllCl()}
+
+// ---- Data migration for reservations ----
+function migrateRes(items){
+  return items.map(function(item){
+    if(item.platform||item.confirmation||item.amount||item.url){
+      var parts=[];
+      if(item.platform)parts.push('平台: '+item.platform);
+      if(item.confirmation)parts.push('確認碼: '+item.confirmation);
+      if(item.amount)parts.push('金額: '+item.amount);
+      if(item.url)parts.push('連結: '+item.url);
+      if(item.note)parts.push(item.note);
+      item.note=parts.join('\n');
+      delete item.platform;delete item.confirmation;delete item.amount;delete item.url;
+    }
+    return item;
+  });
+}
+
+// ---- Reservations (simplified - same as Todo but with date) ----
+function getRes(){
+  var data=lsGet(RES_KEY,defaultReservations.map(function(d){return Object.assign({},d,{done:false})}));
+  return migrateRes(data);
+}
+function saveRes(data){lsSet(RES_KEY,data)}
+
+var resEditIdx=-1;
+function renderRes(){
+  var el=document.getElementById('cl-reservations');
+  var items=getRes();
+  var col=getCollapse();
+  var done=items.filter(function(i){return i.done}).length;
+  var resSorted=items.map(function(item,i){return{item:item,idx:i}});
+  resSorted.sort(function(a,b){return(a.item.done?1:0)-(b.item.done?1:0)});
+  var h='<div class="cl-hdr" onclick="toggleCollapse(\'reservations\')"><span class="cl-emoji">&#128197;</span> 訂位<span class="cl-arrow">'+(col.reservations?'&#9654;':'&#9660;')+'</span></div>';
+  h+='<div class="cl-progress"><div class="cl-bar"><div class="cl-bar-fill" style="width:'+(items.length?done/items.length*100:0)+'%"></div></div><span class="cl-pct">'+done+' / '+items.length+'</span></div>';
+  h+='<div class="cl-body'+(col.reservations?' collapsed':'')+'">';
+  resSorted.forEach(function(entry){var item=entry.item;var i=entry.idx;
+    var ck=item.done?'checked':'';
+    // Format date for badge
+    var dateBadge='';
+    if(item.date){
+      var dateStr=item.date;
+      // Try to show short format like "5/15"
+      var dm=dateStr.match(/(\d{1,2})[-\/](\d{1,2})$/);
+      if(dm){dateStr=parseInt(dm[1])+'/'+parseInt(dm[2])}
+      else{
+        var fullm=dateStr.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+        if(fullm)dateStr=parseInt(fullm[2])+'/'+parseInt(fullm[3]);
+      }
+      dateBadge='<span class="res-date-badge">'+esc(dateStr)+'</span>';
+    }
+    if(resEditIdx===i){
+      // Edit mode
+      h+='<div class="cl-item '+ck+'">';
+      h+='<div class="cl-check" onclick="resToggle('+i+')">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info" onclick="event.stopPropagation()">';
+      h+='<div class="cl-label">'+esc(item.label)+dateBadge+'</div>';
+      if(item.note){h+='<div class="cl-hint">'+esc(item.note).replace(/\n/g,'<br>')+'</div>';}
+      h+='</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();resHideEdit()" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();resDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+      // Edit form below
+      h+='<div class="cl-edit-form" id="res-edit-'+i+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">名稱</div>';
+      h+='<input id="res-e-label-'+i+'" value="'+escAttr(item.label)+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">日期</div>';
+      h+='<input id="res-e-date-'+i+'" type="date" value="'+escAttr(item.date||'')+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">說明</div>';
+      h+='<textarea id="res-e-note-'+i+'" rows="3" style="resize:vertical">'+esc(item.note||'')+'</textarea>';
+      h+='<div class="cl-edit-btns"><button class="cl-btn-cancel" onclick="resHideEdit()">取消</button><button class="cl-btn-ok" onclick="resSaveEdit('+i+')">儲存</button></div>';
+      h+='</div>';
+    } else {
+      // Display mode: checkbox + label + date badge + pencil + trash
+      h+='<div class="cl-item '+ck+'" onclick="resToggle('+i+')" style="cursor:pointer">';
+      h+='<div class="cl-check">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info">';
+      h+='<div class="cl-label">'+esc(item.label)+dateBadge+'</div>';
+      if(item.note){h+='<div class="cl-hint">'+esc(item.note).replace(/\n/g,'<br>')+'</div>';}
+      h+='</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();resShowEdit('+i+')" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();resDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+    }
+  });
+  h+='<div class="cl-add" id="res-add-btn" onclick="resShowAdd()"><span class="cl-add-icon">+</span> 新增項目</div>';
+  h+='<div class="cl-add-form" id="res-add-form" style="display:none"><div style="font-size:12px;color:#888;margin-bottom:2px">名稱</div><input id="res-input-label" placeholder="輸入訂位名稱..." onkeydown="if(event.key===\'Enter\')resAdd()"><div class="cl-add-btns"><button class="cl-btn-cancel" onclick="resHideAdd()">取消</button><button class="cl-btn-ok" onclick="resAdd()">新增</button></div></div>';
+  h+='</div>';
+  el.innerHTML=h;
+  if(resEditIdx>=0){var inp=document.getElementById('res-e-label-'+resEditIdx);if(inp)inp.focus()}
+}
+function resToggle(i){var d=getRes();d[i].done=!d[i].done;saveRes(d);renderRes()}
+function resDel(i){var d=getRes();d.splice(i,1);saveRes(d);resEditIdx=-1;renderRes()}
+function resShowAdd(){document.getElementById('res-add-btn').style.display='none';document.getElementById('res-add-form').style.display='flex';document.getElementById('res-input-label').focus()}
+function resHideAdd(){document.getElementById('res-add-btn').style.display='flex';document.getElementById('res-add-form').style.display='none';document.getElementById('res-input-label').value=''}
+function resAdd(){var v=document.getElementById('res-input-label').value.trim();if(!v)return;var d=getRes();d.push({label:v,done:false});saveRes(d);renderRes()}
+function resShowEdit(i){resEditIdx=(resEditIdx===i)?-1:i;renderRes()}
+function resHideEdit(){resEditIdx=-1;renderRes()}
+function resSaveEdit(i){
+  var label=document.getElementById('res-e-label-'+i).value.trim();
+  if(!label)return;
+  var d=getRes();
+  d[i].label=label;
+  d[i].date=document.getElementById('res-e-date-'+i).value.trim();
+  d[i].note=document.getElementById('res-e-note-'+i).value.trim();
+  saveRes(d);resEditIdx=-1;renderRes();
+}
+
+// ---- Packing (TREK-style category cards) ----
+var PACK_COLORS=['#3b82f6','#a855f7','#ec4899','#22c55e','#f97316','#06b6d4','#ef4444','#eab308','#8b5cf6','#14b8a6'];
+function catColor(cat,allCats){
+  var idx=allCats?allCats.indexOf(cat):-1;
+  if(idx>=0)return PACK_COLORS[idx%PACK_COLORS.length];
+  var h=0;for(var i=0;i<cat.length;i++)h=((h<<5)-h+cat.charCodeAt(i))|0;
+  return PACK_COLORS[Math.abs(h)%PACK_COLORS.length];
+}
+
+function getPack(){
+  var stored=lsGet(PACK_KEY,null);
+  if(stored===null||(Array.isArray(stored)&&stored.length===0&&defaultPacking.length>0)){
+    var fresh=defaultPacking.map(function(d){return Object.assign({},d,{done:false})});
+    savePack(fresh);
+    return fresh;
+  }
+  return stored;
+}
+function savePack(data){lsSet(PACK_KEY,data)}
+
+var packEditIdx=-1;
+var packOpenMenuCat=null;
+var packAddingCat=false;
+var packAddingItemCat=null; // which category is showing the inline add form
+var packCollapsed={}; // track collapsed categories
+
+function getPackCollapsed(){return lsGet(PACK_KEY+':collapsed',{})}
+function setPackCollapsed(data){lsSet(PACK_KEY+':collapsed',data)}
+
+function renderPack(){
+  var el=document.getElementById('cl-packing');
+  var items=getPack();
+  var col=getCollapse();
+
+  // Group by category
+  var groups={};var catOrder=[];
+  items.forEach(function(item,i){
+    var cat=item.category||'其他';
+    if(!groups[cat]){groups[cat]=[];catOrder.push(cat)}
+    groups[cat].push(Object.assign({},item,{_idx:i}));
+  });
+  // Move '其他' to end
+  var otherIdx=catOrder.indexOf('其他');
+  if(otherIdx>-1&&otherIdx<catOrder.length-1){catOrder.splice(otherIdx,1);catOrder.push('其他')}
+
+  var allCats=catOrder.filter(function(c){return c!=='其他'});
+  var catCollapsed=getPackCollapsed();
+
+  var h='<div class="cl-hdr" onclick="toggleCollapse(\'packing\')"><span class="cl-emoji">&#129523;</span> 行李清單<span class="cl-arrow">'+(col.packing?'&#9654;':'&#9660;')+'</span></div>';
+  h+='<div class="cl-body'+(col.packing?' collapsed':'')+'" style="background:transparent;padding:4px 0">';
+
+  catOrder.forEach(function(cat){
+    var color=catColor(cat,allCats);
+    var catItems=groups[cat];
+    catItems.sort(function(a,b){return(a.done?1:0)-(b.done?1:0)});
+    var catDone=catItems.filter(function(it){return it.done}).length;
+    var isCollapsed=catCollapsed[cat]===true;
+    var allChecked=catItems.length>0&&catDone===catItems.length;
+
+    h+='<div class="pk-card">';
+    // Header
+    h+='<div class="pk-card-hdr'+(isCollapsed?'':' open')+'" onclick="packToggleCat(\''+escAttr(cat)+'\')">';
+    h+='<span class="pk-chevron">'+(isCollapsed?'&#9654;':'&#9660;')+'</span>';
+    h+='<span class="pk-dot" style="background:'+color+'"></span>';
+    h+='<span class="pk-cat-name">'+esc(cat)+'</span>';
+    h+='<span class="pk-count'+(allChecked?' all-done':'')+'">'+catDone+'/'+catItems.length+'</span>';
+    h+='<span class="pk-menu-btn" onclick="event.stopPropagation();packToggleMenu(\''+escAttr(cat)+'\')" style="position:relative">&#8943;';
+    if(packOpenMenuCat===cat){
+      h+='<div class="pk-dropdown open">';
+      h+='<button onclick="event.stopPropagation();packRenameCat(\''+escAttr(cat)+'\')">重新命名</button>';
+      h+='<button onclick="event.stopPropagation();packCheckAllCat(\''+escAttr(cat)+'\')">全部勾選</button>';
+      h+='<button onclick="event.stopPropagation();packUncheckAllCat(\''+escAttr(cat)+'\')">取消全部勾選</button>';
+      h+='<button class="danger" onclick="event.stopPropagation();packDelCat(\''+escAttr(cat)+'\')">刪除分類</button>';
+      h+='</div>';
+    }
+    h+='</span>';
+    h+='</div>';
+
+    // Body
+    h+='<div class="pk-card-body'+(isCollapsed?' collapsed':'')+'">';
+    catItems.forEach(function(item){
+      var i=item._idx;
+      var ck=item.done?'checked':'';
+      h+='<div class="pk-item '+ck+'" data-pack-idx="'+i+'" onclick="packToggle('+i+')" style="cursor:pointer">';
+      h+='<div class="cl-check">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<span class="pk-name">'+esc(item.label)+'</span>';
+      h+='<span class="pk-actions">';
+      h+='<button class="pk-act-btn" onclick="event.stopPropagation();packShowEdit('+i+')" title="編輯">&#9998;</button>';
+      h+='<button class="pk-act-btn del" onclick="event.stopPropagation();packDel('+i+')" title="刪除">&#215;</button>';
+      h+='</span>';
+      h+='</div>';
+      if(packEditIdx===i){
+        h+='<div class="cl-edit-form">';
+        h+='<div style="font-size:12px;color:#888;margin-bottom:2px">物品名稱</div>';
+        h+='<input id="pk-edit-input-'+i+'" value="'+escAttr(item.label)+'">';
+        h+='<div class="cl-edit-btns"><button class="cl-btn-cancel" onclick="packCancelEdit()">取消</button><button class="cl-btn-ok" onclick="packSaveEdit('+i+',document.getElementById(\'pk-edit-input-'+i+'\').value)">儲存</button></div>';
+        h+='</div>';
+      }
+    });
+
+    // Inline add
+    if(packAddingItemCat===cat){
+      h+='<div class="pk-inline-add-form" id="pk-add-form-'+escAttr(cat)+'">';
+      h+='<input id="pk-add-input-'+escAttr(cat)+'" placeholder="新增物品..." onkeydown="if(event.key===\'Enter\')packAddItem(\''+escAttr(cat)+'\');if(event.key===\'Escape\')packHideAddItem()">';
+      h+='<button class="pk-add-ok" onclick="packAddItem(\''+escAttr(cat)+'\')">+</button>';
+      h+='<button class="pk-add-cancel" onclick="packHideAddItem()">&#215;</button>';
+      h+='</div>';
+    } else {
+      h+='<div class="pk-inline-add" onclick="packShowAddItem(\''+escAttr(cat)+'\')"><span style="font-size:16px;margin-right:4px">+</span> 新增</div>';
+    }
+    h+='</div>'; // pk-card-body
+    h+='</div>'; // pk-card
+  });
+
+  // Add new category
+  if(packAddingCat){
+    h+='<div class="pk-add-cat-form" id="pk-add-cat-form">';
+    h+='<input id="pk-add-cat-input" placeholder="分類名稱..." onkeydown="if(event.key===\'Enter\')packAddCat();if(event.key===\'Escape\'){packAddingCat=false;renderPack()}">';
+    h+='<button class="pk-btn-ok" onclick="packAddCat()">新增</button>';
+    h+='<button class="pk-btn-cancel" onclick="packAddingCat=false;renderPack()">取消</button>';
+    h+='</div>';
+  } else {
+    h+='<div class="pk-add-cat" onclick="packAddingCat=true;renderPack()"><span style="font-size:16px;margin-right:4px">+</span> 新增分類</div>';
+  }
+
+  h+='</div>'; // cl-body
+  el.innerHTML=h;
+
+  // Focus inputs
+  if(packEditIdx>=0){var inp=document.getElementById('pk-edit-input-'+packEditIdx);if(inp){inp.focus();inp.select()}}
+  if(packAddingCat){var catInp=document.getElementById('pk-add-cat-input');if(catInp)catInp.focus()}
+  if(packAddingItemCat){var addInp=document.getElementById('pk-add-input-'+packAddingItemCat);if(addInp)addInp.focus()}
+}
+
+function packToggle(i){var d=getPack();d[i].done=!d[i].done;savePack(d);renderPack()}
+function packDel(i){var d=getPack();d.splice(i,1);savePack(d);packEditIdx=-1;renderPack()}
+
+function packShowEdit(i){
+  packEditIdx=i;
+  renderPack();
+  var inp=document.getElementById('pk-edit-input-'+i);if(inp)inp.focus();
+}
+function packSaveEdit(i,val){
+  val=val.trim();
+  if(!val){packCancelEdit();return}
+  var d=getPack();d[i].label=val;savePack(d);
+  packEditIdx=-1;
+  renderPack();
+}
+function packCancelEdit(){
+  packEditIdx=-1;
+  renderPack();
+}
+
+function packToggleCat(cat){
+  var cc=getPackCollapsed();
+  cc[cat]=!cc[cat];
+  setPackCollapsed(cc);
+  renderPack();
+}
+
+function packToggleMenu(cat){
+  packOpenMenuCat=(packOpenMenuCat===cat)?null:cat;
+  renderPack();
+}
+
+function packRenameCat(cat){
+  var newName=prompt('重新命名分類:',cat);
+  if(!newName||!newName.trim()||newName.trim()===cat){packOpenMenuCat=null;renderPack();return}
+  newName=newName.trim();
+  var d=getPack();
+  d.forEach(function(item){if((item.category||'其他')===cat)item.category=newName});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packCheckAllCat(cat){
+  var d=getPack();
+  d.forEach(function(item){if((item.category||'其他')===cat)item.done=true});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packUncheckAllCat(cat){
+  var d=getPack();
+  d.forEach(function(item){if((item.category||'其他')===cat)item.done=false});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packDelCat(cat){
+  if(!confirm('確定刪除「'+cat+'」分類及其所有物品？'))return;
+  var d=getPack().filter(function(item){return(item.category||'其他')!==cat});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packShowAddItem(cat){
+  packAddingItemCat=cat;
+  renderPack();
+}
+
+function packHideAddItem(){
+  packAddingItemCat=null;
+  renderPack();
+}
+
+function packAddItem(cat){
+  var inp=document.getElementById('pk-add-input-'+cat);
+  if(!inp)return;
+  var v=inp.value.trim();
+  if(!v)return;
+  var d=getPack();
+  d.push({label:v,category:cat==='其他'?'':cat,done:false});
+  savePack(d);
+  // Keep input focused for rapid entry
+  inp.value='';
+  renderPack();
+  // Re-focus after render
+  packAddingItemCat=cat;
+  renderPack();
+}
+
+function packAddCat(){
+  var inp=document.getElementById('pk-add-cat-input');
+  if(!inp)return;
+  var v=inp.value.trim();
+  if(!v)return;
+  // Add a placeholder item in this category to create it
+  var d=getPack();
+  d.push({label:'(新物品)',category:v,done:false});
+  savePack(d);
+  packAddingCat=false;
+  // Open inline add for the new category immediately
+  packAddingItemCat=v;
+  renderPack();
+}
+
+// Close packing menu when clicking outside
+document.addEventListener('click',function(e){
+  if(packOpenMenuCat&&!e.target.closest('.pk-menu-btn')){
+    packOpenMenuCat=null;
+    renderPack();
+  }
+});
+
+// ---- Todo (with pencil icon) ----
+function getTodo(){return lsGet(TODO_KEY,defaultTodo.map(function(d){return Object.assign({},d,{done:false})}))}
+function saveTodo(data){lsSet(TODO_KEY,data)}
+
+var todoEditIdx=-1;
+function renderTodo(){
+  var el=document.getElementById('cl-todo');
+  var items=getTodo();
+  var col=getCollapse();
+  var done=items.filter(function(i){return i.done}).length;
+  // Sort: unchecked first, then checked
+  var sorted=items.map(function(item,i){return{item:item,idx:i}});
+  sorted.sort(function(a,b){return(a.item.done?1:0)-(b.item.done?1:0)});
+  var h='<div class="cl-hdr" onclick="toggleCollapse(\'todo\')"><span class="cl-emoji">&#9989;</span> 待辦清單<span class="cl-arrow">'+(col.todo?'&#9654;':'&#9660;')+'</span></div>';
+  h+='<div class="cl-progress"><div class="cl-bar"><div class="cl-bar-fill" style="width:'+(items.length?done/items.length*100:0)+'%"></div></div><span class="cl-pct">'+done+' / '+items.length+'</span></div>';
+  h+='<div class="cl-body'+(col.todo?' collapsed':'')+'">';
+  sorted.forEach(function(entry){var item=entry.item;var i=entry.idx;
+    var ck=item.done?'checked':'';
+    if(todoEditIdx===i){
+      // Edit mode: item row + edit form below (same as reservations)
+      h+='<div class="cl-item '+ck+'">';
+      h+='<div class="cl-check" onclick="todoToggle('+i+')">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info">';
+      h+='<span class="cl-label">'+esc(item.label)+'</span>';
+      if(item.hint){h+='<div class="cl-hint">'+esc(item.hint)+'</div>';}
+      h+='</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();todoHideEdit()" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();todoDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+      h+='<div class="cl-edit-form">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">項目名稱</div>';
+      h+='<input id="todo-e-label-'+i+'" value="'+escAttr(item.label)+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">備註</div>';
+      h+='<input id="todo-e-hint-'+i+'" value="'+escAttr(item.hint||'')+'">';
+      h+='<div class="cl-edit-btns"><button class="cl-btn-cancel" onclick="todoHideEdit()">取消</button><button class="cl-btn-ok" onclick="todoSaveEdit('+i+')">儲存</button></div>';
+      h+='</div>';
+    } else {
+      h+='<div class="cl-item '+ck+'" onclick="todoToggle('+i+')" style="cursor:pointer">';
+      h+='<div class="cl-check">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info"><span class="cl-label">'+esc(item.label)+'</span>'+(item.hint?'<div class="cl-hint">'+esc(item.hint)+'</div>':'')+'</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();todoShowEdit('+i+')" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();todoDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+    }
+  });
+  h+='<div class="cl-add" id="todo-add-btn" onclick="todoShowAdd()"><span class="cl-add-icon">+</span> 新增項目</div>';
+  h+='<div class="cl-add-form" id="todo-add-form" style="display:none"><div style="font-size:12px;color:#888;margin-bottom:2px">項目名稱</div><input id="todo-input-label" placeholder="輸入待辦事項..." onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'todo-input-hint\').focus()}"><div style="font-size:12px;color:#888;margin-bottom:2px;margin-top:4px">備註</div><input id="todo-input-hint" placeholder="選填" onkeydown="if(event.key===\'Enter\')todoAdd()"><div class="cl-add-btns"><button class="cl-btn-cancel" onclick="todoHideAdd()">取消</button><button class="cl-btn-ok" onclick="todoAdd()">新增</button></div></div>';
+  h+='</div>';
+  el.innerHTML=h;
+  if(todoEditIdx>=0){var inp=document.getElementById('todo-e-label-'+todoEditIdx);if(inp)inp.focus()}
+}
+function todoToggle(i){var d=getTodo();d[i].done=!d[i].done;saveTodo(d);renderTodo()}
+function todoDel(i){var d=getTodo();d.splice(i,1);saveTodo(d);todoEditIdx=-1;renderTodo()}
+function todoShowAdd(){document.getElementById('todo-add-btn').style.display='none';document.getElementById('todo-add-form').style.display='flex';document.getElementById('todo-input-label').focus()}
+function todoHideAdd(){document.getElementById('todo-add-btn').style.display='flex';document.getElementById('todo-add-form').style.display='none';document.getElementById('todo-input-label').value='';document.getElementById('todo-input-hint').value=''}
+function todoAdd(){var v=document.getElementById('todo-input-label').value.trim();if(!v)return;var hint=document.getElementById('todo-input-hint').value.trim();var d=getTodo();d.push({label:v,hint:hint,done:false});saveTodo(d);renderTodo()}
+function todoShowEdit(i){todoEditIdx=i;renderTodo()}
+function todoHideEdit(){todoEditIdx=-1;renderTodo()}
+function todoSaveEdit(i){var inp=document.getElementById('todo-e-label-'+i);if(!inp)return;var v=inp.value.trim();if(!v){todoHideEdit();return}var d=getTodo();d[i].label=v;var hInp=document.getElementById('todo-e-hint-'+i);d[i].hint=hInp?hInp.value.trim():'';saveTodo(d);todoEditIdx=-1;renderTodo()}
+
+function renderAllCl(){renderTodo();renderRes();renderPack()}
+renderAllCl();
+
+// Map controls: position below sticky header
+(function(){
+  var sh=document.querySelector('.sticky-header');
+  var mc=document.querySelector('.map-ctrl');
+  function update(){
+    if(sh&&mc){mc.style.top=sh.offsetHeight+'px'}
+  }
+  update();
+  window.addEventListener('resize',update);
+})();
+
+// Map
+var mapReady=false,mo,markers=[];
+var colors={"drink": "#8e44ad", "flight": "#95a5a6", "food": "#e67e22", "hotel": "#e74c3c", "spot": "#27ae60", "transport": "#95a5a6", "work": "#2e86c1"};
+
+var pts=[{"c": "flight", "d": "d1", "desc": "\u56fa\u5b9a\u4ea4\u901a\uff1a10/2 \u6843\u5712\u51fa\u767c\uff0c\u66ab\u8a18 06:35 \u8d77\u98db\u300108:35 \u62b5\u9054\uff1b\u7968\u50f9 NT$4,799/\u4eba\uff0c\u4e0d\u542b\u8a17\u904b\u884c\u674e\u3002\u767b\u6a5f\u6642\u9593\u4ee5\u5be6\u969b\u7968\u9762\u70ba\u6e96\u3002", "lat": 25.0797, "lng": 121.2342, "maps_query": "Taiwan Taoyuan International Airport", "n": "\u53f0\u7063\u864e\u822a TPE \u2192 ISG", "place_id": null}, {"c": "transport", "d": "d1", "desc": "12\u6210\u4eba+1\u5e7c\u7ae5\uff0c\u4e09\u53f0\u5c0f\u8eca\u7701\u9322\u4e3b\u6848\uff1b\u97003\u4f4d\u99d5\u99db\uff0c\u5e7c\u7ae5\u5ea7\u6905\u5148\u9810\u7d04\u3002\u53d6\u8eca\u516c\u53f8\u5f85\u6bd4\u50f9\u3002", "lat": 24.3959677, "lng": 124.2457641, "maps_query": "New Ishigaki Airport, Ishigaki, Okinawa, Japan", "n": "\u62b5\u9054\u65b0\u77f3\u57a3\u6a5f\u5834\uff0c\u4e09\u53f0\u5c0f\u8eca\u53d6\u8eca", "place_id": "ChIJa7axH-HjXzQRXZuqNDWZgzc"}, {"c": "food", "d": "d1", "desc": "\u7b2c\u4e00\u9910\u8d70\u77f3\u57a3\u5cf6\u7279\u8272\uff0c\u5403\u3086\u3057\u8c46\u8150\u3001\u5cf6\u8c46\u8150\u3002\u82e5\u6392\u968a\u6216\u592a\u7d2f\uff0c\u6539\u5e02\u5340\u516b\u91cd\u5c71\u305d\u3070\u3002", "lat": 24.3535611, "lng": 124.1602778, "maps_query": "Tofu no Higa, Ishigaki, Okinawa, Japan", "n": "\u5cf6\u65e9\u9910/\u65e9\u5348\u9910\uff1a\u3068\u3046\u3075\u306e\u6bd4\u5609", "place_id": "ChIJff-LcgTgXzQR5BsBI2HQW_8"}, {"c": "hotel", "d": "d1", "desc": "\u5c1a\u672a\u8aaa\u6b7b\u3002\u66ab\u4ee5 Grandvrio \u4f5c\u70ba\u8def\u7dda\u57fa\u6e96\uff1a\u5ea6\u5047\u611f\u8f03\u5f37\u3001\u6d77\u666f/\u6cf3\u6c60/\u5927\u6d74\u5834\uff0c\u7f3a\u9ede\u662f\u6bd4 Art Hotel \u8cb4\u3002", "lat": 24.3573618, "lng": 124.12411399999999, "maps_query": "Grandvrio Resort Ishigaki Island Ocean\u0027s Wing, Ishigaki, Okinawa, Japan", "n": "\u4f4f\u5bbf\u5019\u9078\u4e3b\u6848\uff1aGrandvrio Ocean\u0027s Wing", "place_id": "ChIJEbS_4YnfXzQRm_CLzpP-AX0"}, {"c": "spot", "d": "d1", "desc": "\u7b2c\u4e00\u8f2a\u63a1\u8cb7\u8207\u4f34\u624b\u79ae\u5075\u67e5\uff1a\u9e7d\u3001\u9ed1\u7cd6\u3001\u6ce1\u76db\u3001\u77f3\u57a3\u725b\u96f6\u98df\u3001\u5cf6\u8fa3\u6912\u3002\u5148\u4e0d\u8981\u8cb7\u592a\u591a\uff0c10/4\u9084\u6709\u6700\u5f8c\u63a1\u8cb7\u3002", "lat": 24.3397121, "lng": 124.1582806, "maps_query": "Euglena Mall, Ishigaki, Okinawa, Japan", "n": "730\u4ea4\u5dee\u9ede\u3001Euglena Mall\u3001\u516c\u8a2d\u5e02\u5834", "place_id": "ChIJkQwhw60KYDQRAnMh4v-3FvM"}, {"c": "food", "d": "d1", "desc": "\u7b2c\u4e00\u665a\u6392\u91cd\u9ede\u7f8e\u98df\u300213\u4eba\u9700\u9810\u7d04\uff0c\u63a5\u53d7\u62c62-3\u684c\uff1b\u82e5\u9810\u7b97\u8981\u63a7\uff0c\u8a02\u5957\u9910\u6216\u63a7\u5236\u9ede\u8089\u91cf\u3002", "lat": 24.341485799999997, "lng": 124.14974959999999, "maps_query": "Yakiniku Yamamoto, Ishigaki, Okinawa, Japan", "n": "\u77f3\u57a3\u725b\u665a\u9910\u5019\u9078\uff1aYamamoto / MARU", "place_id": "ChIJc9G3QlJ1YDQR_VvYv5AIn60"}, {"c": "hotel", "d": "d1", "desc": "\u65e9\u73ed\u6a5f\u65e5\u4e0d\u8981\u518d\u585e\u666f\u9ede\u3002\u78ba\u8a8d\u9694\u5929\u6c34\u4e0a\u6d3b\u52d5\u96c6\u5408\u6642\u9593\u3001\u6cf3\u8863\u3001\u9632\u66ec\u3001\u6688\u8239\u85e5\u3002", "lat": 24.3573618, "lng": 124.12411399999999, "maps_query": "Grandvrio Resort Ishigaki Island Ocean\u0027s Wing, Ishigaki, Okinawa, Japan", "n": "\u56de\u98ef\u5e97\u4f11\u606f", "place_id": "ChIJEbS_4YnfXzQRm_CLzpP-AX0"}, {"c": "hotel", "d": "d2", "desc": "\u6cf3\u8863\u53ef\u5148\u7a7f\u5728\u88e1\u9762\uff1b\u5e36\u9632\u66ec\u3001\u6bdb\u5dfe\u3001\u63db\u6d17\u8863\u7269\u3001\u5e7c\u7ae5\u9632\u66ec\u5e3d\u3001\u9632\u6c34\u888b\u3002\u975e\u6cf3\u8005\u53ef\u9078\u7559\u8239/\u6c99\u6d32\u3002", "lat": 24.3573618, "lng": 124.12411399999999, "maps_query": "Grandvrio Resort Ishigaki Island Ocean\u0027s Wing, Ishigaki, Okinawa, Japan", "n": "\u98ef\u5e97\u65e9\u9910\u8207\u6c34\u4e0a\u88dd\u5099\u78ba\u8a8d", "place_id": "ChIJEbS_4YnfXzQRm_CLzpP-AX0"}, {"c": "transport", "d": "d2", "desc": "\u96c6\u5408\u9ede\u4f9d\u696d\u8005\u800c\u5b9a\u300213\u4eba\u5927\u5718\u512a\u5148\u554f\u534a\u65e5\u5305\u8239\u6216\u53ef\u8655\u7406\u5e7c\u7ae5/\u4e0d\u4e0b\u6c34\u8005\u7684\u5718\u3002", "lat": 24.3371951, "lng": 124.15556620000001, "maps_query": "Ishigaki Port Remote Island Terminal, Ishigaki, Okinawa, Japan", "n": "\u6c34\u4e0a\u6d3b\u52d5\u96c6\u5408\uff1a\u77f3\u57a3\u6e2f\u5468\u908a", "place_id": "ChIJWa6czBkLYDQRSgao3_cyiZE"}, {"c": "spot", "d": "d2", "desc": "\u672c\u8d9f\u6838\u5fc3\u9ad4\u9a57\u3002\u6b64\u70ba\u793a\u610f\u9328\u9ede\uff0c\u5be6\u969b\u822a\u7dda\u8207\u4e0b\u6c34\u9ede\u4f9d\u7576\u65e5\u6d77\u6cc1\u8207\u696d\u8005\u5b89\u6392\uff1b\u98b1\u98a8/\u6d6a\u6cc1\u4e0d\u4f73\u6539\u5ddd\u5e73\u7063\u73bb\u7483\u8239+\u98ef\u5e97\u6cf3\u6c60\u3002", "lat": 24.3405, "lng": 124.017, "maps_query": "Hamajima, Yaeyama, Okinawa", "n": "\u5e7b\u4e4b\u5cf6\u6d5c\u5cf6 + \u77f3\u897f\u7901\u6e56\u6d6e\u6f5b", "place_id": null}, {"c": "food", "d": "d2", "desc": "\u6c34\u4e0a\u6d3b\u52d5\u5f8c\u4e0d\u8981\u6392\u592a\u9060\u3002\u5148\u56de\u5e02\u5340\u5403\u5348\u9910\uff0c\u9910\u5ef3\u4f9d\u5718\u9ad4\u53ef\u8a02\u4f4d\u6027\u6c7a\u5b9a\u3002", "lat": 24.3371951, "lng": 124.15556620000001, "maps_query": "Ishigaki Port Remote Island Terminal, Ishigaki, Okinawa, Japan", "n": "\u5e02\u5340\u5348\u9910\uff1a\u516b\u91cd\u5c71\u305d\u3070\u6216\u6d77\u9bae\u5b9a\u98df", "place_id": "ChIJWa6czBkLYDQRSgao3_cyiZE"}, {"c": "hotel", "d": "d2", "desc": "\u5bb6\u5ead\u5718\u6c34\u4e0a\u6d3b\u52d5\u5f8c\u4fdd\u7559\u4f11\u606f\u6642\u9593\uff0c\u6bd4\u585e\u666f\u9ede\u66f4\u6709\u5ea6\u5047\u611f\u3002", "lat": 24.3573618, "lng": 124.12411399999999, "maps_query": "Grandvrio Resort Ishigaki Island Ocean\u0027s Wing, Ishigaki, Okinawa, Japan", "n": "\u98ef\u5e97\u6cf3\u6c60/\u5927\u6d74\u5834\u4f11\u606f", "place_id": "ChIJEbS_4YnfXzQRm_CLzpP-AX0"}, {"c": "spot", "d": "d2", "desc": "\u9760\u8fd1Grandvrio\uff0c\u79fb\u52d5\u6210\u672c\u4f4e\u3002\u82e5\u96f2\u591a\u6216\u5927\u5bb6\u7d2f\uff0c\u6539\u98ef\u5e97\u5167\u770b\u6d77\u4f11\u606f\u3002", "lat": 24.3717847, "lng": 124.1160224, "maps_query": "Fusaki Beach Resort Hotel \u0026 Villas, Ishigaki, Okinawa, Japan", "n": "Fusaki Beach / Angel Pier \u5915\u967d", "place_id": "ChIJiQk2UpvfXzQR-r2e92IQxWE"}, {"c": "food", "d": "d2", "desc": "\u3072\u3068\u3057\u71b1\u9580\u4e1413\u4eba\u96e3\u8a02\uff0c\u5099\u6848\u627e\u53ef\u6536\u5927\u5718\u7684\u5cf6\u6599\u7406/\u6d77\u9bae\u5c45\u9152\u5c4b\u3002\u9019\u665a\u4e3b\u6253\u9baa\u9b5a\u3001\u6d77\u8461\u8404\u3001\u5cf6\u8c46\u8150\u3001\u6ce1\u76db\u3002", "lat": 24.3399947, "lng": 124.15939859999999, "maps_query": "Hitoshi Ishiganto, Ishigaki, Okinawa, Japan", "n": "\u6d77\u9bae/\u5cf6\u6599\u7406\u665a\u9910\u5019\u9078\uff1a\u3072\u3068\u3057\u6216\u5927\u578b\u5c45\u9152\u5c4b", "place_id": "ChIJs8T_e64KYDQRiUKvQg-kMN8"}, {"c": "hotel", "d": "d2", "desc": "\u9694\u5929\u9000\u623f\u4e26\u642d\u8239\uff0c\u665a\u4e0a\u5148\u5206\u597d\u8239\u4e0a\u7528\u54c1\u3001\u8b77\u7167\u3001\u85e5\u54c1\u8207\u63db\u6d17\u8863\u7269\u3002", "lat": 24.3573618, "lng": 124.12411399999999, "maps_query": "Grandvrio Resort Ishigaki Island Ocean\u0027s Wing, Ishigaki, Okinawa, Japan", "n": "\u56de\u98ef\u5e97\u6574\u7406\u884c\u674e", "place_id": "ChIJEbS_4YnfXzQRm_CLzpP-AX0"}, {"c": "hotel", "d": "d3", "desc": "\u628a\u8239\u4e0a\u7528\u54c1\u7368\u7acb\u6210\u4e00\u888b\uff1a\u8b77\u7167\u3001\u8239\u7968\u3001\u5916\u5957\u3001\u6688\u8239\u85e5\u3001\u5145\u96fb\u7dda\u3001\u5e7c\u7ae5\u7528\u54c1\u3002", "lat": 24.3573618, "lng": 124.12411399999999, "maps_query": "Grandvrio Resort Ishigaki Island Ocean\u0027s Wing, Ishigaki, Okinawa, Japan", "n": "\u65e9\u9910\u3001\u9000\u623f\u3001\u5bc4\u653e/\u4e0a\u8eca", "place_id": "ChIJEbS_4YnfXzQRm_CLzpP-AX0"}, {"c": "spot", "d": "d3", "desc": "\u4f4e\u9ad4\u529b\u3001\u9577\u8f29\u8207\u5e7c\u7ae5\u53cb\u5584\uff1b\u4e0d\u6392\u81ea\u884c\u4e0b\u6c34\u3002\u82e510/3\u6c34\u4e0a\u6d3b\u52d5\u53d6\u6d88\uff0c\u9019\u88e1\u5347\u7d1a\u70ba\u4e3b\u8981\u770b\u6d77\u9ad4\u9a57\u3002", "lat": 24.4615707, "lng": 124.14258699999999, "maps_query": "Kabira Bay Glass Boat, Ishigaki, Okinawa, Japan", "n": "\u5ddd\u5e73\u7063\u73bb\u7483\u8239", "place_id": "ChIJi4dhr8vdXzQRl94HDIlx7eA"}, {"c": "spot", "d": "d3", "desc": "\u770b\u6d77\u3001\u62cd\u7167\u3001\u4e0a\u5ec1\u6240\u3002\u4e0d\u5efa\u8b70\u5bb6\u5ead\u5927\u5718\u81ea\u884c\u6d6e\u6f5b\uff0c\u6d77\u6cc1\u8207\u96e2\u5cb8\u6d41\u98a8\u96aa\u9700\u5c0a\u91cd\u73fe\u5834\u544a\u793a\u3002", "lat": 24.4530279, "lng": 124.18561349999997, "maps_query": "Yonehara Beach, Ishigaki, Okinawa, Japan", "n": "\u7c73\u539f\u6d77\u5cb8\u77ed\u505c", "place_id": "ChIJEfdRTQXnXzQRwWgakTbPGL0"}, {"c": "food", "d": "d3", "desc": "\u770b\u5e97\u5bb6\u53ef\u5426\u63a5\u5927\u5718\uff1b\u5982\u679c\u5ddd\u5e73\u5468\u908a\u6392\u968a\uff0c\u76f4\u63a5\u56de\u5e02\u5340\u5403\u3002", "lat": 24.4510142, "lng": 124.1437196, "maps_query": "Kabira Bay, Ishigaki, Okinawa, Japan", "n": "\u5348\u9910\uff1a\u5ddd\u5e73/\u5e02\u5340\u516b\u91cd\u5c71\u305d\u3070", "place_id": "ChIJq3PQEe7dXzQR8VwfG5-d-Jo"}, {"c": "spot", "d": "d3", "desc": "\u96c6\u4e2d\u8cb7\u4f34\u624b\u79ae\u8207\u8239\u4e0a\u88dc\u7d66\u3002\u6ce8\u610f\u6db2\u9ad4\u3001\u6613\u788e\u54c1\u8207\u56de\u53f0\u651c\u5e36\u9650\u5236\u3002", "lat": 24.3397121, "lng": 124.1582806, "maps_query": "Euglena Mall, Ishigaki, Okinawa, Japan", "n": "\u6700\u5f8c\u63a1\u8cb7\uff1aEuglena Mall / Donki / MaxValu", "place_id": "ChIJkQwhw60KYDQRAnMh4v-3FvM"}, {"c": "transport", "d": "d3", "desc": "\u512a\u5148\u627e\u5e02\u5340/\u6e2f\u53e3\u53ef\u9084\u8eca\u5e97\u3002\u82e5\u53ea\u80fd\u6a5f\u5834\u9084\u8eca\uff0c\u9700\u628a\u672c\u65e5\u7bc0\u594f\u63d0\u524d\u7d0445\u5206\u9418\u4e26\u5b89\u6392\u8a08\u7a0b\u8eca\u56de\u6e2f\u53e3\u3002", "lat": 24.3371951, "lng": 124.15556620000001, "maps_query": "Ishigaki Port Remote Island Terminal, Ishigaki, Okinawa, Japan", "n": "\u4e09\u53f0\u5c0f\u8eca\u9084\u8eca", "place_id": "ChIJWa6czBkLYDQRSgao3_cyiZE"}, {"c": "transport", "d": "d3", "desc": "\u56fa\u5b9a\u4ea4\u901a\uff1a10/4 18:00\u958b\u59cb\u5831\u5230\u300120:00\u622a\u6b62\uff1b\u8239\u7968\u8207\u8b77\u7167\u5fc5\u5e36\u3002\u78bc\u982d\u53ef\u80fd\u70ba\u77f3\u57a3\u6e2f\u78bc\u982d\u6216\u77f3\u57a3\u6e2f\u570b\u969b\u78bc\u982d\uff0c\u4f9d\u5b98\u65b9\u516c\u544a\u3002", "lat": 24.327629899999998, "lng": 124.14159949999998, "maps_query": "Ishigaki Port International Terminal, Ishigaki, Okinawa, Japan", "n": "Yaima Line \u5831\u5230/\u5b89\u6aa2/\u51fa\u5883", "place_id": "ChIJw5p-aWx1YDQRCwCUDoYgfO8"}, {"c": "transport", "d": "d3", "desc": "\u56fa\u5b9a\u4ea4\u901a\uff1a\u63a8\u5b9a10/4 21:00\u77f3\u57a3\u51fa\u767c\uff0c10/5 08:00\u57fa\u9686\u5230\u9054\u3002\u76ee\u6a19\u8259\u7b49 Standard G 15\u4eba\u901a\u92ea\uff1b\u542b7\u6708\u8d77\u7a05\u91d1\u4f30 NT$38,450/\u5718\u3002", "lat": 24.327629899999998, "lng": 124.14159949999998, "maps_query": "Ishigaki Port International Terminal, Ishigaki, Okinawa, Japan", "n": "Yaima Line \u77f3\u57a3\u5cf6 \u2192 \u57fa\u9686", "place_id": "ChIJw5p-aWx1YDQRCwCUDoYgfO8"}, {"c": "transport", "d": "d4", "desc": "\u56fa\u5b9a\u4ea4\u901a\uff1a\u9810\u8a0808:00\u5230\u6e2f\u3002\u5be6\u969b\u4e0b\u8239\u8207\u5165\u5883\u6642\u9593\u4f9d\u73fe\u5834\u4f5c\u696d\uff1b\u8239\u9760\u6cca\u5f8c\u53ef\u80fd\u63a5\u99c1\u81f3\u6771\u5cb8\u6216\u897f\u5cb8\u65c5\u5ba2\u4e2d\u5fc3\u3002", "lat": 25.1347329, "lng": 121.7453911, "maps_query": "Keelung Port East Side Visitor Center, Keelung, Taiwan", "n": "Yaima Line \u62b5\u9054\u57fa\u9686", "place_id": "ChIJwU1FHu5PXTQRQcBJxmPlh0s"}, {"c": "transport", "d": "d4", "desc": "\u53ef\u642d\u53f0\u9435/\u5ba2\u904b\u56de\u53f0\u5317\uff0c\u621613\u4eba\u76f4\u63a5\u9810\u7d04\u63a5\u99c1\u8eca\u3002\u82e5\u884c\u674e\u591a\uff0c\u5305\u8eca\u6703\u6bd4\u591a\u4eba\u62d6\u884c\u674e\u8f49\u4e58\u8212\u670d\u3002", "lat": 25.1330603, "lng": 121.73925399999999, "maps_query": "Keelung Station, Keelung, Taiwan", "n": "\u57fa\u9686\u8eca\u7ad9/\u8f49\u904b\u7ad9\u8fd4\u5bb6", "place_id": "ChIJK17Q2BROXTQRUAheqvBKqj4"}];
+
+var allBounds=L.latLngBounds([]);
+var dayBoundsMap={};
+(function(){
+  if(pts.length===0)return;
+  var dayPts={};
+  pts.forEach(function(p){
+    allBounds.extend([p.lat,p.lng]);
+    if(!dayPts[p.d])dayPts[p.d]=[];
+    dayPts[p.d].push(p);
+  });
+  Object.keys(dayPts).forEach(function(d){
+    var b=L.latLngBounds(dayPts[d].map(function(p){return[p.lat,p.lng]}));
+    dayBoundsMap[d]=b;
+  });
+})();
+
+function mkIco(col){
+  return L.divIcon({className:'',html:'<svg width="22" height="30" viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="'+col+'" stroke="#fff" stroke-width="2"/><circle cx="14" cy="14" r="5" fill="#fff"/></svg>',iconSize:[22,30],iconAnchor:[11,30],popupAnchor:[0,-30]});
+}
+
+function initMap(){
+  mo=L.map('map');
+  if(allBounds.isValid())mo.fitBounds(allBounds,{padding:[30,30],maxZoom:16});else mo.setView([0,0],2);
+  L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:18}).addTo(mo);
+  pts.forEach(function(p){
+    var m=L.marker([p.lat,p.lng],{icon:mkIco(colors[p.c]||'#999')});
+    var dayLabel=p.d.replace('d','Day ');
+    var url=p.place_id?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.maps_query||p.n)+'&query_place_id='+p.place_id:(p.lat&&p.lng)?'https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lng:'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.maps_query||p.n);
+    m.bindPopup('<div style="min-width:180px"><b style="font-size:14px">'+p.n+'</b><br><span style="font-size:11px;color:#888">'+dayLabel+'</span><br><span style="font-size:12px;color:#555;line-height:1.5">'+(p.desc||'')+'</span><br><a href="'+url+'" target="_blank" style="color:#1a73e8;font-size:12px;margin-top:4px;display:inline-block">&#128205; 在 Google Maps 開啟</a></div>');
+    m.pd=p;
+    m.addTo(mo);
+    markers.push(m);
+  });
+  // Color legend
+  var legend=L.control({position:'bottomright'});
+  legend.onAdd=function(){
+    var d=L.DomUtil.create('div');
+    d.style.cssText='background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.2);font-size:12px;line-height:2.2';
+    var legendItems=[
+      ['#e74c3c','住宿'],
+      ['#2e86c1','工作'],
+      ['#e67e22','美食'],
+      ['#27ae60','景點'],
+      ['#95a5a6','移動']
+    ];
+    d.innerHTML='<b style="font-size:13px;margin-bottom:4px;display:block">圖例</b>'+legendItems.map(function(pair){return '<span style="display:inline-flex;align-items:center;margin-right:10px"><span style="width:10px;height:10px;border-radius:50%;background:'+pair[0]+';display:inline-block;margin-right:4px"></span>'+pair[1]+'</span>'}).join('');
+    return d;
+  };
+  legend.addTo(mo);
+  mapReady=true;
+}
+
+function mf(day,btn){
+  document.querySelectorAll('.map-ctrl button').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  if(day==='all'){
+    markers.forEach(function(m){if(!mo.hasLayer(m))mo.addLayer(m)});
+    if(allBounds.isValid())mo.fitBounds(allBounds,{padding:[30,30],maxZoom:16});
+  } else {
+    markers.forEach(function(m){
+      if(m.pd.d===day){if(!mo.hasLayer(m))mo.addLayer(m)} else mo.removeLayer(m);
+    });
+    var b=dayBoundsMap[day];
+    if(b&&b.isValid())mo.fitBounds(b,{padding:[30,30],maxZoom:16});
+  }
+}
+</script>
+</body>
+</html>

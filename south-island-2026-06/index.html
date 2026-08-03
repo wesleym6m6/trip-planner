@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>紐西蘭南島自駕</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%23f5f5f5'/><text x='90' y='130' font-size='120' text-anchor='middle'>🏔️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text x='16' y='26' font-size='28' text-anchor='middle'>🏔️</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#333}
+
+.sticky-header{position:sticky;top:0;z-index:200}
+.top-bar{background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;padding:14px 20px 10px;text-align:center;position:relative}
+.top-bar h1{font-size:18px;font-weight:600}
+.top-bar p{font-size:12px;opacity:.85;margin-top:2px}
+.back-home{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.85);text-decoration:none;font-size:22px;line-height:1;padding:4px;border-radius:6px;transition:.15s}
+.back-home:hover{color:#fff;background:rgba(255,255,255,.12)}
+.top-legend{display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:11px;opacity:.8;flex-wrap:wrap}
+
+.tab-nav{display:flex;background:#fff;border-bottom:1px solid #ddd}
+.tab-btn{flex:1;padding:10px;border:none;background:#fff;font-size:13px;font-weight:500;cursor:pointer;border-bottom:3px solid transparent;color:#666;transition:.2s}
+.tab-btn.active{color:#1a73e8;border-bottom-color:#1a73e8}
+
+/* (legend strip moved into top-bar as .top-legend) */
+
+/* Itinerary */
+#itin{display:none;padding-bottom:30px}
+#itin.active{display:block}
+
+.day-sec{margin:16px 12px 0}
+.day-hdr{background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;padding:12px 16px;border-radius:10px 10px 0 0;font-size:15px;font-weight:600}
+.day-hdr .sub{font-size:12px;opacity:.8;margin-top:2px;font-weight:400}
+.day-body{background:#fff;border-radius:0 0 10px 10px;overflow:hidden}
+
+/* Place card - entire thing clickable */
+a.place{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid #f0f0f0;text-decoration:none;color:inherit;transition:background .12s;cursor:pointer}
+a.place:last-child{border-bottom:none}
+a.place:hover{background:#f0f6ff}
+a.place:active{background:#e3edfa}
+
+.pc{flex:1;min-width:0}
+.pc-time{font-size:12px;color:#1a5276;font-weight:600;font-variant-numeric:tabular-nums;margin-right:4px}
+.pc-title{font-size:14px;font-weight:600;margin-bottom:2px}
+.pc-note{font-size:12px;color:#666;line-height:1.5}
+.pc-user-note{font-size:12px;color:#1a73e8;line-height:1.5;margin-top:2px;font-style:italic}
+.arrow{color:#bbb;font-size:16px;margin-top:3px;flex-shrink:0}
+
+/* Place edit button */
+.place-edit-btn{width:32px;height:32px;border:none;background:none;color:#bbb;font-size:20px;cursor:pointer;flex-shrink:0;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:.15s;text-decoration:none}
+.place-edit-btn:hover{color:#1a73e8;background:#e8f0fe}
+.place-edit-btn.has-note{color:#1a73e8}
+
+/* Place note editor */
+.place-note-editor{padding:8px 14px;background:#fafbfc;border-bottom:1px solid #f0f0f0;display:none}
+.place-note-editor textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;outline:none;box-sizing:border-box}
+.place-note-editor textarea:focus{border-color:#1a73e8}
+.place-note-editor button{margin-top:6px;padding:8px 16px;background:#1a73e8;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer}
+
+/* Travel segment between places */
+.travel-seg{display:flex;flex-direction:column;gap:2px;padding:6px 14px 6px 28px;background:#fafbfc;border-bottom:1px solid #f0f0f0;font-size:11px;color:#888}
+.travel-seg .seg-main{display:flex;align-items:center;gap:8px}
+.travel-seg .seg-icon{font-size:14px}
+.travel-seg .seg-line{flex:1;height:1px;background:#e0e0e0}
+.travel-seg .seg-info{white-space:nowrap;color:#555;font-weight:500}
+.travel-seg .seg-transit{display:flex;flex-direction:column;gap:2px;padding:2px 0 2px 22px;font-size:10px;color:#666}
+.travel-seg .seg-transit-step{display:flex;align-items:center;gap:5px;line-height:1.5}
+.travel-seg .seg-transit-line{background:#1a73e8;color:#fff;padding:1px 6px;border-radius:8px;font-weight:600;font-size:9px;white-space:nowrap}
+.travel-seg .seg-transit-line.bus{background:#0d7a3e}
+.travel-seg .seg-transit-line.rail{background:#1a5276}
+.travel-seg .seg-transit-stops{color:#555}
+.travel-seg .seg-transit-time{color:#999;margin-left:auto;white-space:nowrap}
+
+/* Map */
+#map-panel{display:none}
+#map-panel.active{display:block}
+#map{width:100%;height:calc(100vh - 135px)}
+.map-ctrl{display:flex;gap:5px;padding:8px 10px;background:#fff;overflow-x:auto;flex-wrap:nowrap;position:sticky;top:0;z-index:150;border-bottom:1px solid #ddd}
+.map-ctrl button{padding:4px 10px;border:1.5px solid #ddd;border-radius:14px;background:#fff;font-size:11px;cursor:pointer;white-space:nowrap;transition:.2s}
+.map-ctrl button.active{background:#1a73e8;color:#fff;border-color:#1a73e8}
+
+/* Checklist tab */
+#checklist{display:none;padding:16px 12px 30px}
+#checklist.active{display:block}
+.cl-sec{margin-bottom:20px}
+.cl-hdr{display:flex;align-items:center;gap:8px;padding:12px 16px;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border-radius:10px 10px 0 0;font-size:15px;font-weight:600;cursor:pointer;-webkit-user-select:none;user-select:none}
+.cl-hdr .cl-emoji{font-size:18px}
+.cl-hdr .cl-arrow{margin-left:auto;font-size:12px;transition:transform .2s}
+.cl-body{background:#fff;border-radius:0 0 10px 10px;overflow:hidden}
+.cl-body.collapsed{display:none}
+.cl-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid #f0f0f0;transition:background .12s;-webkit-user-select:none;user-select:none}
+.cl-item:hover{background:#f8f9fa}
+.cl-item.checked{opacity:.55}
+.cl-item.checked .cl-label{text-decoration:line-through}
+.cl-check{width:20px;height:20px;border:2px solid #ccc;border-radius:5px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:.15s;font-size:13px;color:#fff;background:#fff;cursor:pointer}
+.cl-item.checked .cl-check{background:#27ae60;border-color:#27ae60}
+.cl-info{flex:1;min-width:0}
+.cl-label{font-size:13px;font-weight:500;color:#333}
+.cl-hint{font-size:11px;color:#999;margin-top:2px;line-height:1.4}
+.cl-meta{font-size:11px;color:#888;margin-top:3px;line-height:1.4}
+.cl-del{width:28px;height:28px;border:none;background:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:.15s;margin-top:-1px;min-height:44px}
+.cl-del:hover{color:#e74c3c;background:#fdecea}
+/* Pencil edit button - same as del but blue on hover */
+.cl-edit-btn{width:28px;height:28px;border:none;background:none;color:#ccc;font-size:20px;cursor:pointer;flex-shrink:0;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:.15s;margin-top:-1px;min-height:44px}
+.cl-edit-btn:hover{color:#1a73e8;background:#e8f0fe}
+.cl-progress{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#f8f9fa;border-bottom:1px solid #eee}
+.cl-bar{flex:1;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden}
+.cl-bar-fill{height:100%;background:linear-gradient(90deg,#27ae60,#2ecc71);border-radius:3px;transition:width .3s}
+.cl-pct{font-size:11px;color:#888;white-space:nowrap}
+.cl-add{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px dashed #ddd;cursor:pointer;color:#1a73e8;font-size:13px;transition:background .12s}
+.cl-add:hover{background:#f0f6ff}
+.cl-add-icon{font-size:18px;line-height:1}
+.cl-add-form{display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-top:1px dashed #ddd}
+.cl-add-form input,.cl-add-form textarea{width:100%;max-width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:16px;outline:none;font-family:inherit;box-sizing:border-box}
+.cl-add-form input:focus,.cl-add-form textarea:focus{border-color:#1a73e8}
+.cl-add-form .cl-add-btns{display:flex;gap:6px;justify-content:flex-end}
+.cl-add-form button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-add-form .cl-btn-ok{background:#1a73e8;color:#fff}
+.cl-add-form .cl-btn-cancel{background:#f0f0f0;color:#666}
+.cl-edit-form{padding:10px 14px;border-bottom:1px solid #f0f0f0;background:#fafbfc}
+.cl-edit-form input,.cl-edit-form textarea{width:100%;max-width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:16px;outline:none;font-family:inherit;margin-bottom:6px;box-sizing:border-box;-webkit-appearance:none;appearance:none;min-height:44px}
+.cl-edit-form input:focus,.cl-edit-form textarea:focus{border-color:#1a73e8}
+.cl-edit-form .cl-edit-btns{display:flex;gap:6px;justify-content:flex-end}
+.cl-edit-form button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
+.cl-edit-form .cl-btn-ok{background:#1a73e8;color:#fff}
+.cl-edit-form .cl-btn-cancel{background:#f0f0f0;color:#666}
+.cl-edit-form .cl-edit-hint{font-size:12px;color:#999}
+
+/* ===== Packing section - TREK style ===== */
+.pk-card{background:#fff;border-radius:14px;border:1px solid #e8e8e8;margin-bottom:8px;overflow:visible}
+.pk-card-hdr{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;-webkit-user-select:none;user-select:none}
+.pk-card-hdr.open{border-bottom:1px solid #e8e8e8}
+.pk-chevron{font-size:10px;color:#999;transition:transform .2s;flex-shrink:0;width:14px;text-align:center}
+.pk-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.pk-cat-name{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#666;flex:1;min-width:0}
+.pk-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:#f0f0f0;color:#888;flex-shrink:0}
+.pk-count.all-done{background:rgba(22,163,74,0.12);color:#16a34a}
+.pk-menu-btn{width:28px;height:28px;border:none;background:none;color:#999;font-size:16px;cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.pk-menu-btn:hover{background:#f0f0f0;color:#666}
+.pk-card-body{overflow:hidden}
+.pk-card-body.collapsed{display:none}
+.pk-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;position:relative;transition:background .12s}
+.pk-item:hover{background:#f8f9fa}
+.pk-item.checked .pk-name{opacity:.55;text-decoration:line-through}
+.pk-item.checked .cl-check{background:#27ae60;border-color:#27ae60}
+.pk-name{flex:1;font-size:13.5px;min-width:0}
+.pk-edit-input{flex:1;font-size:13.5px;padding:2px 8px;border-radius:6px;border:1px solid #1a73e8;outline:none;font-family:inherit;box-sizing:border-box}
+.pk-actions{display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .12s}
+.pk-item:hover .pk-actions{opacity:1}
+@media(max-width:767px){.pk-actions{opacity:1!important}}
+.pk-act-btn{width:28px;height:28px;border:none;background:none;color:#ccc;font-size:20px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:.15s;min-height:44px}
+.pk-act-btn:hover{color:#1a73e8;background:#e8f0fe}
+.pk-act-btn.del:hover{color:#e74c3c;background:#fdecea}
+.pk-inline-add{display:flex;align-items:center;gap:8px;padding:6px 10px;color:#1a73e8;font-size:13px;cursor:pointer;transition:background .12s;border-radius:0 0 14px 14px}
+.pk-inline-add:hover{background:#f0f6ff}
+.pk-inline-add-form{display:flex;align-items:center;gap:6px;padding:6px 10px}
+.pk-inline-add-form input{flex:1;padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:13.5px;outline:none;font-family:inherit}
+.pk-inline-add-form input:focus{border-color:#1a73e8}
+.pk-inline-add-form button{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;min-height:44px}
+.pk-inline-add-form .pk-add-ok{background:#1a73e8;color:#fff}
+.pk-inline-add-form .pk-add-cancel{background:#f0f0f0;color:#666}
+
+/* Packing dropdown menu */
+.pk-dropdown{display:none;position:absolute;top:100%;right:0;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100;min-width:140px;overflow:hidden}
+.pk-dropdown.open{display:block}
+.pk-dropdown button{display:block;width:100%;padding:10px 14px;border:none;background:none;text-align:left;font-size:13px;cursor:pointer;font-family:inherit;color:#333}
+.pk-dropdown button:hover{background:#f0f6ff}
+.pk-dropdown button.danger{color:#e74c3c}
+.pk-dropdown button.danger:hover{background:#fdecea}
+
+/* Add category button */
+.pk-add-cat{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;color:#1a73e8;font-size:13px;transition:background .12s;border-radius:10px;margin-top:4px}
+.pk-add-cat:hover{background:#f0f6ff}
+.pk-add-cat-form{display:flex;align-items:center;gap:6px;padding:10px 14px;margin-top:4px}
+.pk-add-cat-form input{flex:1;padding:10px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:14px;outline:none;font-family:inherit}
+.pk-add-cat-form input:focus{border-color:#1a73e8}
+.pk-add-cat-form button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
+.pk-add-cat-form .pk-btn-ok{background:#1a73e8;color:#fff}
+.pk-add-cat-form .pk-btn-cancel{background:#f0f0f0;color:#666}
+
+/* Info */
+#info{display:none;padding:16px 12px 30px}
+#info.active{display:block}
+.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card h3{font-size:15px;font-weight:600;color:#1a5276;margin-bottom:8px}
+.card p{font-size:13px;line-height:1.7;color:#555}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{padding:7px 10px;text-align:left;border-bottom:1px solid #eee}
+.tbl th{background:#f8f9fa;font-weight:600;color:#1a5276}
+.tbl .total{font-weight:700;color:#1a73e8}
+.cw-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.cw-tbl th,.cw-tbl td{padding:5px 7px;text-align:left;border-bottom:1px solid #eee;vertical-align:top}
+.cw-tbl th{background:#e8f0fe;font-weight:600;color:#1a5276;white-space:nowrap}
+
+/* Read-only timeline review */
+#review{display:none;padding:16px 12px 30px}
+#review.active{display:block}
+.review-hero{background:#fff;border:1px solid #d9e6f2;border-radius:12px;padding:18px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.review-hero.needs_verification{border-left:5px solid #e67e22}
+.review-hero.infeasible,.review-hero.repair_required{border-left:5px solid #d35400}
+.review-hero.feasible{border-left:5px solid #27ae60}
+.review-hero.unavailable{border-left:5px solid #95a5a6}
+.review-kicker{font-size:12px;font-weight:600;color:#1a5276;letter-spacing:.04em;margin-bottom:6px}
+.review-hero h2{font-size:18px;line-height:1.35;color:#234;letter-spacing:.01em}
+.review-hero p{font-size:13px;line-height:1.7;color:#555;margin-top:8px}
+.review-card{background:#fff;border-radius:10px;padding:15px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.review-card h3{font-size:14px;font-weight:600;color:#1a5276;margin-bottom:8px}
+.review-card p{font-size:13px;line-height:1.7;color:#555}
+.review-list{list-style:none}
+.review-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #edf0f2;font-size:13px;color:#333}
+.review-item:first-child{border-top:none;padding-top:0}
+.review-item:last-child{padding-bottom:0}
+.review-count{flex-shrink:0;color:#a15c00;background:#fff2df;border-radius:999px;padding:3px 8px;font-size:12px;font-variant-numeric:tabular-nums}
+.review-note{font-size:12px;line-height:1.65;color:#7b8790;padding:2px 4px}
+
+/* Floating notes button */
+.notes-fab{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border:none;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:300;display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s}
+.notes-fab:hover{transform:scale(1.08);box-shadow:0 6px 16px rgba(0,0,0,.3)}
+.notes-panel{display:none;position:fixed;bottom:80px;right:16px;width:320px;max-width:calc(100vw - 32px);max-height:60vh;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:300;overflow:hidden;display:flex;flex-direction:column}
+.notes-panel:not(.open){display:none}
+.notes-panel.open{display:flex}
+.notes-panel-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;font-size:14px;font-weight:600;flex-shrink:0}
+.notes-panel-hdr button{background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:.8;transition:opacity .15s}
+.notes-panel-hdr button:hover{opacity:1}
+.notes-panel textarea{width:100%;height:200px;border:none;padding:12px 16px;font-size:13px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;color:#333;flex:1;overflow-y:auto}
+.notes-panel textarea::placeholder{color:#bbb}
+
+/* Date badge for reservations */
+.res-date-badge{font-size:11px;color:#1a73e8;background:#e8f0fe;padding:2px 6px;border-radius:4px;margin-left:6px;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="sticky-header">
+<div class="top-bar">
+  <a href="../" class="back-home" title="返回首頁">←</a>
+  <h1>紐西蘭南島自駕</h1>
+  <p>2026 六月 ｜ 冬季順時針環島</p>
+  <div class="top-legend">
+    <span>🏨 住宿</span>
+    <span>🍜 美食</span>
+    <span>📍 景點</span>
+    <span>☕ 飲品</span>
+    <span>🚊 交通</span>
+  </div>
+</div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="sw('itin',this)">行程</button>
+  <button class="tab-btn" onclick="sw('map-panel',this)">地圖</button>
+  <button class="tab-btn" onclick="sw('checklist',this)">清單</button>
+  <button class="tab-btn" data-panel="review" onclick="sw('review',this)">檢查</button>
+  <button class="tab-btn" onclick="sw('info',this)">實用資訊</button>
+</div>
+</div><!-- /sticky-header -->
+
+<!-- ==================== 行程 TAB ==================== -->
+<div id="itin" class="active">
+
+
+
+<!-- ===== DAY 0 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 0 — 抵達基督城<div class="sub">取車 × 市區散步 × 素食晚餐</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=New%20Regent%20Street%2C%20Christchurch%2C%20New%20Zealand&query_place_id=ChIJKYdNvCSKMW0RlBNrGuHKjdc" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 New Regent Street</div>
+    <div class="pc-note"><span class="pc-time">14:00</span>彩色西班牙風街道，地震後重建地標</div>
+    <div class="pc-user-note" id="pn-0-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(0,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-0-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(0,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚶</span>
+    <span class="seg-info">9 分鐘 ｜ 0.6 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Cardboard%20Cathedral%2C%20Christchurch%2C%20New%20Zealand&query_place_id=ChIJTfWAeyGKMW0RPleuecV8uAk" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Cardboard Cathedral</div>
+    <div class="pc-note"><span class="pc-time">14:45</span>紙板教堂，2013 年落成的臨時大教堂</div>
+    <div class="pc-user-note" id="pn-0-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(0,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-0-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(0,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">7 分鐘 ｜ 2.5 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Christchurch%20Botanic%20Gardens%2C%20Christchurch%2C%20New%20Zealand&query_place_id=ChIJNfFGGdscMm0RRsX9sIs5Dlg" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Christchurch Botanic Gardens</div>
+    <div class="pc-note"><span class="pc-time">15:30</span>150 年歷史植物園，冬季有溫室可逛</div>
+    <div class="pc-user-note" id="pn-0-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(0,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-0-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(0,2)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">10 分鐘 ｜ 3.2 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=The%20Lotus-Heart%20Vegetarian%20Restaurant%2C%20Christchurch%2C%20New%20Zealand&query_place_id=ChIJm-Lk5B-KMW0ReKTt_bd_s5s" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 The Lotus-Heart</div>
+    <div class="pc-note"><span class="pc-time">17:30</span>素食餐廳，週五有晚餐時段 17:00-21:00</div>
+    <div class="pc-user-note" id="pn-0-3"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(0,3)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-0-3">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(0,3)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 1 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 1 — 翻越南阿爾卑斯山<div class="sub">基督城→Castle Hill→Arthur's Pass→Hokitika</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Kura%20T%C4%81whiti%20Castle%20Hill%2C%20Canterbury%2C%20New%20Zealand&query_place_id=ChIJMUGr__JoLm0RHv3ReMOKvw4" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Castle Hill</div>
+    <div class="pc-note"><span class="pc-time">09:30</span>巨石陣地景，魔戒取景地，步行 20 min</div>
+    <div class="pc-user-note" id="pn-1-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">30 分鐘 ｜ 33 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Arthur%27s%20Pass%20National%20Park%2C%20New%20Zealand&query_place_id=ChIJXfl8rSJNLm0RMO1bZYfvAA8" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Arthur's Pass</div>
+    <div class="pc-note"><span class="pc-time">11:00</span>南阿爾卑斯山口，冬季雪景壯觀，可在村莊停留午餐</div>
+    <div class="pc-user-note" id="pn-1-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">110 分鐘 ｜ 130 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Hokitika%20Gorge%20Scenic%20Reserve%2C%20New%20Zealand&query_place_id=ChIJVxnBuunaLm0RgOgILLxk7hg" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Hokitika Gorge</div>
+    <div class="pc-note"><span class="pc-time">15:00</span>牛奶藍峽谷，來回步道約 30 min</div>
+    <div class="pc-user-note" id="pn-1-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(1,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-1-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(1,2)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 2 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 2 — 冰川健行日<div class="sub">Hokitika→Franz Josef Glacier</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Franz%20Josef%20Glacier%20Guides%2C%20Franz%20Josef%2C%20New%20Zealand&query_place_id=ChIJU0nnft7VK20RzcUvPww46uQ" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Franz Josef Glacier Guides</div>
+    <div class="pc-note"><span class="pc-time">08:00</span>Heli Hike 報到，直升機上冰川 + 3h 冰上徒步，需提前預訂</div>
+    <div class="pc-user-note" id="pn-2-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(2,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-2-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(2,0)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 3 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 3 — 鏡湖 × 瀑布 × 藍池<div class="sub">Franz Josef→Fox Glacier→Haast Pass→Wanaka</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Lake%20Matheson%20Walk%2C%20Fox%20Glacier%2C%20New%20Zealand&query_place_id=EkVMYWtlIE1hdGhlc29uIC8gVGUgQXJhIEthaXJhdW1hdGkgV2FsaywgRm94IEdsYWNpZXIgNzg4NiwgTmV3IFplYWxhbmQiLiosChQKEgmhfXtu3y4qbRGX165QMm3rNRIUChIJ_epAj4UvKm0RcG55hIbvAAU" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Lake Matheson</div>
+    <div class="pc-note"><span class="pc-time">07:30</span>鏡湖晨走，天氣好可倒映 Mt Cook，環湖步道 1.5h</div>
+    <div class="pc-user-note" id="pn-3-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">138 分鐘 ｜ 174.9 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Thunder%20Creek%20Falls%2C%20Haast%20Pass%2C%20New%20Zealand&query_place_id=ChIJ09awCgB91WwRfzlQcNMQn7g" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Thunder Creek Falls</div>
+    <div class="pc-note"><span class="pc-time">10:30</span>28m 瀑布，路邊停車走 5 min</div>
+    <div class="pc-user-note" id="pn-3-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">19 分鐘 ｜ 19.1 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Blue%20Pools%20Track%2C%20Haast%20Pass%2C%20New%20Zealand&query_place_id=ChIJ2_yKs9dn1WwRgNRSPMp25HQ" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Blue Pools Track</div>
+    <div class="pc-note"><span class="pc-time">11:00</span>清澈藍色水潭，吊橋步道來回 30 min</div>
+    <div class="pc-user-note" id="pn-3-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,2)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">61 分鐘 ｜ 72.7 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Fedeli%20Italian%2C%20Wanaka%2C%20New%20Zealand&query_place_id=ChIJ-98QjkVP1akRtRgDunUSmVA" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 Fedeli Italian</div>
+    <div class="pc-note"><span class="pc-time">13:00</span>Wanaka 高評價咖啡簡餐，有素食選項，14:30 打烊</div>
+    <div class="pc-user-note" id="pn-3-3"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,3)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-3">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,3)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">4 分鐘 ｜ 1.9 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=That%20Wanaka%20Tree%2C%20Wanaka%2C%20New%20Zealand&query_place_id=ChIJE8sfvvhF1akRtID-3q4IQDk" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 That Wanaka Tree</div>
+    <div class="pc-note"><span class="pc-time">14:30</span>紐西蘭最著名孤樹，冬季枯枝更有意境</div>
+    <div class="pc-user-note" id="pn-3-4"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(3,4)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-3-4">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(3,4)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 4 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 4 — 高空彈跳 × 皇后鎮<div class="sub">Wanaka→Queenstown</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=AJ%20Hackett%20Bungy%20Kawarau%20Bridge%2C%20Queenstown%2C%20New%20Zealand&query_place_id=ChIJ6fa3E1Me1akRwOXMoqzuoxs" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 AJ Hackett Bungy Kawarau Bridge</div>
+    <div class="pc-note"><span class="pc-time">09:30</span>世界商業彈跳發源地 43m，需提前預訂</div>
+    <div class="pc-user-note" id="pn-4-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(4,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-4-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(4,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">5 分鐘 ｜ 1.1 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Queenstown%20Gardens%2C%20Queenstown%2C%20New%20Zealand&query_place_id=ChIJrwm7l7Tj1KkRtwIpvNpNEQs" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Queenstown Gardens</div>
+    <div class="pc-note"><span class="pc-time">12:00</span>Lake Wakatipu 湖畔花園散步</div>
+    <div class="pc-user-note" id="pn-4-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(4,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-4-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(4,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">7 分鐘 ｜ 1.6 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Skyline%20Queenstown%2C%20New%20Zealand&query_place_id=ChIJvW5Ehngd1akRv1_byHfuLCI" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Skyline Queenstown</div>
+    <div class="pc-note"><span class="pc-time">15:00</span>纜車上 Bob's Peak 俯瞰湖景 + Luge 溜溜車</div>
+    <div class="pc-user-note" id="pn-4-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(4,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-4-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(4,2)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚶</span>
+    <span class="seg-info">6 分鐘 ｜ 0.5 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Fergburger%2C%20Queenstown%2C%20New%20Zealand&query_place_id=ChIJXVWEZYEd1akRH6jepbQaihc" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 Fergburger</div>
+    <div class="pc-note"><span class="pc-time">18:00</span>���西蘭最紅漢堡店，有素食漢堡 Little Lamby</div>
+    <div class="pc-user-note" id="pn-4-3"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(4,3)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-4-3">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(4,3)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 5 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 5 — 皇后鎮悠閒日<div class="sub">蒸汽船 × 湖畔漫步</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Bespoke%20Kitchen%2C%20Queenstown%2C%20New%20Zealand&query_place_id=ChIJx7aKOIId1akROGT7vsx2BZk" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 Bespoke Kitchen</div>
+    <div class="pc-note"><span class="pc-time">09:00</span>早午餐名店，素食友善，推薦 acai bowl</div>
+    <div class="pc-user-note" id="pn-5-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(5,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-5-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(5,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚶</span>
+    <span class="seg-info">7 分鐘 ｜ 0.5 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=TSS%20Earnslaw%20Vintage%20Steamship%2C%20Queenstown%2C%20New%20Zealand&query_place_id=ChIJJVEMJHod1akRq7SCEO7AvSc" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 TSS Earnslaw</div>
+    <div class="pc-note"><span class="pc-time">12:00</span>百年���汽船遊 Lake Wakatipu，1.5h 巡航</div>
+    <div class="pc-user-note" id="pn-5-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(5,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-5-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(5,1)">儲存</button>
+</div>
+
+
+</div></div>
+
+<!-- ===== DAY 6 ===== -->
+<div class="day-sec">
+<div class="day-hdr">Day 6 — 湖藍公路回程<div class="sub">Queenstown→Lake Pukaki→Lake Tekapo→Christchurch</div></div>
+<div class="day-body">
+
+
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Lake%20Pukaki%20Viewing%20Point%2C%20New%20Zealand&query_place_id=ChIJh-7gBaAbK20RndmN4X41kIY" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Lake Pukaki Viewpoint</div>
+    <div class="pc-note"><span class="pc-time">10:30</span>冰河藍湖 + Mt Cook 背景，南島經典明信片角度</div>
+    <div class="pc-user-note" id="pn-6-0"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(6,0)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-6-0">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(6,0)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+      
+    
+  
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">28 分鐘 ｜ 40.1 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Church%20of%20the%20Good%20Shepherd%2C%20Lake%20Tekapo%2C%20New%20Zealand&query_place_id=ChIJfel69GF1K20RAsz_Rtcyivg" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">📍 Church of the Good Shepherd</div>
+    <div class="pc-note"><span class="pc-time">12:00</span>Lake Tekapo 湖畔石教堂，南島最經典畫面</div>
+    <div class="pc-user-note" id="pn-6-1"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(6,1)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-6-1">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(6,1)">儲存</button>
+</div>
+
+
+
+  
+  
+  
+    
+  
+    
+      
+    
+  
+  
+    
+<div class="travel-seg">
+  <div class="seg-main">
+    <span class="seg-icon">🚗</span>
+    <span class="seg-info">6 分鐘 ｜ 1.4 km</span>
+    <span class="seg-line"></span>
+  </div></div>
+  
+
+
+
+
+<a class="place" href="https://www.google.com/maps/search/?api=1&query=Kohan%20Restaurant%2C%20Lake%20Tekapo%2C%20New%20Zealand&query_place_id=ChIJS7Skzl91K20ReTz3IukF8Gg" target="_blank">
+
+  <div class="pc">
+    <div class="pc-title">🍜 Kohan Restaurant</div>
+    <div class="pc-note"><span class="pc-time">12:30</span>湖畔日料，有素食選項，午餐到 14:00</div>
+    <div class="pc-user-note" id="pn-6-2"></div>
+  </div>
+  <button class="place-edit-btn" onclick="event.preventDefault();event.stopPropagation();togglePlaceNote(6,2)" title="備註">&#9998;</button>
+  <div class="arrow">&#8250;</div>
+</a>
+<div class="place-note-editor" id="pne-6-2">
+  <textarea placeholder="加入備註..."></textarea>
+  <button onclick="savePlaceNote(6,2)">儲存</button>
+</div>
+
+
+</div></div>
+
+</div>
+
+<!-- ==================== 地圖 TAB ==================== -->
+<div id="map-panel">
+  <div class="map-ctrl" id="mapBtns">
+    <button class="active" onclick="mf('all',this)">全部</button>
+    
+    <button onclick="mf('d0',this)">Day 0</button>
+    
+    <button onclick="mf('d1',this)">Day 1</button>
+    
+    <button onclick="mf('d2',this)">Day 2</button>
+    
+    <button onclick="mf('d3',this)">Day 3</button>
+    
+    <button onclick="mf('d4',this)">Day 4</button>
+    
+    <button onclick="mf('d5',this)">Day 5</button>
+    
+    <button onclick="mf('d6',this)">Day 6</button>
+    
+  </div>
+  <div id="map"></div>
+</div>
+
+<!-- ==================== 清單 TAB ==================== -->
+<div id="checklist">
+  <div class="cl-sec" id="cl-todo"></div>
+  <div class="cl-sec" id="cl-reservations"></div>
+  <div class="cl-sec" id="cl-packing"></div>
+</div>
+
+<!-- ==================== 行程檢查 TAB ==================== -->
+<div id="review">
+  <section class="review-hero needs_verification">
+    <div class="review-kicker">行程檢查 · 尚有待確認事項</div>
+    <h2>行程還不能視為已準備完成</h2>
+    <p>這是離線時間線檢查；待確認事項完成前，不代表交通、營業或預訂已確認。</p>
+  </section>
+
+  <section class="review-card">
+    <h3>下一步</h3>
+    <p>先補齊或確認下列項目，再重新檢查。</p>
+  </section>
+
+  
+  <section class="review-card">
+    <h3>需要處理的項目</h3>
+    <ul class="review-list">
+      
+      <li class="review-item review-warning">
+        <span>每日可用時間尚未設定</span>
+        <span class="review-count">7 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>景點停留時間尚未補齊</span>
+        <span class="review-count">22 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>每日起點尚未設定</span>
+        <span class="review-count">7 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>每日終點尚未設定</span>
+        <span class="review-count">7 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>交通時間尚未估算</span>
+        <span class="review-count">7 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>時區仍使用暫定設定</span>
+        <span class="review-count">1 項</span>
+      </li>
+      
+      <li class="review-item review-warning">
+        <span>景點或交通資訊尚待確認</span>
+        <span class="review-count">37 項</span>
+      </li>
+      
+    </ul>
+  </section>
+  
+
+  <p class="review-note">此頁為產生頁面時的離線檢查摘要；不會確認即時交通、營業、空位或訂位。更新資料後請重新產生頁面。</p>
+</div>
+
+<!-- ==================== 實用資訊 TAB ==================== -->
+<div id="info">
+<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;gap:12px;overflow:hidden">
+  <span style="font-size:14px;font-weight:500;color:#1a5276;white-space:nowrap">📅 行程日曆</span>
+  <a href="calendar.ics" download="south-island-2026-06.ics" style="flex-shrink:0;padding:8px 16px;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;white-space:nowrap">📥 下載 .ics</a>
+</div>
+
+  <div class="card">
+    <h3>預算概覽</h3>
+    
+      
+        
+        
+        <table class="tbl">
+          
+          <tr>
+            
+            <th>項目</th>
+            
+            <th>預估（元/人）</th>
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>機票（NZ 78 來回）</td>
+              
+            
+              
+            <td>~45,500</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>租車（四人平攤）</td>
+              
+            
+              
+            <td>~15,000</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>住宿（7 晚四人平攤）</td>
+              
+            
+              
+            <td>~30,000</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>活動（冰川直升機健行＋高空彈跳等）</td>
+              
+            
+              
+            <td>~15,000</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>餐飲</td>
+              
+            
+              
+            <td>~10,000</td>
+              
+            
+          </tr>
+          
+          
+            
+          <tr>
+            
+            
+              
+            <td>油費＋雜費</td>
+              
+            
+              
+            <td>~4,500</td>
+              
+            
+          </tr>
+          
+        </table>
+      
+      
+      <p style="margin-top:8px;font-size:12px;color:#888">合計約 120,000 元／人（TWD）。匯率波動、旺季溢價或行程更動均可能影響實際費用。</p>
+      
+    
+  </div>
+
+  <div class="card">
+    <h3>交通</h3>
+    
+      <p>全程自駕，起訖點皆為基督城（CHC）。路線順時針：基督城 → 霍基蒂卡 → 法蘭茲約瑟夫冰川 → 瓦納卡 → 皇后鎮 → 蒂卡波湖 → 基督城。
+
+租車建議：
+- 選擇附雪鏈或 AWD／4WD 車款，或確認保險條款涵蓋雪地事故。
+- 主要幹道為 SH6（西岸）、SH8（內陸）；哈斯特隘口（Haast Pass）段彎道多，預留充裕時間。
+- 加油站在西岸及偏遠路段間距可達 80–100 km，每日出發前確認油量。
+- 皇后鎮停車費用較高，建議住宿時確認含停車位。</p>
+    
+  </div>
+
+  <div class="card">
+    <h3>天氣</h3>
+    
+      <p>六月為紐西蘭南島冬季，各地氣候差異顯著：
+
+- 基督城：日均 3–12°C，晴天居多，偶有霜凍。
+- 西岸（霍基蒂卡、法蘭茲約瑟夫）：多雨潮濕，年降雨量超過 3,000 mm，冰川區可能全天雲霧，影響直升機行程。
+- 哈斯特隘口：風強，積雪時路況惡劣。
+- 瓦納卡／皇后鎮：乾冷，山區積雪明顯，夜間可低至 -5°C 以下。
+- 蒂卡波湖：高原地形，夜晚寒冷，日夜溫差大，但晴夜能見度佳，適合觀星。
+
+冰川直升機高度依賴天氣，建議行程預留彈性天或備案活動。</p>
+    
+  </div>
+
+  <div class="card">
+    <h3>冬季自駕注意</h3>
+    
+      <p>冬季南島自駕風險集中於山區積雪與結冰路段，需提前準備：
+
+1. 雪鏈／雪胎：NZTA 可強制要求車輛裝備雪鏈才能通行，租車時確認是否附帶並學習裝卸方法。
+2. 路況查詢：出發前查閱 NZTA Journey Planner（journeys.nzta.govt.nz）及 MetService 山區預報。
+3. 駕駛技巧：南島山路多急彎、陡坡、單線橋（give way to oncoming），夜間避免趕路。
+4. 緊急應變：備妥車內保暖毯、手電筒、乾糧；西岸部分路段手機訊號弱，下載離線地圖（如 Maps.me 或 Google Maps 離線包）。
+5. 預訂彈性：冰川直升機健行（約 TWD 10,000/人）建議預訂兩個可改期時段，天候取消率高。
+6. 保險：確認信用卡或租車附加險涵蓋雪地／冰面事故，避免自付超額（excess）過高。</p>
+    
+  </div>
+
+</div>
+
+<!-- ==================== Floating Notes Button ==================== -->
+<button class="notes-fab" onclick="toggleNotes()" title="筆記">&#128221;</button>
+<div class="notes-panel" id="notesPanel">
+  <div class="notes-panel-hdr">
+    <span>&#128221; 旅行筆記</span>
+    <button onclick="toggleNotes()">&#215;</button>
+  </div>
+  <textarea id="notesArea" placeholder="在這裡記錄你的旅行筆記..."></textarea>
+</div>
+
+<script>
+// Tab switch
+function sw(id,btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['itin','map-panel','checklist','review','info'].forEach(p=>document.getElementById(p).classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='map-panel'&&!mapReady)initMap();
+}
+
+// Direct review links open the same read-only tab without changing page data.
+(function(){
+  if(window.location.hash!=='#review')return;
+  var reviewBtn=document.querySelector('[data-panel="review"]');
+  if(reviewBtn)sw('review',reviewBtn);
+})();
+
+// ===== Notes =====
+const NOTES_KEY='trip-plan:south-island-2026-06:notes';
+function toggleNotes(){
+  const panel=document.getElementById('notesPanel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){
+    const area=document.getElementById('notesArea');
+    try{area.value=localStorage.getItem(NOTES_KEY)||''}catch(e){}
+    area.focus();
+  }
+}
+document.getElementById('notesArea').addEventListener('input',function(){
+  try{localStorage.setItem(NOTES_KEY,this.value)}catch(e){}
+});
+
+// Click outside to close notes panel
+document.addEventListener('click',function(e){
+  var panel=document.getElementById('notesPanel');
+  var fab=document.querySelector('.notes-fab');
+  if(panel.classList.contains('open')&&!panel.contains(e.target)&&!fab.contains(e.target)){
+    panel.classList.remove('open');
+  }
+});
+
+// ===== Place Notes =====
+const PLACE_NOTES_KEY='trip-plan:south-island-2026-06:place-notes';
+function getPlaceNotes(){try{var s=localStorage.getItem(PLACE_NOTES_KEY);if(s)return JSON.parse(s)}catch(e){}return{}}
+function savePlaceNotes(data){try{localStorage.setItem(PLACE_NOTES_KEY,JSON.stringify(data))}catch(e){}}
+
+function togglePlaceNote(day,idx){
+  var editorId='pne-'+day+'-'+idx;
+  var editor=document.getElementById(editorId);
+  if(!editor)return;
+  var isOpen=editor.style.display==='block';
+  // Close all editors first
+  document.querySelectorAll('.place-note-editor').forEach(function(el){el.style.display='none'});
+  if(!isOpen){
+    editor.style.display='block';
+    var notes=getPlaceNotes();
+    var key=day+'-'+idx;
+    var ta=editor.querySelector('textarea');
+    ta.value=notes[key]||'';
+    ta.focus();
+  }
+}
+
+function savePlaceNote(day,idx){
+  var editorId='pne-'+day+'-'+idx;
+  var editor=document.getElementById(editorId);
+  if(!editor)return;
+  var ta=editor.querySelector('textarea');
+  var val=ta.value.trim();
+  var notes=getPlaceNotes();
+  var key=day+'-'+idx;
+  if(val){
+    notes[key]=val;
+  } else {
+    delete notes[key];
+  }
+  savePlaceNotes(notes);
+  editor.style.display='none';
+  // Update display
+  var dispEl=document.getElementById('pn-'+day+'-'+idx);
+  if(dispEl){dispEl.textContent=val}
+  // Update pencil icon
+  var editBtn=editor.previousElementSibling;
+  if(editBtn){
+    var pencilBtn=editBtn.querySelector('.place-edit-btn');
+    if(!pencilBtn){
+      // The editBtn IS the <a>, look within it
+      pencilBtn=editBtn.querySelector('.place-edit-btn');
+    }
+  }
+  updatePlaceNoteIndicators();
+}
+
+function updatePlaceNoteIndicators(){
+  var notes=getPlaceNotes();
+  document.querySelectorAll('.place-edit-btn').forEach(function(btn){
+    // Get day,idx from the sibling editor
+    var onclick=btn.getAttribute('onclick');
+    var match=onclick&&onclick.match(/togglePlaceNote\((\d+),(\d+)\)/);
+    if(match){
+      var key=match[1]+'-'+match[2];
+      if(notes[key]){
+        btn.classList.add('has-note');
+      } else {
+        btn.classList.remove('has-note');
+      }
+    }
+  });
+  // Also update display text
+  Object.keys(notes).forEach(function(key){
+    var el=document.getElementById('pn-'+key);
+    if(el)el.textContent=notes[key];
+  });
+}
+
+// Init place notes on load
+document.addEventListener('DOMContentLoaded',function(){updatePlaceNoteIndicators()});
+
+// ===== Checklist: three sections =====
+const defaultReservations=[{"label": "\u53bb\u7a0b\u6a5f\u7968\uff1aNZ 78 TPE\u2192AKL + NZ 778 AKL\u2192CHC", "note": "6/4 \u51fa\u767c\uff0c6/5 \u62b5\u9054\u57fa\u7763\u57ce\u3002Air New Zealand \u5b98\u7db2\u6216\u65c5\u884c\u793e\u8cfc\u7968\uff0c\u78ba\u8a8d 4 \u4eba\u5ea7\u4f4d\u76f8\u9130\uff0c\u7d20\u98df\u9910\u9ede\u9700\u63d0\u524d\u7533\u8acb\uff08Special Meal: VGML\uff09\u3002"}, {"label": "\u56de\u7a0b\u6a5f\u7968\uff1aNZ 574 CHC\u2192AKL + NZ 77 AKL\u2192TPE", "note": "6/12 \u51fa\u767c\uff0c6/13 \u62b5\u9054\u53f0\u7063\u3002\u540c\u4e0a\uff0c\u78ba\u8a8d\u7d20\u98df\u9910\u9ede\u7533\u8acb\u3002"}, {"label": "CHC \u57fa\u7763\u57ce\u6a5f\u5834\u79df\u8eca", "note": "6/5 \u53d6\u8eca\uff0c6/12 \u9084\u8eca\uff0c\u5171 7 \u5929\u3002\u5efa\u8b70 Hertz / Avis / Europcar\uff0c\u9810\u8a02 7 \u4eba\u5ea7 SUV \u6216\u5169\u8f1b 5 \u4eba\u5ea7\u8f4e\u8eca\uff08\u4f9d\u8cbb\u7528\u6bd4\u8f03\uff09\u3002\u51ac\u5b63\u9700\u78ba\u8a8d\u662f\u5426\u542b\u96ea\u5730\u8f2a\u80ce\u6216\u93c8\u689d\u3002\u9700\u570b\u969b\u99d5\u7167\u6b63\u672c\u3002"}, {"label": "\u4f4f\u5bbf\uff1a\u57fa\u7763\u57ce Christchurch\uff086/5 \u5165\u4f4f\uff09", "note": "6/5 \u665a\uff0c\u5e02\u5340\u9644\u8fd1\uff0c\u65b9\u4fbf\u9694\u5929\u65e9\u51fa\u3002\u5efa\u8b70 Booking.com / Airbnb \u641c\u5c0b\uff0c\u78ba\u8a8d\u65e9\u9910\u9078\u9805\u8207\u505c\u8eca\u4f4d\u3002"}, {"label": "\u4f4f\u5bbf\uff1a\u970d\u57fa\u8482\u5361 Hokitika\uff086/6 \u5165\u4f4f\uff09", "note": "6/6 \u665a\uff0c\u5e02\u5340\u6216\u6d77\u908a\u5c0f\u5c4b\u3002"}, {"label": "\u4f4f\u5bbf\uff1a\u6cd5\u862d\u58eb\u7d04\u745f\u592b Franz Josef\uff086/7 \u5165\u4f4f\uff09", "note": "6/7 \u665a\uff0c\u9760\u8fd1\u51b0\u6cb3\uff0c\u9694\u5929 Heli Hike \u5f8c\u53ef\u80fd\u9700\u6dcb\u6d74\u8a2d\u5099\u3002\u5efa\u8b70\u8a02\u6709\u6696\u6c23\u7684\u5c0f\u6728\u5c4b\u6216 B\u0026B\u3002"}, {"label": "\u4f4f\u5bbf\uff1a\u74e6\u7d0d\u5361 Wanaka\uff086/8 \u5165\u4f4f\uff09", "note": "6/8 \u665a\uff0c\u6e56\u908a\u9644\u8fd1\u512a\u5148\uff0c\u78ba\u8a8d\u505c\u8eca\u4f4d\u3002"}, {"label": "\u4f4f\u5bbf\uff1a\u7687\u540e\u93ae Queenstown\uff086/9\u20136/10 \u5165\u4f4f\uff0c\u5169\u665a\uff09", "note": "6/9\u20136/10\uff0c\u5171\u5169\u665a\u3002\u9760\u8fd1\u5e02\u4e2d\u5fc3\u6b65\u884c\u53ef\u9054 Skyline \u7e9c\u8eca\u7ad9\u6216\u6709\u63a5\u99c1\u3002\u78ba\u8a8d\u7d20\u98df\u65e9\u9910\u9078\u9805\u3002"}, {"label": "\u4f4f\u5bbf\uff1a\u8482\u5361\u6ce2\u6e56 Lake Tekapo\uff086/11 \u5165\u4f4f\uff09", "note": "6/11 \u665a\uff0c\u9760\u8fd1\u661f\u7a7a\u4fdd\u8b77\u5340\uff0c\u78ba\u8a8d\u6709\u6697\u591c\u74b0\u5883\uff08\u51ac\u5929\u65e5\u843d\u65e9\uff0c\u661f\u7a7a\u6a5f\u7387\u9ad8\uff09\u3002"}, {"label": "Franz Josef Glacier Heli Hike\uff08\u6cd5\u862d\u58eb\u7d04\u745f\u592b\u51b0\u6cb3\u76f4\u5347\u6a5f\u5065\u884c\uff09", "note": "\u9810\u5b9a\u65e5\u671f\uff1a6/7\u3002\u5b98\u65b9\u9810\u8a02\uff1ahttps://www.franzjosefglacier.com / Fox \u0026 Franz Josef Heliservices\u30024 \u4eba\u5168\u9700\u9810\u8a02\uff0c\u8cbb\u7528\u7d04 NZD 569/\u4eba\u3002\u51ac\u5b63\u9700\u7279\u5225\u78ba\u8a8d\u5929\u6c23\u53d6\u6d88\u653f\u7b56\u8207\u5099\u7528\u65e5\u3002\u7d20\u98df\u5348\u9910\u76d2\u9700\u63d0\u524d\u544a\u77e5\u3002\u6700\u665a\u63d0\u524d 2\u20133 \u500b\u6708\u8a02\u4f4d\u3002"}, {"label": "AJ Hackett Kawarau Bridge Bungy\uff08\u7687\u540e\u93ae\u9ad8\u7a7a\u5f48\u8df3\uff09", "note": "\u9810\u5b9a\u65e5\u671f\uff1a6/9\u3002\u5b98\u65b9\u9810\u8a02\uff1ahttps://www.ajhackett.com/queenstown/bungy/kawarau-bridge-bungy/\u3002\u78ba\u8a8d\u53c3\u52a0\u4eba\u6578\uff08\u975e\u6240\u6709\u4eba\u5fc5\u8df3\uff09\u3002\u8cbb\u7528\u7d04 NZD 245/\u4eba\u3002\u9700\u63d0\u524d\u7db2\u8def\u8a02\u4f4d\uff0c\u73fe\u5834\u53ef\u80fd\u984d\u6eff\u3002"}, {"label": "Skyline Queenstown Gondola\uff08\u7687\u540e\u93ae\u5929\u969b\u7dda\u7e9c\u8eca\uff09", "note": "\u9810\u5b9a\u65e5\u671f\uff1a6/9\u3002\u5b98\u65b9\u9810\u8a02\uff1ahttps://www.skyline.co.nz/queenstown/\u3002\u7e9c\u8eca + Luge\uff08\u91cd\u529b\u6ed1\u8eca\uff09\u5957\u7968\u5efa\u8b70\u4e00\u4f75\u8cfc\u8cb7\u3002\u8cbb\u7528\u7e9c\u8eca\u4f86\u56de\u7d04 NZD 45/\u4eba\u3002\u53ef\u73fe\u5834\u8cfc\u7968\uff0c\u4f46\u65fa\u5b63\u5efa\u8b70\u63d0\u524d\u7db2\u8def\u8a02\u8cfc\u3002"}, {"label": "TSS Earnslaw \u84b8\u6c7d\u8239\u904a\u6e56\uff08Queenstown \u74e6\u5361\u8482\u666e\u6e56\uff09", "note": "\u9810\u5b9a\u65e5\u671f\uff1a6/10\u3002\u5b98\u65b9\u9810\u8a02\uff1ahttps://www.realjourneys.co.nz/en/experiences/tss-earnslaw-cruises/\u3002\u78ba\u8a8d\u73ed\u6b21\u6642\u523b\uff08\u51ac\u5b63\u73ed\u6b21\u8f03\u5c11\uff09\uff0c\u8cbb\u7528\u7d04 NZD 79/\u4eba\u3002\u7d20\u98df\u9910\u9ede\u78ba\u8a8d\uff08\u90e8\u5206\u73ed\u6b21\u542b Walter Peak Farm \u8fb2\u838a\u665a\u9910\uff0c\u9700\u63d0\u524d\u544a\u77e5\u7d20\u98df\uff09\u3002"}];
+const defaultPacking=[{"category": "\u8b49\u4ef6", "label": "\u8b77\u7167"}, {"category": "\u8b49\u4ef6", "label": "\u8eab\u5206\u8b49"}, {"category": "\u8b49\u4ef6", "label": "\u570b\u969b\u99d5\u7167\uff08IDP\uff09"}, {"category": "\u8b49\u4ef6", "label": "\u53f0\u7063\u99d5\u7167\u6b63\u672c"}, {"category": "\u8b49\u4ef6", "label": "\u98ef\u5e97\u8a02\u623f\u78ba\u8a8d"}, {"category": "\u8b49\u4ef6", "label": "\u79df\u8eca\u78ba\u8a8d\u6587\u4ef6"}, {"category": "\u8b49\u4ef6", "label": "\u6d3b\u52d5\u9810\u8a02\u78ba\u8a8d\uff08\u76f4\u5347\u6a5f\u51b0\u6cb3\u5065\u884c\u3001\u9ad8\u7a7a\u5f48\u8df3\u3001\u84b8\u6c7d\u8239\uff09"}, {"category": "\u8b49\u4ef6", "label": "\u65c5\u904a\u4fdd\u96aa\u55ae"}, {"category": "\u8b49\u4ef6", "label": "\u6a5f\u7968\u884c\u7a0b\u8868"}, {"category": "\u8863\u7269", "label": "\u4fdd\u6696\u5167\u8863\uff08\u9577\u8896\u4e0a\u8863\uff09"}, {"category": "\u8863\u7269", "label": "\u4fdd\u6696\u5167\u642d\u8932"}, {"category": "\u8863\u7269", "label": "\u4e2d\u5c64\u5237\u6bdb\u5916\u5957\uff08Fleece\uff09"}, {"category": "\u8863\u7269", "label": "\u9632\u98a8\u9632\u6c34\u786c\u6bbc\u5916\u5957"}, {"category": "\u8863\u7269", "label": "\u4fdd\u6696\u7fbd\u7d68\u80cc\u5fc3\u6216\u593e\u514b"}, {"category": "\u8863\u7269", "label": "\u5feb\u4e7e\u9577\u8932"}, {"category": "\u8863\u7269", "label": "\u9632\u6c34\u5916\u5c64\u9577\u8932"}, {"category": "\u8863\u7269", "label": "\u539a\u7f8a\u6bdb\u896a\uff08\u591a\u96d9\uff09"}, {"category": "\u8863\u7269", "label": "\u9632\u6c34\u767b\u5c71\u5065\u884c\u9774"}, {"category": "\u8863\u7269", "label": "\u4fdd\u6696\u624b\u5957\uff08\u9632\u6c34\u4f73\uff09"}, {"category": "\u8863\u7269", "label": "\u6bdb\u5e3d\uff08Beanie\uff09"}, {"category": "\u8863\u7269", "label": "\u9838\u570d\u5dfe\u6216\u9838\u5957"}, {"category": "\u8863\u7269", "label": "\u5ba4\u5167\u4fbf\u978b\u6216\u8f15\u4fbf\u978b"}, {"category": "\u8863\u7269", "label": "\u7761\u8863"}, {"category": "\u76e5\u6d17", "label": "\u7259\u5237"}, {"category": "\u76e5\u6d17", "label": "\u7259\u818f"}, {"category": "\u76e5\u6d17", "label": "\u6d17\u9aee\u4e73"}, {"category": "\u76e5\u6d17", "label": "\u6c90\u6d74\u4e73"}, {"category": "\u76e5\u6d17", "label": "\u9632\u66ec\u4e73 SPF50+\uff08\u96ea\u5730\u5f37\u53cd\u5c04\uff09"}, {"category": "\u76e5\u6d17", "label": "\u8b77\u5507\u818f\uff08\u542b\u9632\u66ec\uff09"}, {"category": "\u76e5\u6d17", "label": "\u8b77\u624b\u971c\uff08\u9632\u4e7e\u88c2\uff09"}, {"category": "\u76e5\u6d17", "label": "\u522e\u9b0d\u5200"}, {"category": "\u96fb\u5b50", "label": "\u504f\u5149\u592a\u967d\u773c\u93e1\uff08\u6297\u96ea\u5730\u5f37\u5149\uff09"}, {"category": "\u96fb\u5b50", "label": "\u7b46\u96fb\u5145\u96fb\u5668"}, {"category": "\u96fb\u5b50", "label": "\u624b\u6a5f\u5145\u96fb\u5668"}, {"category": "\u96fb\u5b50", "label": "NZ \u96fb\u6e90\u8f49\u63a5\u982d\uff08I \u578b\u4e09\u6241\u8173\uff09"}, {"category": "\u96fb\u5b50", "label": "\u842c\u7528\u6392\u63d2"}, {"category": "\u96fb\u5b50", "label": "\u884c\u52d5\u96fb\u6e90"}, {"category": "\u96fb\u5b50", "label": "\u76f8\u6a5f\u8207\u5145\u96fb\u96fb\u6c60"}, {"category": "\u96fb\u5b50", "label": "\u8a18\u61b6\u5361\uff08\u5099\u7528\uff09"}, {"category": "\u96fb\u5b50", "label": "\u8033\u6a5f"}, {"category": "\u96fb\u5b50", "label": "\u8eca\u8f09 GPS \u6216\u96e2\u7dda\u5730\u5716\uff08Maps.me / Google Maps \u96e2\u7dda\uff09"}, {"category": "\u91ab\u7642", "label": "\u6b62\u75db\u9000\u71d2\u85e5\uff08\u666e\u62ff\u75bc\uff09"}, {"category": "\u91ab\u7642", "label": "\u611f\u5192\u85e5"}, {"category": "\u91ab\u7642", "label": "\u6688\u8eca\u85e5\uff08\u5c71\u8def\u591a\u5f4e\uff09"}, {"category": "\u91ab\u7642", "label": "\u8178\u80c3\u85e5"}, {"category": "\u91ab\u7642", "label": "OK \u7e43\u8207\u5f48\u6027\u7e43\u5e36"}, {"category": "\u91ab\u7642", "label": "\u808c\u8089\u75e0\u75db\u8cbc\u5e03\u6216\u51dd\u81a0\uff08\u5065\u884c\u5f8c\u6062\u5fa9\uff09"}, {"category": "\u91ab\u7642", "label": "\u500b\u4eba\u5e38\u5099\u85e5"}, {"category": "\u8ca1\u52d9", "label": "\u73fe\u91d1\uff08NZD\uff0c\u504f\u9060\u5730\u5340\u5099\u7528\uff09"}, {"category": "\u8ca1\u52d9", "label": "\u4fe1\u7528\u5361\uff08Visa/MC\uff0c\u81f3\u5c11\u5169\u5f35\uff09"}, {"category": "\u8ca1\u52d9", "label": "\u65c5\u904a\u4fdd\u96aa\u7dca\u6025\u806f\u7d61\u865f\u78bc\uff08\u5370\u51fa\u6216\u622a\u5716\uff09"}, {"category": "\u5176\u4ed6", "label": "\u767b\u5c71\u6756\uff08\u53ef\u6298\u758a\uff0c\u5065\u884c\u7528\uff09"}, {"category": "\u5176\u4ed6", "label": "\u9632\u6c34\u80cc\u5305\u5957\uff08\u80cc\u5305\u96e8\u8863\uff09"}, {"category": "\u5176\u4ed6", "label": "\u53ef\u91cd\u8907\u4f7f\u7528\u6c34\u74f6\uff08\u4fdd\u6eab\u74f6\uff09"}, {"category": "\u5176\u4ed6", "label": "\u80fd\u91cf\u68d2\u6216\u884c\u52d5\u53e3\u7ce7"}, {"category": "\u5176\u4ed6", "label": "\u8f15\u4fbf\u647a\u758a\u96e8\u5177"}, {"category": "\u5176\u4ed6", "label": "\u982d\u71c8\u8207\u5099\u7528\u96fb\u6c60\uff08\u65e9\u51fa\u665a\u6b78\u5065\u884c\uff09"}, {"category": "\u5176\u4ed6", "label": "\u5c0f\u578b\u9396\u982d\uff08\u884c\u674e\u7bb1 / \u9752\u65c5\u7528\uff09"}];
+const defaultTodo=[{"hint": "\u767b\u5165 Air New Zealand \u5b98\u7db2\u6216 app \u78ba\u8a8d\u8a02\u4f4d\u72c0\u614b\uff0c\u78ba\u4fdd 4 \u4eba\u5ea7\u4f4d\u5df2\u78ba\u8a8d", "label": "\u78ba\u8a8d\u73ed\u6a5f NZ 78"}, {"hint": "\u78ba\u8a8d\u79df\u8eca\u516c\u53f8\u3001\u53d6\u8eca\u6642\u9593\u5730\u9ede\uff08\u57fa\u7763\u57ce\u6a5f\u5834\uff09\u3001\u9084\u8eca\u6642\u9593\u5730\u9ede\uff08\u57fa\u7763\u57ce\uff09\uff0c\u78ba\u4fdd\u8eca\u8f1b\u5177\u5099\u96ea\u93c8\u6216\u5168\u5b63\u8f2a\u80ce", "label": "\u78ba\u8a8d\u79df\u8eca\u9810\u8a02"}, {"hint": "\u9010\u4e00\u78ba\u8a8d Hokitika\u3001Franz Josef\u3001Wanaka\u3001Queenstown\u3001Lake Tekapo \u5404\u591c\u4f4f\u5bbf\uff0c\u6838\u67e5\u5165\u9000\u623f\u6642\u9593", "label": "\u78ba\u8a8d\u5404\u4f4f\u5bbf\u8a02\u623f"}, {"hint": "\u7d10\u897f\u862d\u9700\u6301\u6709\u6548\u672c\u570b\u99d5\u7167\u52a0\u570b\u969b\u99d5\u7167\uff08IDP\uff09\uff0c\u78ba\u8a8d 4 \u4f4d\u53f8\u6a5f\u6587\u4ef6\u9f4a\u5168", "label": "\u6e96\u5099\u570b\u969b\u99d5\u7167"}, {"hint": "\u78ba\u8a8d 4 \u4eba\u8b77\u7167\u6709\u6548\u671f\u81f3\u5c11\u81f3 2026-12\uff0c\u5217\u5370\u6216\u4e0b\u8f09\u96fb\u5b50\u7248\u6a5f\u7968\u3001\u8a02\u623f\u78ba\u8a8d\u51fd", "label": "\u5099\u59a5\u8b77\u7167\u8207\u65c5\u904a\u6587\u4ef6"}, {"hint": "\u53f0\u7063\u8b77\u7167\u5165\u5883\u7d10\u897f\u862d\u9700\u4e8b\u5148\u7dda\u4e0a\u7533\u8acb NZeTA\uff08\u96fb\u5b50\u65c5\u884c\u6388\u6b0a\uff09\uff0c4 \u4eba\u7686\u9700\u7533\u8acb\uff0c\u5efa\u8b70\u51fa\u767c\u524d 72 \u5c0f\u6642\u5b8c\u6210", "label": "\u7533\u8acb\u7d10\u897f\u862d NZeTA"}, {"hint": "\u78ba\u4fdd\u4fdd\u55ae\u6db5\u84cb\uff1a\u51ac\u5b63\u5c71\u5340\u6d3b\u52d5\u3001\u96ea\u5730\u99d5\u99db\u4e8b\u6545\u3001\u7dca\u6025\u91ab\u7642\u5f8c\u9001\uff0c\u78ba\u8a8d 4 \u4eba\u7686\u5df2\u6295\u4fdd", "label": "\u8cfc\u8cb7\u65c5\u904a\u4fdd\u96aa"}, {"hint": "6 \u6708\u70ba\u7d10\u897f\u862d\u51ac\u5b63\uff0cArthur\u0027s Pass\u3001Haast Pass\u3001Crown Range \u7b49\u8def\u6bb5\u53ef\u80fd\u5c01\u9589\u6216\u9700\u96ea\u93c8\uff0c\u51fa\u767c\u524d\u78ba\u8a8d NZTA \u9053\u8def\u8cc7\u8a0a", "label": "\u67e5\u8a62\u51fa\u767c\u524d\u9053\u8def\u7a4d\u96ea\u72c0\u6cc1"}, {"hint": "\u67e5\u8a62\u79df\u8eca\u516c\u53f8\u662f\u5426\u63d0\u4f9b\u96ea\u93c8\uff0c\u82e5\u4e0d\u542b\u9700\u81ea\u5099\u6216\u53e6\u79df\uff0cFranz Josef \u81f3 Wanaka \u6bb5\uff08Haast Pass\uff09\u53ca Wanaka \u81f3 Queenstown \u6bb5\uff08Crown Range\uff09\u98a8\u96aa\u8f03\u9ad8", "label": "\u78ba\u8a8d\u662f\u5426\u9700\u79df\u7528\u6216\u81ea\u5099\u96ea\u93c8"}, {"hint": "\u6cbf\u9014\u5404\u57ce\u93ae\uff08Hokitika\u3001Franz Josef\u3001Haast\u3001Wanaka\u3001Queenstown\u3001Lake Tekapo\uff09\u7684\u7d20\u98df\u53cb\u5584\u9910\u5ef3\uff0cFranz Josef \u70ba\u5c0f\u93ae\u9078\u64c7\u6709\u9650\uff0c\u5efa\u8b70\u5148\u5099\u59a5\u4e7e\u7ce7", "label": "\u898f\u5283\u7d20\u98df\u9910\u5ef3\u6e05\u55ae"}, {"hint": "\u7d10\u897f\u862d\u5357\u5cf6\u90e8\u5206\u8def\u6bb5\uff08West Coast\u3001Haast\uff09\u624b\u6a5f\u8a0a\u865f\u6975\u5f31\uff0c\u5efa\u8b70\u8cfc\u8cb7\u7d10\u897f\u862d\u672c\u5730 SIM\uff08Spark/Vodafone NZ\uff09\u6216\u555f\u7528\u652f\u63f4 NZ \u7684 eSIM", "label": "\u5099\u59a5\u884c\u52d5\u7db2\u8def SIM \u6216 eSIM"}, {"hint": "\u8a0a\u865f\u6b7b\u89d2\u591a\uff0c\u51fa\u767c\u524d\u4e0b\u8f09 Google Maps \u6216 Maps.me \u7684\u5357\u5cf6\u96e2\u7dda\u5730\u5716\uff0c\u5305\u542b SH6\u3001SH8 \u6cbf\u7dda", "label": "\u4e0b\u8f09\u96e2\u7dda\u5730\u5716"}, {"hint": "6 \u6708\u6c23\u6eab 0\u201310\u00b0C\uff0c\u9ad8\u5730\u53ef\u80fd\u66f4\u4f4e\uff0c\u5099\u59a5\u4fdd\u6696\u4e2d\u5c64\u3001\u9632\u98a8\u5916\u5957\u3001\u624b\u5957\u3001\u5e3d\u5b50\uff1bFranz Josef \u51b0\u6cb3\u5065\u884c\u82e5\u6709\u5b89\u6392\u9700\u4fdd\u6696\u9774", "label": "\u6e96\u5099\u79a6\u5bd2\u88dd\u5099"}, {"hint": "\u78ba\u8a8d NZ 78 \u6258\u904b\u8207\u96a8\u8eab\u884c\u674e\u9650\u91cd\u898f\u5b9a\uff0c4 \u4eba\u5171\u7528\u4e00\u8f1b\u8eca\u9700\u78ba\u4fdd\u884c\u674e\u4e0d\u8d85\u904e\u5f8c\u8eca\u5ec2\u5bb9\u91cf", "label": "\u78ba\u8a8d\u884c\u674e\u91cd\u91cf\u9650\u5236"}, {"hint": "\u78ba\u8a8d 4 \u4eba\u6709\u8db3\u5920 NZD \u73fe\u91d1\u6216\u7121\u5916\u5e63\u624b\u7e8c\u8cbb\u4fe1\u7528\u5361\uff1bWest Coast \u5c0f\u93ae\u90e8\u5206\u5546\u5bb6\u4e0d\u4e00\u5b9a\u63a5\u53d7\u4fe1\u7528\u5361", "label": "\u514c\u63db\u7d10\u897f\u862d\u5e63\uff08NZD\uff09\u6216\u78ba\u8a8d\u4fe1\u7528\u5361\u4f7f\u7528"}, {"hint": "\u82e5\u6709\u5b89\u6392\u76f4\u5347\u6a5f\u6216\u5065\u884c\u51b0\u6cb3\uff0c\u78ba\u8a8d\u9810\u8a02\u72c0\u614b\uff1b\u51ac\u5b63\u5929\u6c23\u5f71\u97ff\u53d6\u6d88\u7387\u9ad8\uff0c\u78ba\u8a8d\u9000\u6b3e\u653f\u7b56", "label": "\u78ba\u8a8d Franz Josef \u51b0\u6cb3\u6d3b\u52d5\u9810\u8a02"}, {"hint": "\u67e5\u8a62 NZTA Journey Planner (journeys.nzta.govt.nz) \u78ba\u8a8d\u7576\u65e5\u8def\u6cc1\uff0cHaast Pass \u51ac\u5b63\u5076\u6709\u81e8\u6642\u5c01\u9589", "label": "\u51fa\u767c\u524d 48 \u5c0f\u6642\u78ba\u8a8d\u9053\u8def\u5c01\u9589\u8cc7\u8a0a"}, {"hint": "\u8a18\u4e0b\u7d10\u897f\u862d\u7dca\u6025\u96fb\u8a71 111\u3001\u79df\u8eca\u516c\u53f8\u9053\u8def\u6551\u63f4\u96fb\u8a71\u3001\u5404\u4f4f\u5bbf\u96fb\u8a71\uff0c\u5b58\u5165\u624b\u6a5f\u4e26\u5217\u5370\u5099\u4efd", "label": "\u8a18\u9304\u7dca\u6025\u806f\u7d61\u8cc7\u8a0a"}];
+
+const RES_KEY='trip-plan:south-island-2026-06:reservations';
+const PACK_KEY='trip-plan:south-island-2026-06:packing';
+const TODO_KEY='trip-plan:south-island-2026-06:todo';
+const COLLAPSE_KEY='trip-plan:south-island-2026-06:cl-collapse';
+
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function escAttr(s){return esc(s).replace(/"/g,'&quot;')}
+
+function lsGet(key,fallback){try{var s=localStorage.getItem(key);if(s)return JSON.parse(s)}catch(e){}return fallback}
+function lsSet(key,val){try{localStorage.setItem(key,JSON.stringify(val))}catch(e){}}
+
+function getCollapse(){return lsGet(COLLAPSE_KEY,{reservations:false,packing:false,todo:false})}
+function setCollapse(c){lsSet(COLLAPSE_KEY,c)}
+function toggleCollapse(sec){var c=getCollapse();c[sec]=!c[sec];setCollapse(c);renderAllCl()}
+
+// ---- Data migration for reservations ----
+function migrateRes(items){
+  return items.map(function(item){
+    if(item.platform||item.confirmation||item.amount||item.url){
+      var parts=[];
+      if(item.platform)parts.push('平台: '+item.platform);
+      if(item.confirmation)parts.push('確認碼: '+item.confirmation);
+      if(item.amount)parts.push('金額: '+item.amount);
+      if(item.url)parts.push('連結: '+item.url);
+      if(item.note)parts.push(item.note);
+      item.note=parts.join('\n');
+      delete item.platform;delete item.confirmation;delete item.amount;delete item.url;
+    }
+    return item;
+  });
+}
+
+// ---- Reservations (simplified - same as Todo but with date) ----
+function getRes(){
+  var data=lsGet(RES_KEY,defaultReservations.map(function(d){return Object.assign({},d,{done:false})}));
+  return migrateRes(data);
+}
+function saveRes(data){lsSet(RES_KEY,data)}
+
+var resEditIdx=-1;
+function renderRes(){
+  var el=document.getElementById('cl-reservations');
+  var items=getRes();
+  var col=getCollapse();
+  var done=items.filter(function(i){return i.done}).length;
+  var resSorted=items.map(function(item,i){return{item:item,idx:i}});
+  resSorted.sort(function(a,b){return(a.item.done?1:0)-(b.item.done?1:0)});
+  var h='<div class="cl-hdr" onclick="toggleCollapse(\'reservations\')"><span class="cl-emoji">&#128197;</span> 訂位<span class="cl-arrow">'+(col.reservations?'&#9654;':'&#9660;')+'</span></div>';
+  h+='<div class="cl-progress"><div class="cl-bar"><div class="cl-bar-fill" style="width:'+(items.length?done/items.length*100:0)+'%"></div></div><span class="cl-pct">'+done+' / '+items.length+'</span></div>';
+  h+='<div class="cl-body'+(col.reservations?' collapsed':'')+'">';
+  resSorted.forEach(function(entry){var item=entry.item;var i=entry.idx;
+    var ck=item.done?'checked':'';
+    // Format date for badge
+    var dateBadge='';
+    if(item.date){
+      var dateStr=item.date;
+      // Try to show short format like "5/15"
+      var dm=dateStr.match(/(\d{1,2})[-\/](\d{1,2})$/);
+      if(dm){dateStr=parseInt(dm[1])+'/'+parseInt(dm[2])}
+      else{
+        var fullm=dateStr.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+        if(fullm)dateStr=parseInt(fullm[2])+'/'+parseInt(fullm[3]);
+      }
+      dateBadge='<span class="res-date-badge">'+esc(dateStr)+'</span>';
+    }
+    if(resEditIdx===i){
+      // Edit mode
+      h+='<div class="cl-item '+ck+'">';
+      h+='<div class="cl-check" onclick="resToggle('+i+')">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info" onclick="event.stopPropagation()">';
+      h+='<div class="cl-label">'+esc(item.label)+dateBadge+'</div>';
+      if(item.note){h+='<div class="cl-hint">'+esc(item.note).replace(/\n/g,'<br>')+'</div>';}
+      h+='</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();resHideEdit()" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();resDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+      // Edit form below
+      h+='<div class="cl-edit-form" id="res-edit-'+i+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">名稱</div>';
+      h+='<input id="res-e-label-'+i+'" value="'+escAttr(item.label)+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">日期</div>';
+      h+='<input id="res-e-date-'+i+'" type="date" value="'+escAttr(item.date||'')+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">說明</div>';
+      h+='<textarea id="res-e-note-'+i+'" rows="3" style="resize:vertical">'+esc(item.note||'')+'</textarea>';
+      h+='<div class="cl-edit-btns"><button class="cl-btn-cancel" onclick="resHideEdit()">取消</button><button class="cl-btn-ok" onclick="resSaveEdit('+i+')">儲存</button></div>';
+      h+='</div>';
+    } else {
+      // Display mode: checkbox + label + date badge + pencil + trash
+      h+='<div class="cl-item '+ck+'" onclick="resToggle('+i+')" style="cursor:pointer">';
+      h+='<div class="cl-check">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info">';
+      h+='<div class="cl-label">'+esc(item.label)+dateBadge+'</div>';
+      if(item.note){h+='<div class="cl-hint">'+esc(item.note).replace(/\n/g,'<br>')+'</div>';}
+      h+='</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();resShowEdit('+i+')" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();resDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+    }
+  });
+  h+='<div class="cl-add" id="res-add-btn" onclick="resShowAdd()"><span class="cl-add-icon">+</span> 新增項目</div>';
+  h+='<div class="cl-add-form" id="res-add-form" style="display:none"><div style="font-size:12px;color:#888;margin-bottom:2px">名稱</div><input id="res-input-label" placeholder="輸入訂位名稱..." onkeydown="if(event.key===\'Enter\')resAdd()"><div class="cl-add-btns"><button class="cl-btn-cancel" onclick="resHideAdd()">取消</button><button class="cl-btn-ok" onclick="resAdd()">新增</button></div></div>';
+  h+='</div>';
+  el.innerHTML=h;
+  if(resEditIdx>=0){var inp=document.getElementById('res-e-label-'+resEditIdx);if(inp)inp.focus()}
+}
+function resToggle(i){var d=getRes();d[i].done=!d[i].done;saveRes(d);renderRes()}
+function resDel(i){var d=getRes();d.splice(i,1);saveRes(d);resEditIdx=-1;renderRes()}
+function resShowAdd(){document.getElementById('res-add-btn').style.display='none';document.getElementById('res-add-form').style.display='flex';document.getElementById('res-input-label').focus()}
+function resHideAdd(){document.getElementById('res-add-btn').style.display='flex';document.getElementById('res-add-form').style.display='none';document.getElementById('res-input-label').value=''}
+function resAdd(){var v=document.getElementById('res-input-label').value.trim();if(!v)return;var d=getRes();d.push({label:v,done:false});saveRes(d);renderRes()}
+function resShowEdit(i){resEditIdx=(resEditIdx===i)?-1:i;renderRes()}
+function resHideEdit(){resEditIdx=-1;renderRes()}
+function resSaveEdit(i){
+  var label=document.getElementById('res-e-label-'+i).value.trim();
+  if(!label)return;
+  var d=getRes();
+  d[i].label=label;
+  d[i].date=document.getElementById('res-e-date-'+i).value.trim();
+  d[i].note=document.getElementById('res-e-note-'+i).value.trim();
+  saveRes(d);resEditIdx=-1;renderRes();
+}
+
+// ---- Packing (TREK-style category cards) ----
+var PACK_COLORS=['#3b82f6','#a855f7','#ec4899','#22c55e','#f97316','#06b6d4','#ef4444','#eab308','#8b5cf6','#14b8a6'];
+function catColor(cat,allCats){
+  var idx=allCats?allCats.indexOf(cat):-1;
+  if(idx>=0)return PACK_COLORS[idx%PACK_COLORS.length];
+  var h=0;for(var i=0;i<cat.length;i++)h=((h<<5)-h+cat.charCodeAt(i))|0;
+  return PACK_COLORS[Math.abs(h)%PACK_COLORS.length];
+}
+
+function getPack(){
+  var stored=lsGet(PACK_KEY,null);
+  if(stored===null||(Array.isArray(stored)&&stored.length===0&&defaultPacking.length>0)){
+    var fresh=defaultPacking.map(function(d){return Object.assign({},d,{done:false})});
+    savePack(fresh);
+    return fresh;
+  }
+  return stored;
+}
+function savePack(data){lsSet(PACK_KEY,data)}
+
+var packEditIdx=-1;
+var packOpenMenuCat=null;
+var packAddingCat=false;
+var packAddingItemCat=null; // which category is showing the inline add form
+var packCollapsed={}; // track collapsed categories
+
+function getPackCollapsed(){return lsGet(PACK_KEY+':collapsed',{})}
+function setPackCollapsed(data){lsSet(PACK_KEY+':collapsed',data)}
+
+function renderPack(){
+  var el=document.getElementById('cl-packing');
+  var items=getPack();
+  var col=getCollapse();
+
+  // Group by category
+  var groups={};var catOrder=[];
+  items.forEach(function(item,i){
+    var cat=item.category||'其他';
+    if(!groups[cat]){groups[cat]=[];catOrder.push(cat)}
+    groups[cat].push(Object.assign({},item,{_idx:i}));
+  });
+  // Move '其他' to end
+  var otherIdx=catOrder.indexOf('其他');
+  if(otherIdx>-1&&otherIdx<catOrder.length-1){catOrder.splice(otherIdx,1);catOrder.push('其他')}
+
+  var allCats=catOrder.filter(function(c){return c!=='其他'});
+  var catCollapsed=getPackCollapsed();
+
+  var h='<div class="cl-hdr" onclick="toggleCollapse(\'packing\')"><span class="cl-emoji">&#129523;</span> 行李清單<span class="cl-arrow">'+(col.packing?'&#9654;':'&#9660;')+'</span></div>';
+  h+='<div class="cl-body'+(col.packing?' collapsed':'')+'" style="background:transparent;padding:4px 0">';
+
+  catOrder.forEach(function(cat){
+    var color=catColor(cat,allCats);
+    var catItems=groups[cat];
+    catItems.sort(function(a,b){return(a.done?1:0)-(b.done?1:0)});
+    var catDone=catItems.filter(function(it){return it.done}).length;
+    var isCollapsed=catCollapsed[cat]===true;
+    var allChecked=catItems.length>0&&catDone===catItems.length;
+
+    h+='<div class="pk-card">';
+    // Header
+    h+='<div class="pk-card-hdr'+(isCollapsed?'':' open')+'" onclick="packToggleCat(\''+escAttr(cat)+'\')">';
+    h+='<span class="pk-chevron">'+(isCollapsed?'&#9654;':'&#9660;')+'</span>';
+    h+='<span class="pk-dot" style="background:'+color+'"></span>';
+    h+='<span class="pk-cat-name">'+esc(cat)+'</span>';
+    h+='<span class="pk-count'+(allChecked?' all-done':'')+'">'+catDone+'/'+catItems.length+'</span>';
+    h+='<span class="pk-menu-btn" onclick="event.stopPropagation();packToggleMenu(\''+escAttr(cat)+'\')" style="position:relative">&#8943;';
+    if(packOpenMenuCat===cat){
+      h+='<div class="pk-dropdown open">';
+      h+='<button onclick="event.stopPropagation();packRenameCat(\''+escAttr(cat)+'\')">重新命名</button>';
+      h+='<button onclick="event.stopPropagation();packCheckAllCat(\''+escAttr(cat)+'\')">全部勾選</button>';
+      h+='<button onclick="event.stopPropagation();packUncheckAllCat(\''+escAttr(cat)+'\')">取消全部勾選</button>';
+      h+='<button class="danger" onclick="event.stopPropagation();packDelCat(\''+escAttr(cat)+'\')">刪除分類</button>';
+      h+='</div>';
+    }
+    h+='</span>';
+    h+='</div>';
+
+    // Body
+    h+='<div class="pk-card-body'+(isCollapsed?' collapsed':'')+'">';
+    catItems.forEach(function(item){
+      var i=item._idx;
+      var ck=item.done?'checked':'';
+      h+='<div class="pk-item '+ck+'" data-pack-idx="'+i+'" onclick="packToggle('+i+')" style="cursor:pointer">';
+      h+='<div class="cl-check">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<span class="pk-name">'+esc(item.label)+'</span>';
+      h+='<span class="pk-actions">';
+      h+='<button class="pk-act-btn" onclick="event.stopPropagation();packShowEdit('+i+')" title="編輯">&#9998;</button>';
+      h+='<button class="pk-act-btn del" onclick="event.stopPropagation();packDel('+i+')" title="刪除">&#215;</button>';
+      h+='</span>';
+      h+='</div>';
+      if(packEditIdx===i){
+        h+='<div class="cl-edit-form">';
+        h+='<div style="font-size:12px;color:#888;margin-bottom:2px">物品名稱</div>';
+        h+='<input id="pk-edit-input-'+i+'" value="'+escAttr(item.label)+'">';
+        h+='<div class="cl-edit-btns"><button class="cl-btn-cancel" onclick="packCancelEdit()">取消</button><button class="cl-btn-ok" onclick="packSaveEdit('+i+',document.getElementById(\'pk-edit-input-'+i+'\').value)">儲存</button></div>';
+        h+='</div>';
+      }
+    });
+
+    // Inline add
+    if(packAddingItemCat===cat){
+      h+='<div class="pk-inline-add-form" id="pk-add-form-'+escAttr(cat)+'">';
+      h+='<input id="pk-add-input-'+escAttr(cat)+'" placeholder="新增物品..." onkeydown="if(event.key===\'Enter\')packAddItem(\''+escAttr(cat)+'\');if(event.key===\'Escape\')packHideAddItem()">';
+      h+='<button class="pk-add-ok" onclick="packAddItem(\''+escAttr(cat)+'\')">+</button>';
+      h+='<button class="pk-add-cancel" onclick="packHideAddItem()">&#215;</button>';
+      h+='</div>';
+    } else {
+      h+='<div class="pk-inline-add" onclick="packShowAddItem(\''+escAttr(cat)+'\')"><span style="font-size:16px;margin-right:4px">+</span> 新增</div>';
+    }
+    h+='</div>'; // pk-card-body
+    h+='</div>'; // pk-card
+  });
+
+  // Add new category
+  if(packAddingCat){
+    h+='<div class="pk-add-cat-form" id="pk-add-cat-form">';
+    h+='<input id="pk-add-cat-input" placeholder="分類名稱..." onkeydown="if(event.key===\'Enter\')packAddCat();if(event.key===\'Escape\'){packAddingCat=false;renderPack()}">';
+    h+='<button class="pk-btn-ok" onclick="packAddCat()">新增</button>';
+    h+='<button class="pk-btn-cancel" onclick="packAddingCat=false;renderPack()">取消</button>';
+    h+='</div>';
+  } else {
+    h+='<div class="pk-add-cat" onclick="packAddingCat=true;renderPack()"><span style="font-size:16px;margin-right:4px">+</span> 新增分類</div>';
+  }
+
+  h+='</div>'; // cl-body
+  el.innerHTML=h;
+
+  // Focus inputs
+  if(packEditIdx>=0){var inp=document.getElementById('pk-edit-input-'+packEditIdx);if(inp){inp.focus();inp.select()}}
+  if(packAddingCat){var catInp=document.getElementById('pk-add-cat-input');if(catInp)catInp.focus()}
+  if(packAddingItemCat){var addInp=document.getElementById('pk-add-input-'+packAddingItemCat);if(addInp)addInp.focus()}
+}
+
+function packToggle(i){var d=getPack();d[i].done=!d[i].done;savePack(d);renderPack()}
+function packDel(i){var d=getPack();d.splice(i,1);savePack(d);packEditIdx=-1;renderPack()}
+
+function packShowEdit(i){
+  packEditIdx=i;
+  renderPack();
+  var inp=document.getElementById('pk-edit-input-'+i);if(inp)inp.focus();
+}
+function packSaveEdit(i,val){
+  val=val.trim();
+  if(!val){packCancelEdit();return}
+  var d=getPack();d[i].label=val;savePack(d);
+  packEditIdx=-1;
+  renderPack();
+}
+function packCancelEdit(){
+  packEditIdx=-1;
+  renderPack();
+}
+
+function packToggleCat(cat){
+  var cc=getPackCollapsed();
+  cc[cat]=!cc[cat];
+  setPackCollapsed(cc);
+  renderPack();
+}
+
+function packToggleMenu(cat){
+  packOpenMenuCat=(packOpenMenuCat===cat)?null:cat;
+  renderPack();
+}
+
+function packRenameCat(cat){
+  var newName=prompt('重新命名分類:',cat);
+  if(!newName||!newName.trim()||newName.trim()===cat){packOpenMenuCat=null;renderPack();return}
+  newName=newName.trim();
+  var d=getPack();
+  d.forEach(function(item){if((item.category||'其他')===cat)item.category=newName});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packCheckAllCat(cat){
+  var d=getPack();
+  d.forEach(function(item){if((item.category||'其他')===cat)item.done=true});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packUncheckAllCat(cat){
+  var d=getPack();
+  d.forEach(function(item){if((item.category||'其他')===cat)item.done=false});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packDelCat(cat){
+  if(!confirm('確定刪除「'+cat+'」分類及其所有物品？'))return;
+  var d=getPack().filter(function(item){return(item.category||'其他')!==cat});
+  savePack(d);
+  packOpenMenuCat=null;
+  renderPack();
+}
+
+function packShowAddItem(cat){
+  packAddingItemCat=cat;
+  renderPack();
+}
+
+function packHideAddItem(){
+  packAddingItemCat=null;
+  renderPack();
+}
+
+function packAddItem(cat){
+  var inp=document.getElementById('pk-add-input-'+cat);
+  if(!inp)return;
+  var v=inp.value.trim();
+  if(!v)return;
+  var d=getPack();
+  d.push({label:v,category:cat==='其他'?'':cat,done:false});
+  savePack(d);
+  // Keep input focused for rapid entry
+  inp.value='';
+  renderPack();
+  // Re-focus after render
+  packAddingItemCat=cat;
+  renderPack();
+}
+
+function packAddCat(){
+  var inp=document.getElementById('pk-add-cat-input');
+  if(!inp)return;
+  var v=inp.value.trim();
+  if(!v)return;
+  // Add a placeholder item in this category to create it
+  var d=getPack();
+  d.push({label:'(新物品)',category:v,done:false});
+  savePack(d);
+  packAddingCat=false;
+  // Open inline add for the new category immediately
+  packAddingItemCat=v;
+  renderPack();
+}
+
+// Close packing menu when clicking outside
+document.addEventListener('click',function(e){
+  if(packOpenMenuCat&&!e.target.closest('.pk-menu-btn')){
+    packOpenMenuCat=null;
+    renderPack();
+  }
+});
+
+// ---- Todo (with pencil icon) ----
+function getTodo(){return lsGet(TODO_KEY,defaultTodo.map(function(d){return Object.assign({},d,{done:false})}))}
+function saveTodo(data){lsSet(TODO_KEY,data)}
+
+var todoEditIdx=-1;
+function renderTodo(){
+  var el=document.getElementById('cl-todo');
+  var items=getTodo();
+  var col=getCollapse();
+  var done=items.filter(function(i){return i.done}).length;
+  // Sort: unchecked first, then checked
+  var sorted=items.map(function(item,i){return{item:item,idx:i}});
+  sorted.sort(function(a,b){return(a.item.done?1:0)-(b.item.done?1:0)});
+  var h='<div class="cl-hdr" onclick="toggleCollapse(\'todo\')"><span class="cl-emoji">&#9989;</span> 待辦清單<span class="cl-arrow">'+(col.todo?'&#9654;':'&#9660;')+'</span></div>';
+  h+='<div class="cl-progress"><div class="cl-bar"><div class="cl-bar-fill" style="width:'+(items.length?done/items.length*100:0)+'%"></div></div><span class="cl-pct">'+done+' / '+items.length+'</span></div>';
+  h+='<div class="cl-body'+(col.todo?' collapsed':'')+'">';
+  sorted.forEach(function(entry){var item=entry.item;var i=entry.idx;
+    var ck=item.done?'checked':'';
+    if(todoEditIdx===i){
+      // Edit mode: item row + edit form below (same as reservations)
+      h+='<div class="cl-item '+ck+'">';
+      h+='<div class="cl-check" onclick="todoToggle('+i+')">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info">';
+      h+='<span class="cl-label">'+esc(item.label)+'</span>';
+      if(item.hint){h+='<div class="cl-hint">'+esc(item.hint)+'</div>';}
+      h+='</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();todoHideEdit()" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();todoDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+      h+='<div class="cl-edit-form">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">項目名稱</div>';
+      h+='<input id="todo-e-label-'+i+'" value="'+escAttr(item.label)+'">';
+      h+='<div style="font-size:12px;color:#888;margin-bottom:2px">備註</div>';
+      h+='<input id="todo-e-hint-'+i+'" value="'+escAttr(item.hint||'')+'">';
+      h+='<div class="cl-edit-btns"><button class="cl-btn-cancel" onclick="todoHideEdit()">取消</button><button class="cl-btn-ok" onclick="todoSaveEdit('+i+')">儲存</button></div>';
+      h+='</div>';
+    } else {
+      h+='<div class="cl-item '+ck+'" onclick="todoToggle('+i+')" style="cursor:pointer">';
+      h+='<div class="cl-check">'+(item.done?'&#10003;':'')+'</div>';
+      h+='<div class="cl-info"><span class="cl-label">'+esc(item.label)+'</span>'+(item.hint?'<div class="cl-hint">'+esc(item.hint)+'</div>':'')+'</div>';
+      h+='<button class="cl-edit-btn" onclick="event.stopPropagation();todoShowEdit('+i+')" title="編輯">&#9998;</button>';
+      h+='<button class="cl-del" onclick="event.stopPropagation();todoDel('+i+')" title="刪除">&#215;</button>';
+      h+='</div>';
+    }
+  });
+  h+='<div class="cl-add" id="todo-add-btn" onclick="todoShowAdd()"><span class="cl-add-icon">+</span> 新增項目</div>';
+  h+='<div class="cl-add-form" id="todo-add-form" style="display:none"><div style="font-size:12px;color:#888;margin-bottom:2px">項目名稱</div><input id="todo-input-label" placeholder="輸入待辦事項..." onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'todo-input-hint\').focus()}"><div style="font-size:12px;color:#888;margin-bottom:2px;margin-top:4px">備註</div><input id="todo-input-hint" placeholder="選填" onkeydown="if(event.key===\'Enter\')todoAdd()"><div class="cl-add-btns"><button class="cl-btn-cancel" onclick="todoHideAdd()">取消</button><button class="cl-btn-ok" onclick="todoAdd()">新增</button></div></div>';
+  h+='</div>';
+  el.innerHTML=h;
+  if(todoEditIdx>=0){var inp=document.getElementById('todo-e-label-'+todoEditIdx);if(inp)inp.focus()}
+}
+function todoToggle(i){var d=getTodo();d[i].done=!d[i].done;saveTodo(d);renderTodo()}
+function todoDel(i){var d=getTodo();d.splice(i,1);saveTodo(d);todoEditIdx=-1;renderTodo()}
+function todoShowAdd(){document.getElementById('todo-add-btn').style.display='none';document.getElementById('todo-add-form').style.display='flex';document.getElementById('todo-input-label').focus()}
+function todoHideAdd(){document.getElementById('todo-add-btn').style.display='flex';document.getElementById('todo-add-form').style.display='none';document.getElementById('todo-input-label').value='';document.getElementById('todo-input-hint').value=''}
+function todoAdd(){var v=document.getElementById('todo-input-label').value.trim();if(!v)return;var hint=document.getElementById('todo-input-hint').value.trim();var d=getTodo();d.push({label:v,hint:hint,done:false});saveTodo(d);renderTodo()}
+function todoShowEdit(i){todoEditIdx=i;renderTodo()}
+function todoHideEdit(){todoEditIdx=-1;renderTodo()}
+function todoSaveEdit(i){var inp=document.getElementById('todo-e-label-'+i);if(!inp)return;var v=inp.value.trim();if(!v){todoHideEdit();return}var d=getTodo();d[i].label=v;var hInp=document.getElementById('todo-e-hint-'+i);d[i].hint=hInp?hInp.value.trim():'';saveTodo(d);todoEditIdx=-1;renderTodo()}
+
+function renderAllCl(){renderTodo();renderRes();renderPack()}
+renderAllCl();
+
+// Map controls: position below sticky header
+(function(){
+  var sh=document.querySelector('.sticky-header');
+  var mc=document.querySelector('.map-ctrl');
+  function update(){
+    if(sh&&mc){mc.style.top=sh.offsetHeight+'px'}
+  }
+  update();
+  window.addEventListener('resize',update);
+})();
+
+// Map
+var mapReady=false,mo,markers=[];
+var colors={"drink": "#8e44ad", "flight": "#95a5a6", "food": "#e67e22", "hotel": "#e74c3c", "spot": "#27ae60", "transport": "#95a5a6", "work": "#2e86c1"};
+
+var pts=[{"c": "spot", "d": "d0", "desc": "\u5f69\u8272\u897f\u73ed\u7259\u98a8\u8857\u9053\uff0c\u5730\u9707\u5f8c\u91cd\u5efa\u5730\u6a19", "lat": -43.5298448, "lng": 172.6387237, "maps_query": "New Regent Street, Christchurch, New Zealand", "n": "New Regent Street", "place_id": "ChIJKYdNvCSKMW0RlBNrGuHKjdc"}, {"c": "spot", "d": "d0", "desc": "\u7d19\u677f\u6559\u5802\uff0c2013 \u5e74\u843d\u6210\u7684\u81e8\u6642\u5927\u6559\u5802", "lat": -43.532340399999995, "lng": 172.6430484, "maps_query": "Cardboard Cathedral, Christchurch, New Zealand", "n": "Cardboard Cathedral", "place_id": "ChIJTfWAeyGKMW0RPleuecV8uAk"}, {"c": "spot", "d": "d0", "desc": "150 \u5e74\u6b77\u53f2\u690d\u7269\u5712\uff0c\u51ac\u5b63\u6709\u6eab\u5ba4\u53ef\u901b", "lat": -43.530698900000004, "lng": 172.6232211, "maps_query": "Christchurch Botanic Gardens, Christchurch, New Zealand", "n": "Christchurch Botanic Gardens", "place_id": "ChIJNfFGGdscMm0RRsX9sIs5Dlg"}, {"c": "food", "d": "d0", "desc": "\u7d20\u98df\u9910\u5ef3\uff0c\u9031\u4e94\u6709\u665a\u9910\u6642\u6bb5 17:00-21:00", "lat": -43.536181, "lng": 172.6478757, "maps_query": "The Lotus-Heart Vegetarian Restaurant, Christchurch, New Zealand", "n": "The Lotus-Heart", "place_id": "ChIJm-Lk5B-KMW0ReKTt_bd_s5s"}, {"c": "spot", "d": "d1", "desc": "\u5de8\u77f3\u9663\u5730\u666f\uff0c\u9b54\u6212\u53d6\u666f\u5730\uff0c\u6b65\u884c 20 min", "lat": -43.2295617, "lng": 171.7162282, "maps_query": "Kura T\u0101whiti Castle Hill, Canterbury, New Zealand", "n": "Castle Hill", "place_id": "ChIJMUGr__JoLm0RHv3ReMOKvw4"}, {"c": "spot", "d": "d1", "desc": "\u5357\u963f\u723e\u5351\u65af\u5c71\u53e3\uff0c\u51ac\u5b63\u96ea\u666f\u58ef\u89c0\uff0c\u53ef\u5728\u6751\u838a\u505c\u7559\u5348\u9910", "lat": -42.936339499999995, "lng": 171.72510649999998, "maps_query": "Arthur\u0027s Pass National Park, New Zealand", "n": "Arthur\u0027s Pass", "place_id": "ChIJXfl8rSJNLm0RMO1bZYfvAA8"}, {"c": "spot", "d": "d1", "desc": "\u725b\u5976\u85cd\u5cfd\u8c37\uff0c\u4f86\u56de\u6b65\u9053\u7d04 30 min", "lat": -42.955581699999996, "lng": 171.0167084, "maps_query": "Hokitika Gorge Scenic Reserve, New Zealand", "n": "Hokitika Gorge", "place_id": "ChIJVxnBuunaLm0RgOgILLxk7hg"}, {"c": "spot", "d": "d2", "desc": "Heli Hike \u5831\u5230\uff0c\u76f4\u5347\u6a5f\u4e0a\u51b0\u5ddd + 3h \u51b0\u4e0a\u5f92\u6b65\uff0c\u9700\u63d0\u524d\u9810\u8a02", "lat": -43.3844098, "lng": 170.18445640000002, "maps_query": "Franz Josef Glacier Guides, Franz Josef, New Zealand", "n": "Franz Josef Glacier Guides", "place_id": "ChIJU0nnft7VK20RzcUvPww46uQ"}, {"c": "spot", "d": "d3", "desc": "\u93e1\u6e56\u6668\u8d70\uff0c\u5929\u6c23\u597d\u53ef\u5012\u6620 Mt Cook\uff0c\u74b0\u6e56\u6b65\u9053 1.5h", "lat": -43.4444639, "lng": 169.9693705, "maps_query": "Lake Matheson Walk, Fox Glacier, New Zealand", "n": "Lake Matheson", "place_id": "EkVMYWtlIE1hdGhlc29uIC8gVGUgQXJhIEthaXJhdW1hdGkgV2FsaywgRm94IEdsYWNpZXIgNzg4NiwgTmV3IFplYWxhbmQiLiosChQKEgmhfXtu3y4qbRGX165QMm3rNRIUChIJ_epAj4UvKm0RcG55hIbvAAU"}, {"c": "spot", "d": "d3", "desc": "28m \u7011\u5e03\uff0c\u8def\u908a\u505c\u8eca\u8d70 5 min", "lat": -44.0376627, "lng": 169.3658862, "maps_query": "Thunder Creek Falls, Haast Pass, New Zealand", "n": "Thunder Creek Falls", "place_id": "ChIJ09awCgB91WwRfzlQcNMQn7g"}, {"c": "spot", "d": "d3", "desc": "\u6e05\u6f88\u85cd\u8272\u6c34\u6f6d\uff0c\u540a\u6a4b\u6b65\u9053\u4f86\u56de 30 min", "lat": -44.1605625, "lng": 169.28743749999998, "maps_query": "Blue Pools Track, Haast Pass, New Zealand", "n": "Blue Pools Track", "place_id": "ChIJ2_yKs9dn1WwRgNRSPMp25HQ"}, {"c": "food", "d": "d3", "desc": "Wanaka \u9ad8\u8a55\u50f9\u5496\u5561\u7c21\u9910\uff0c\u6709\u7d20\u98df\u9078\u9805\uff0c14:30 \u6253\u70ca", "lat": -44.696314099999995, "lng": 169.13586540000003, "maps_query": "Fedeli Italian, Wanaka, New Zealand", "n": "Fedeli Italian", "place_id": "ChIJ-98QjkVP1akRtRgDunUSmVA"}, {"c": "spot", "d": "d3", "desc": "\u7d10\u897f\u862d\u6700\u8457\u540d\u5b64\u6a39\uff0c\u51ac\u5b63\u67af\u679d\u66f4\u6709\u610f\u5883", "lat": -44.6983476, "lng": 169.1175501, "maps_query": "That Wanaka Tree, Wanaka, New Zealand", "n": "That Wanaka Tree", "place_id": "ChIJE8sfvvhF1akRtID-3q4IQDk"}, {"c": "spot", "d": "d4", "desc": "\u4e16\u754c\u5546\u696d\u5f48\u8df3\u767c\u6e90\u5730 43m\uff0c\u9700\u63d0\u524d\u9810\u8a02", "lat": -45.030919999999995, "lng": 168.660166, "maps_query": "AJ Hackett Bungy Kawarau Bridge, Queenstown, New Zealand", "n": "AJ Hackett Bungy Kawarau Bridge", "place_id": "ChIJ6fa3E1Me1akRwOXMoqzuoxs"}, {"c": "spot", "d": "d4", "desc": "Lake Wakatipu \u6e56\u7554\u82b1\u5712\u6563\u6b65", "lat": -45.0371873, "lng": 168.6607345, "maps_query": "Queenstown Gardens, Queenstown, New Zealand", "n": "Queenstown Gardens", "place_id": "ChIJrwm7l7Tj1KkRtwIpvNpNEQs"}, {"c": "spot", "d": "d4", "desc": "\u7e9c\u8eca\u4e0a Bob\u0027s Peak \u4fef\u77b0\u6e56\u666f + Luge \u6e9c\u6e9c\u8eca", "lat": -45.02850110000001, "lng": 168.6561937, "maps_query": "Skyline Queenstown, New Zealand", "n": "Skyline Queenstown", "place_id": "ChIJvW5Ehngd1akRv1_byHfuLCI"}, {"c": "food", "d": "d4", "desc": "\ufffd\ufffd\ufffd\u897f\u862d\u6700\u7d05\u6f22\u5821\u5e97\uff0c\u6709\u7d20\u98df\u6f22\u5821 Little Lamby", "lat": -45.0317349, "lng": 168.65947749999998, "maps_query": "Fergburger, Queenstown, New Zealand", "n": "Fergburger", "place_id": "ChIJXVWEZYEd1akRH6jepbQaihc"}, {"c": "food", "d": "d5", "desc": "\u65e9\u5348\u9910\u540d\u5e97\uff0c\u7d20\u98df\u53cb\u5584\uff0c\u63a8\u85a6 acai bowl", "lat": -45.030198399999996, "lng": 168.6578266, "maps_query": "Bespoke Kitchen, Queenstown, New Zealand", "n": "Bespoke Kitchen", "place_id": "ChIJx7aKOIId1akROGT7vsx2BZk"}, {"c": "spot", "d": "d5", "desc": "\u767e\u5e74\ufffd\ufffd\ufffd\u6c7d\u8239\u904a Lake Wakatipu\uff0c1.5h \u5de1\u822a", "lat": -45.0335286, "lng": 168.6581124, "maps_query": "TSS Earnslaw Vintage Steamship, Queenstown, New Zealand", "n": "TSS Earnslaw", "place_id": "ChIJJVEMJHod1akRq7SCEO7AvSc"}, {"c": "spot", "d": "d6", "desc": "\u51b0\u6cb3\u85cd\u6e56 + Mt Cook \u80cc\u666f\uff0c\u5357\u5cf6\u7d93\u5178\u660e\u4fe1\u7247\u89d2\u5ea6", "lat": -44.16834250000001, "lng": 170.20932000000002, "maps_query": "Lake Pukaki Viewing Point, New Zealand", "n": "Lake Pukaki Viewpoint", "place_id": "ChIJh-7gBaAbK20RndmN4X41kIY"}, {"c": "spot", "d": "d6", "desc": "Lake Tekapo \u6e56\u7554\u77f3\u6559\u5802\uff0c\u5357\u5cf6\u6700\u7d93\u5178\u756b\u9762", "lat": -44.003363799999995, "lng": 170.4824622, "maps_query": "Church of the Good Shepherd, Lake Tekapo, New Zealand", "n": "Church of the Good Shepherd", "place_id": "ChIJfel69GF1K20RAsz_Rtcyivg"}, {"c": "food", "d": "d6", "desc": "\u6e56\u7554\u65e5\u6599\uff0c\u6709\u7d20\u98df\u9078\u9805\uff0c\u5348\u9910\u5230 14:00", "lat": -44.0046973, "lng": 170.4784205, "maps_query": "Kohan Restaurant, Lake Tekapo, New Zealand", "n": "Kohan Restaurant", "place_id": "ChIJS7Skzl91K20ReTz3IukF8Gg"}];
+
+var allBounds=L.latLngBounds([]);
+var dayBoundsMap={};
+(function(){
+  if(pts.length===0)return;
+  var dayPts={};
+  pts.forEach(function(p){
+    allBounds.extend([p.lat,p.lng]);
+    if(!dayPts[p.d])dayPts[p.d]=[];
+    dayPts[p.d].push(p);
+  });
+  Object.keys(dayPts).forEach(function(d){
+    var b=L.latLngBounds(dayPts[d].map(function(p){return[p.lat,p.lng]}));
+    dayBoundsMap[d]=b;
+  });
+})();
+
+function mkIco(col){
+  return L.divIcon({className:'',html:'<svg width="22" height="30" viewBox="0 0 28 36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="'+col+'" stroke="#fff" stroke-width="2"/><circle cx="14" cy="14" r="5" fill="#fff"/></svg>',iconSize:[22,30],iconAnchor:[11,30],popupAnchor:[0,-30]});
+}
+
+function initMap(){
+  mo=L.map('map');
+  if(allBounds.isValid())mo.fitBounds(allBounds,{padding:[30,30],maxZoom:16});else mo.setView([0,0],2);
+  L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:18}).addTo(mo);
+  pts.forEach(function(p){
+    var m=L.marker([p.lat,p.lng],{icon:mkIco(colors[p.c]||'#999')});
+    var dayLabel=p.d.replace('d','Day ');
+    var url=p.place_id?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.maps_query||p.n)+'&query_place_id='+p.place_id:(p.lat&&p.lng)?'https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lng:'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.maps_query||p.n);
+    m.bindPopup('<div style="min-width:180px"><b style="font-size:14px">'+p.n+'</b><br><span style="font-size:11px;color:#888">'+dayLabel+'</span><br><span style="font-size:12px;color:#555;line-height:1.5">'+(p.desc||'')+'</span><br><a href="'+url+'" target="_blank" style="color:#1a73e8;font-size:12px;margin-top:4px;display:inline-block">&#128205; 在 Google Maps 開啟</a></div>');
+    m.pd=p;
+    m.addTo(mo);
+    markers.push(m);
+  });
+  // Color legend
+  var legend=L.control({position:'bottomright'});
+  legend.onAdd=function(){
+    var d=L.DomUtil.create('div');
+    d.style.cssText='background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.2);font-size:12px;line-height:2.2';
+    var legendItems=[
+      ['#e74c3c','住宿'],
+      ['#2e86c1','工作'],
+      ['#e67e22','美食'],
+      ['#27ae60','景點'],
+      ['#95a5a6','移動']
+    ];
+    d.innerHTML='<b style="font-size:13px;margin-bottom:4px;display:block">圖例</b>'+legendItems.map(function(pair){return '<span style="display:inline-flex;align-items:center;margin-right:10px"><span style="width:10px;height:10px;border-radius:50%;background:'+pair[0]+';display:inline-block;margin-right:4px"></span>'+pair[1]+'</span>'}).join('');
+    return d;
+  };
+  legend.addTo(mo);
+  mapReady=true;
+}
+
+function mf(day,btn){
+  document.querySelectorAll('.map-ctrl button').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  if(day==='all'){
+    markers.forEach(function(m){if(!mo.hasLayer(m))mo.addLayer(m)});
+    if(allBounds.isValid())mo.fitBounds(allBounds,{padding:[30,30],maxZoom:16});
+  } else {
+    markers.forEach(function(m){
+      if(m.pd.d===day){if(!mo.hasLayer(m))mo.addLayer(m)} else mo.removeLayer(m);
+    });
+    var b=dayBoundsMap[day];
+    if(b&&b.isValid())mo.fitBounds(b,{padding:[30,30],maxZoom:16});
+  }
+}
+</script>
+</body>
+</html>
