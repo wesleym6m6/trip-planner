@@ -201,6 +201,21 @@ Phase 5.10 context，並在 safe review 中顯示 capability、可能需要送�
 是 `candidate + unverified`。本切片不保存 query／payload／place ID／credential、不建立 request、
 不呼叫 API，也不授權未來 provider call；scope 回覆與 exact policy/request gate 都是後續獨立邊界。
 
+Phase 5.12 只在目前 Phase 5.11 scope 仍為 `review_required`、且 host 已清楚理解使用者回覆時，
+用 `capture_guided_provider_scope_response()` 擷取 exact `accept_provider_scope`、
+`request_smaller_provider_scope` 或 `cancel_external_lookup`。它沒有自然語言 parser 或 free-text
+payload；private fingerprint 綁完整 guided context、evidence plan、scope proposal 與 fresh derived
+review，除 card ordering 外任何 drift 都拒絕。接受只回
+`prepare_private_provider_preflight_review` planning label，不是 provider authorization；縮小只回
+scope refinement，不自動移除 topic 或調低 cap；取消只關閉這次 external lookup path，不刪除
+evidence requirements，也不把 itinerary 升級為 verified／travel-ready。Safe handoff 只含 response
+kind 與 aggregate topic／capability／request-cap counts；所有結果仍是 `candidate + unverified`，
+不檢查 pricing／policy、不讀 credential、不建立 request、不呼叫 API、不寫入或套用任何變更。
+
+Phase 5.3–5.12 至此完成純 offline guided-scope section。下一個 provider preflight 必須在執行當下
+重新核對 current pricing、provider policy／terms／retention、credential/session availability 與 exact
+request scope，並取得使用者明確參與；上述任何 planning label 或 response 都不能替代該邊界。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

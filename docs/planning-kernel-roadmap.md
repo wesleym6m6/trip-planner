@@ -20,7 +20,9 @@ source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.
 綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
 candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆，Phase 5.10則為每條
 refined line建立typed、provider-neutral evidence requirement，Phase 5.11再建立bounded、可審閱的
-provider capability scope；九者都沒有CLI、parser、provider call、schedule、render或mutation。
+provider capability scope，Phase 5.12最後將scope的明確接受／縮小／取消綁回exact context；十者
+都沒有CLI、parser、provider call、schedule、render或mutation。純offline guided-scope section至此
+收束，下一個外部preflight需使用者明確參與。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1096,6 +1098,30 @@ authority。
 - 下一個最小切片是Phase 5.12 exact provider-scope response handoff：只綁定使用者明確的接受、
   縮小或取消回覆；即使接受也只前往另一個private policy/request planning seam，不建立request、
   不讀credential、不呼叫provider或授權外部動作。
+
+### 2026-08-04 — Phase 5.12 exact provider-scope response handoff 完成
+
+- 新增獨立`guided_provider_scope_response.py`、`GuidedProviderScopeResponseKind`、
+  `capture_guided_provider_scope_response()`與`assess_guided_provider_scope_response()`。只有exact
+  Phase 5.11 `review_required` scope可擷取`accept_provider_scope`、
+  `request_smaller_provider_scope`或`cancel_external_lookup`；沒有parser或free-text payload。
+- Capture與assess都重跑Phase 5.11；SHA-256 private fingerprint綁exact brief、canonical cards、
+  preference、refinement及response、itinerary及response、evidence plan、scope proposal與fresh
+  derived review。除card ordering外任何upstream、plan或scope drift都拒絕舊response。
+- Accept只回`prepare_private_provider_preflight_review` label，且safe output固定
+  `provider_scope_authorized=false`；Reduce只回scope refinement，不自動改topic/cap；Cancel只取消
+  目前lookup path並保留原evidence requirements，不把candidate升級為verified或travel-ready。
+- Safe transcript只含response kind與aggregate topic／capability／request-cap counts；沒有proposal
+  items、line index、private text、日期、resource ID、query、payload或credential。所有分支固定為
+  `candidate + unverified`且`supports_authoritative_use=false`。
+- 本切片沒有pricing／policy check、credential access、provider request/call、CLI、scheduler、trip
+  creation、filesystem/store write、render、deploy、confirmation或apply path。
+- 新增8個專項回歸；完整780個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- Phase 5.3–5.12純offline guided-scope section至此收束。下一個external provider preflight必須在
+  執行當下重新核對current pricing、provider policy／terms／retention、credential/session與exact
+  request scope，並取得使用者明確參與；任何本段label或response都不能替代該邊界。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

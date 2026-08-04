@@ -680,7 +680,7 @@ class GuidedProviderScopeTests(unittest.TestCase):
         ):
             self.assertNotIn(private_value, rendered)
 
-    def test_public_contract_has_no_response_request_execution_or_apply_path(self) -> None:
+    def test_public_contract_has_no_request_execution_or_apply_path(self) -> None:
         for name in (
             "GUIDED_PROVIDER_SCOPE_VERSION",
             "GuidedProviderCapability",
@@ -695,7 +695,6 @@ class GuidedProviderScopeTests(unittest.TestCase):
             self.assertTrue(hasattr(trip_planner, name))
             self.assertIn(name, trip_planner.__all__)
         for unsupported_name in (
-            "capture_guided_provider_scope_response",
             "parse_guided_provider_scope_response",
             "prepare_guided_provider_requests",
             "authorize_guided_provider_scope",

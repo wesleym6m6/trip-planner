@@ -393,6 +393,30 @@ policy、provider terms／retention、host-managed credentials 與 exact request
 Raw proposal不應serialize／log／persist；本層不建立request、不讀credential、不呼叫provider，
 也沒有CLI、scheduler、trip creation、write、render、deploy、confirmation或apply path。
 
+### Provider scope review 後：exact response handoff
+
+只有 host 已清楚理解使用者對目前 `review_required` scope 的回覆時，才可呼叫
+`capture_guided_provider_scope_response()`。只接受 exact `accept_provider_scope`、
+`request_smaller_provider_scope` 或 `cancel_external_lookup`；不做 NLP parser，也不保存 free text。
+Capture 與 assess 都重跑 Phase 5.11，並用 private fingerprint 綁 exact brief、cards、preference、
+refinement及其response、itinerary及其response、evidence plan、scope proposal與fresh derived review。
+Card order可以canonicalize，其他任何context drift都拒絕舊response。
+
+`accept_provider_scope`只表示可準備下一個private provider preflight review，下一步label為
+`prepare_private_provider_preflight_review`；它不檢查current pricing／provider policy／terms／
+retention、不讀credential、不建立request，也不授權call。`request_smaller_provider_scope`只回
+`refine_private_provider_scope`，host必須另建新的typed proposal，不可自行猜要刪topic或降cap。
+`cancel_external_lookup`只取消目前external lookup path並回`continue_private_evidence_review`；不得
+改寫Phase 5.10 evidence requirements、把`requires_verification`降成no-external，或將candidate升級成
+verified／travel-ready。Safe transcript只使用`GuidedProviderScopeResponseReview.to_dict()`的kind與
+aggregate topic／capability／request-cap counts。所有分支維持`candidate + unverified`、
+`supports_authoritative_use=false`，沒有provider authority、request/call、credential access、pricing／
+policy check、CLI、scheduler、trip creation、write、render、deploy、confirmation或apply path。
+
+Phase 5.3–5.12的純offline guided-scope section至此收束。下一個external preflight須在當時重新核對
+pricing、policy／terms／retention、credential/session與exact request，並取得使用者明確參與；不要用
+任何先前scope label或response繞過。
+
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 
