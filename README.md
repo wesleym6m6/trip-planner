@@ -141,6 +141,16 @@ Phase 5.5 把使用者的明確回覆接回下一輪私有細化：選一張是 
 staleness guard，不是授權。這份偏好仍只是 `candidate + unverified` 的工作方向，不能建立
 trip、選定景點、套用變更或取代既有的受控 canonical mutation／確認流程。
 
+Phase 5.6 用 `GuidedRefinementCandidate` 將上述 exact brief、cards 與 preference 整理成
+一張新的私有方向卡。`prefer_one` 必須保留所選卡的全部 line；`mix` 必須保留每張所選卡
+至少一條真正的 candidate direction line（若該卡沒有 AI line，則至少一條原 line），並保留
+全部 user-stated lines；`request_refinement` 也不能丟掉目前卡片組的 user-stated lines。
+來源 ref 與文字只留在 process memory；相對 slot 可重排，但宣告保留的內容必須確實出現在
+新卡。遺漏時只回 redacted `needs_refinement` problem codes，不能展示新卡；完整時才回
+`review_required`，固定揭露尚未驗證營業、交通、空位或價格，再請使用者審閱整合方向。
+這仍是 `candidate + unverified`，不排日期、不呼叫 provider、不建立 trip、不 render、
+不 deploy，也不提供 apply／confirmation authority。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

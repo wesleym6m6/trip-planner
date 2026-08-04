@@ -15,8 +15,9 @@ Phase 5 現已有 legacy-only、read-only 的 `tripctl inspect` evidence review 
 `tripctl validate` deterministic timeline review 起始入口，以及Phase 5.2 static browser
 timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4在其後提供一至
 三張帶來源 badge、需要一次主觀審閱的private direction cards；兩者都只在process memory
-中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement；三者都沒有CLI、
-parser、provider、render或mutation。Phase 6.0 fail-closed public release boundary亦已完成；
+中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
+source-preserving carryover產生一張可再次審閱的整合方向；四者都沒有CLI、parser、provider、
+schedule、render或mutation。Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
 ## 產品目標
@@ -358,6 +359,7 @@ Phase 4.5已完成：
 - 私有、無副作用的 future-trip guided draft，先讓 agent 以自然語言收集最小必要資訊；
 - 私有、無副作用的 candidate direction cards，保留來源 badge 與一次主觀取捨；
 - 私有、無副作用的 typed direction preference handoff，只進下一輪細化；
+- 私有、無副作用的 source-preserving refinement，遺漏來源時不向使用者展示；
 - inspect / propose / score / validate / apply；
 - 重寫 trip-planner skill，讓 agent 使用 kernel，而不是把 prompt 當規則引擎；
 - 以統一 envelope 呈現 Phase 4.6 readiness profiles；
@@ -953,6 +955,28 @@ authority。
   `trips/*/data` aggregate hash維持
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
   未呼叫provider、未render、未deploy、未修改`trips/`。
+
+### 2026-08-04 — Phase 5.6 source-preserving private direction refinement 完成
+
+- 新增純process-local的`GuidedRefinementCandidate`、`GuidedSourceLineRef`與
+  `assess_guided_refinement()`。Assessor每次先重驗exact brief、cards與current typed
+  preference；stale context、unknown／out-of-range line ref、duplicate ref或output card-ref
+  collision一律fail closed。
+- `prefer_one`必須保留所選卡全部line；`mix`必須保留每張所選卡至少一條AI candidate
+  direction line（該卡沒有AI line時至少一條原line），並保留所選卡全部user-stated line；
+  `request_refinement`也必須保留目前卡片組全部user-stated line。Relative slot可重排，
+  但宣告保留的exact line內容必須實際帶入新卡；未選來源不可混入單選／混合結果。
+- 遺漏來源、未實際carry、must-do coverage不足只產生allowlisted aggregate problem codes與
+  `needs_refinement`，raw candidate不可展示。只有無problem的`review_required`才提供固定揭露
+  與單一整合方向審閱問題；safe transcript／repr不含card ref、line index、標題、理由、
+  日期、位置或使用者原文。
+- 整合方向固定仍是`candidate + unverified`且`supports_authoritative_use=false`；沒有CLI、
+  parser、provider、schedule、trip creation、render、deploy、confirmation或apply path。
+  新增12個專項回歸；完整723個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個切片才會處理使用者對整合方向的明確「接受／繼續調整」回覆；在新的exact binding與
+  review contract完成前，不把`review_required`當成confirmation或建立行程的授權。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

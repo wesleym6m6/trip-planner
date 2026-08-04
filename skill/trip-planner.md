@@ -285,6 +285,23 @@ evidence 或 apply。card refs 只存在目前 process；重新生成 cards、�
 前，都必須重新展示並重新取得偏好。後續要建立真實 trip 或寫 canonical state 時，仍須另走
 明確的 user-facing workflow與既有 trusted-host mutation boundary。
 
+### 偏好後：來源保留的私有方向細化
+
+取得 current `GuidedDirectionPreference` 後，host 可建立一個
+`GuidedRefinementCandidate`，再用 `assess_guided_refinement()` 對同一份 exact brief、cards
+與 preference 重新驗證。`prefer_one` 要保留所選卡全部 line；`mix` 要保留每張所選卡至少
+一條 AI candidate line（沒有 AI line 時至少一條原 line），並保留所選卡全部 user-stated
+line；`request_refinement` 仍要保留目前卡片組全部 user-stated line。來源以 private
+`GuidedSourceLineRef` 指向 exact card／line；slot 可重排，但宣告保留的 line 內容不能被
+無聲改寫或丟棄。
+
+任何來源遺漏、未選方向混入、宣告 line 未實際帶入或 must-do coverage 不完整，都只回
+redacted `needs_refinement`，raw refined card 繼續留在私有層。只有 `review_required` 才可
+顯示整合後方向，並固定揭露「整合後方向尚未確認營業、交通、空位或價格。」以及詢問
+「這個整合後方向是否符合你的想法？可以確認方向，或指出要調整的地方。」這仍只是
+`candidate + unverified`；不建立 trip、不排日期、不呼叫 provider、不 render、不 deploy，
+也沒有 apply／confirmation authority。
+
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 
