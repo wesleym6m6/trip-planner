@@ -151,6 +151,16 @@ Phase 5.6 用 `GuidedRefinementCandidate` 將上述 exact brief、cards 與 pref
 這仍是 `candidate + unverified`，不排日期、不呼叫 provider、不建立 trip、不 render、
 不 deploy，也不提供 apply／confirmation authority。
 
+Phase 5.7 只在 host 已清楚理解使用者對目前 `review_required` 整合方向的回覆後，才用
+`capture_guided_refinement_response()` 擷取 exact typed response：接受目前方向是
+`accept_direction`，繼續調整是 `request_adjustment`。它不做自然語言 parser；含糊回覆保留
+原本的審閱問題。response 私有地綁定 exact brief、cards、preference、refinement candidate
+與 derived review，任何內容漂移都會拒絕舊回覆。接受只把下一步送到
+`prepare_private_itinerary_candidate` 這個 future private-only seam；結果仍是
+`candidate + unverified`，不建立 trip、不排程、不呼叫 provider、不寫入、不 render、
+不 deploy，也不構成 confirmation／apply authority。若使用者提出新的調整內容，host 必須先
+把其中明確事實重新抽取到目前的 private `TripBriefDraft`，再回到 `refine_private_direction`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

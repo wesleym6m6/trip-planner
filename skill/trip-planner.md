@@ -302,6 +302,22 @@ redacted `needs_refinement`，raw refined card 繼續留在私有層。只有 `r
 `candidate + unverified`；不建立 trip、不排日期、不呼叫 provider、不 render、不 deploy，
 也沒有 apply／confirmation authority。
 
+### 整合方向後：精確回覆 handoff
+
+只有 host 已清楚理解使用者對目前 `review_required` 整合方向的回覆時，才可呼叫
+`capture_guided_refinement_response()`。目前只接受兩個 exact enum：確認方向使用
+`accept_direction`，要求繼續調整使用 `request_adjustment`。不提供 NLP parser 或 free-text
+payload；回覆含糊時保留原本的審閱問題，不建立 response。capture 與後續 assess 都會重新
+驗證並綁定 exact brief、cards、preference、refinement candidate 與 derived review；任一內容
+漂移都拒絕舊回覆。這個 fingerprint 只防 stale／mismatch，不是授權。
+
+`accept_direction` 只把下一步標成 `prepare_private_itinerary_candidate`，代表未來可建立另一個
+private、process-local 的 itinerary candidate；它本身不建立 trip、不排日期、不呼叫 provider、
+不寫入、不 render、不 deploy，也不提供 confirmation／apply authority。handoff 持續是
+`candidate + unverified` 且 `supports_authoritative_use=false`。`request_adjustment` 回到
+`refine_private_direction`；若使用者同時提供新的明確需求，host 先把它重新抽取到目前 private
+`TripBriefDraft`，再以更新後的 exact context 重新細化，不把自由文字塞進 response schema。
+
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 

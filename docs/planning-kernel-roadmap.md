@@ -16,8 +16,9 @@ Phase 5 現已有 legacy-only、read-only 的 `tripctl inspect` evidence review 
 timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4在其後提供一至
 三張帶來源 badge、需要一次主觀審閱的private direction cards；兩者都只在process memory
 中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
-source-preserving carryover產生一張可再次審閱的整合方向；四者都沒有CLI、parser、provider、
-schedule、render或mutation。Phase 6.0 fail-closed public release boundary亦已完成；
+source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.7再將明確接受／繼續調整
+綁回exact整合方向；五者都沒有CLI、parser、provider、schedule、render或mutation。
+Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
 ## 產品目標
@@ -977,6 +978,24 @@ authority。
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
 - 下一個切片才會處理使用者對整合方向的明確「接受／繼續調整」回覆；在新的exact binding與
   review contract完成前，不把`review_required`當成confirmation或建立行程的授權。
+
+### 2026-08-04 — Phase 5.7 exact refined-direction response handoff 完成
+
+- 新增`GuidedRefinementResponse`、`capture_guided_refinement_response()`與
+  `assess_guided_refinement_response()`。Host只在current refined direction確實是
+  `review_required`且已清楚理解回覆時，擷取exact `accept_direction`或
+  `request_adjustment` enum；沒有NLP parser或free-text payload，含糊回覆維持原問題。
+- response fingerprint綁exact brief、canonical card contents、typed preference、refinement
+  candidate與derived review；capture與assess都重新評估完整context。card排序不影響binding，
+  但任何需求、內容、偏好或candidate drift都拒絕舊回覆。此guard只防stale／mismatch，不是授權。
+- `accept_direction`只回`prepare_private_itinerary_candidate`這個future private-only seam；
+  `request_adjustment`回到`refine_private_direction`。若回覆帶新需求，host須先把明確事實重新抽取
+  到current private `TripBriefDraft`，再重新細化；response schema不保存自由文字。
+- handoff固定是`candidate + unverified`且`supports_authoritative_use=false`；沒有trip creation、
+  schedule、provider、filesystem/store write、render、deploy、confirmation或apply path。新增7個
+  專項回歸；完整732個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

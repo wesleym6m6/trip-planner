@@ -11,6 +11,8 @@ canonical mutation path.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import unicodedata
 from collections import Counter
@@ -26,6 +28,7 @@ from .guided_proposal import (
     GuidedOutlineLine,
     GuidedProposalStatus,
     ProposalLineSource,
+    _private_context_value,
     assess_guided_direction_preference,
     assess_guided_proposal,
 )
@@ -33,12 +36,17 @@ from .models import DecisionState, EvidenceState
 
 
 GUIDED_REFINEMENT_VERSION = "guided-refinement/v1"
+GUIDED_REFINEMENT_RESPONSE_VERSION = "guided-refinement-response/v1"
 _CARD_REF_RE = re.compile(r"card-[a-z][a-z0-9-]{0,31}")
+_CONTEXT_FINGERPRINT_RE = re.compile(r"[0-9a-f]{64}")
 _MAX_SOURCE_LINE_INDEX = 31
 _MAX_RETAINED_SOURCE_LINES = 96
 _REVIEW_TOKEN = object()
+_RESPONSE_TOKEN = object()
+_RESPONSE_REVIEW_TOKEN = object()
 _REFINE_ACTION = "refine_private_direction"
 _REVIEW_ACTION = "review_refined_direction"
+_PRIVATE_ITINERARY_ACTION = "prepare_private_itinerary_candidate"
 _REVIEW_PROMPT = (
     "這個整合後方向是否符合你的想法？可以確認方向，或指出要調整的地方。"
 )
@@ -78,6 +86,22 @@ class GuidedRefinementProblemCode(str, Enum):
     REQUIRED_MUST_DO_COVERAGE_INCOMPLETE = (
         "required_must_do_coverage_incomplete"
     )
+
+
+class GuidedRefinementResponseKind(str, Enum):
+    """One clear user response to the exact visible refined direction."""
+
+    ACCEPT_DIRECTION = "accept_direction"
+    REQUEST_ADJUSTMENT = "request_adjustment"
+
+
+class GuidedRefinementResponseStatus(str, Enum):
+    """Safe process-local handoff after the refined-direction review."""
+
+    READY_FOR_PRIVATE_ITINERARY_CANDIDATE = (
+        "ready_for_private_itinerary_candidate"
+    )
+    READY_FOR_PRIVATE_REFINEMENT = "ready_for_private_refinement"
 
 
 def _private_card_ref(value: object) -> str:
@@ -358,6 +382,149 @@ class GuidedRefinementReview:
         }
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class GuidedRefinementResponse:
+    """Private typed capture of one unambiguous refined-direction response."""
+
+    kind: GuidedRefinementResponseKind
+    _context_fingerprint: str = field(default="", repr=False)
+    _token: InitVar[object | None] = None
+
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _RESPONSE_TOKEN:
+            raise ValueError(
+                "Guided refinement responses must be captured by the host helper"
+            )
+        if type(self.kind) is not GuidedRefinementResponseKind:
+            raise TypeError("GuidedRefinementResponse.kind must be exact")
+        if (
+            type(self._context_fingerprint) is not str
+            or _CONTEXT_FINGERPRINT_RE.fullmatch(self._context_fingerprint) is None
+        ):
+            raise ValueError(
+                "GuidedRefinementResponse context fingerprint is invalid"
+            )
+
+    def __repr__(self) -> str:
+        return f"GuidedRefinementResponse(kind={self.kind.value!r})"
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class GuidedRefinementResponseReview:
+    """Redacted, non-authoritative handoff to the next private agent step."""
+
+    status: GuidedRefinementResponseStatus
+    response_kind: GuidedRefinementResponseKind
+    preference_kind: GuidedDirectionPreferenceKind
+    refined_outline_line_count: int
+    next_action: str
+    tentative_fields: tuple[str, ...] = ()
+    needs_verification: tuple[str, ...] = ()
+    contract_version: str = GUIDED_REFINEMENT_RESPONSE_VERSION
+    _token: InitVar[object | None] = None
+
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _RESPONSE_REVIEW_TOKEN:
+            raise ValueError(
+                "Guided refinement response reviews must be created by the assessor"
+            )
+        if type(self.status) is not GuidedRefinementResponseStatus:
+            raise TypeError(
+                "GuidedRefinementResponseReview.status must be exact"
+            )
+        if type(self.response_kind) is not GuidedRefinementResponseKind:
+            raise TypeError(
+                "GuidedRefinementResponseReview.response_kind must be exact"
+            )
+        if type(self.preference_kind) is not GuidedDirectionPreferenceKind:
+            raise TypeError(
+                "GuidedRefinementResponseReview.preference_kind must be exact"
+            )
+        if (
+            type(self.refined_outline_line_count) is not int
+            or not 1 <= self.refined_outline_line_count <= 32
+        ):
+            raise ValueError(
+                "GuidedRefinementResponseReview outline count is invalid"
+            )
+        expected = {
+            GuidedRefinementResponseKind.ACCEPT_DIRECTION: (
+                GuidedRefinementResponseStatus.READY_FOR_PRIVATE_ITINERARY_CANDIDATE,
+                _PRIVATE_ITINERARY_ACTION,
+            ),
+            GuidedRefinementResponseKind.REQUEST_ADJUSTMENT: (
+                GuidedRefinementResponseStatus.READY_FOR_PRIVATE_REFINEMENT,
+                _REFINE_ACTION,
+            ),
+        }[self.response_kind]
+        if (self.status, self.next_action) != expected:
+            raise ValueError(
+                "GuidedRefinementResponseReview status/action conflicts with response"
+            )
+        if (
+            not isinstance(self.tentative_fields, tuple)
+            or any(item not in _TENTATIVE_FIELDS for item in self.tentative_fields)
+            or len(set(self.tentative_fields)) != len(self.tentative_fields)
+            or not isinstance(self.needs_verification, tuple)
+            or any(
+                item not in _VERIFICATION_TOPICS
+                for item in self.needs_verification
+            )
+            or len(set(self.needs_verification)) != len(self.needs_verification)
+        ):
+            raise ValueError(
+                "GuidedRefinementResponseReview safe topics are invalid"
+            )
+        if self.contract_version != GUIDED_REFINEMENT_RESPONSE_VERSION:
+            raise ValueError(
+                "Unsupported guided refinement response contract version"
+            )
+
+    def __repr__(self) -> str:
+        return (
+            "GuidedRefinementResponseReview("
+            f"status={self.status.value!r}, "
+            f"response_kind={self.response_kind.value!r}, "
+            f"next_action={self.next_action!r}, "
+            f"refined_outline_line_count={self.refined_outline_line_count!r})"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return aggregate handoff state without the private direction."""
+
+        accepted = (
+            self.response_kind is GuidedRefinementResponseKind.ACCEPT_DIRECTION
+        )
+        return {
+            "contract_version": self.contract_version,
+            "status": self.status.value,
+            "next_action": self.next_action,
+            "requires_user_response": False,
+            "requires_user_review": False,
+            "requires_user_decision": False,
+            "direction_response": {
+                "kind": self.response_kind.value,
+                "preference_kind": self.preference_kind.value,
+                "accepted_for_private_itinerary_candidate": accepted,
+                "refined_outline_line_count": self.refined_outline_line_count,
+                "decision_state": DecisionState.CANDIDATE.value,
+                "evidence_state": EvidenceState.UNVERIFIED.value,
+                "supports_authoritative_use": False,
+            },
+            "tentative_fields": list(self.tentative_fields),
+            "needs_verification": list(self.needs_verification),
+            "side_effects": {
+                "process_local": True,
+                "writes_to_trip": False,
+                "provider_calls": False,
+                "scheduled": False,
+                "trip_created": False,
+                "rendered": False,
+                "deployed": False,
+            },
+        }
+
+
 def _line_signature(line: GuidedOutlineLine) -> tuple[object, ...]:
     """Compare source carryover while allowing relative-slot reordering."""
 
@@ -554,12 +721,134 @@ def assess_guided_refinement(
     )
 
 
+def _refinement_response_context_fingerprint(
+    brief: TripBriefDraft,
+    cards: tuple[GuidedDirectionCard, ...],
+    preference: GuidedDirectionPreference,
+    candidate: GuidedRefinementCandidate,
+    review: GuidedRefinementReview,
+) -> str:
+    """Bind one response to the exact private refinement and derived review."""
+
+    canonical = {
+        "contract_version": GUIDED_REFINEMENT_RESPONSE_VERSION,
+        "brief": _private_context_value(brief),
+        "cards": [
+            _private_context_value(card)
+            for card in sorted(cards, key=lambda item: item.card_ref)
+        ],
+        "preference": _private_context_value(preference),
+        "candidate": _private_context_value(candidate),
+        "review": _private_context_value(review),
+    }
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def capture_guided_refinement_response(
+    brief: TripBriefDraft,
+    cards: tuple[GuidedDirectionCard, ...],
+    preference: GuidedDirectionPreference,
+    candidate: GuidedRefinementCandidate,
+    *,
+    kind: GuidedRefinementResponseKind,
+) -> GuidedRefinementResponse:
+    """Capture one clear response to the exact visible refined direction.
+
+    The host calls this only after understanding an unambiguous user answer.
+    There is deliberately no natural-language parser or free-text payload.
+    """
+
+    if type(kind) is not GuidedRefinementResponseKind:
+        raise TypeError("kind must be an exact GuidedRefinementResponseKind")
+    review = assess_guided_refinement(brief, cards, preference, candidate)
+    if review.status is not GuidedRefinementStatus.REVIEW_REQUIRED:
+        raise ValueError(
+            "A guided refinement response requires a current visible review"
+        )
+    return GuidedRefinementResponse(
+        kind=kind,
+        _context_fingerprint=_refinement_response_context_fingerprint(
+            brief,
+            cards,
+            preference,
+            candidate,
+            review,
+        ),
+        _token=_RESPONSE_TOKEN,
+    )
+
+
+def assess_guided_refinement_response(
+    brief: TripBriefDraft,
+    cards: tuple[GuidedDirectionCard, ...],
+    preference: GuidedDirectionPreference,
+    candidate: GuidedRefinementCandidate,
+    response: GuidedRefinementResponse,
+) -> GuidedRefinementResponseReview:
+    """Revalidate and hand off an exact refined-direction response privately."""
+
+    if type(response) is not GuidedRefinementResponse:
+        raise TypeError("response must be an exact GuidedRefinementResponse")
+    refinement_review = assess_guided_refinement(
+        brief,
+        cards,
+        preference,
+        candidate,
+    )
+    if refinement_review.status is not GuidedRefinementStatus.REVIEW_REQUIRED:
+        raise ValueError(
+            "A guided refinement response requires a current visible review"
+        )
+    if response._context_fingerprint != _refinement_response_context_fingerprint(
+        brief,
+        cards,
+        preference,
+        candidate,
+        refinement_review,
+    ):
+        raise ValueError(
+            "Guided refinement response does not match the current private context"
+        )
+    if response.kind is GuidedRefinementResponseKind.ACCEPT_DIRECTION:
+        status = (
+            GuidedRefinementResponseStatus.READY_FOR_PRIVATE_ITINERARY_CANDIDATE
+        )
+        next_action = _PRIVATE_ITINERARY_ACTION
+    else:
+        status = GuidedRefinementResponseStatus.READY_FOR_PRIVATE_REFINEMENT
+        next_action = _REFINE_ACTION
+    return GuidedRefinementResponseReview(
+        status=status,
+        response_kind=response.kind,
+        preference_kind=refinement_review.preference_kind,
+        refined_outline_line_count=refinement_review.refined_outline_line_count,
+        next_action=next_action,
+        tentative_fields=refinement_review.tentative_fields,
+        needs_verification=refinement_review.needs_verification,
+        _token=_RESPONSE_REVIEW_TOKEN,
+    )
+
+
 __all__ = [
     "GUIDED_REFINEMENT_VERSION",
+    "GUIDED_REFINEMENT_RESPONSE_VERSION",
     "GuidedRefinementCandidate",
     "GuidedRefinementProblemCode",
     "GuidedRefinementReview",
     "GuidedRefinementStatus",
+    "GuidedRefinementResponse",
+    "GuidedRefinementResponseKind",
+    "GuidedRefinementResponseReview",
+    "GuidedRefinementResponseStatus",
     "GuidedSourceLineRef",
     "assess_guided_refinement",
+    "assess_guided_refinement_response",
+    "capture_guided_refinement_response",
 ]

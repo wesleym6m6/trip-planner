@@ -670,7 +670,7 @@ class GuidedRefinementTests(unittest.TestCase):
 
         source = inspect.getsource(guided_refinement_module)
         tree = ast.parse(source)
-        allowed_imports = {"re", "unicodedata"}
+        allowed_imports = {"hashlib", "json", "re", "unicodedata"}
         allowed_from_imports = {
             (0, "__future__"),
             (0, "collections"),
