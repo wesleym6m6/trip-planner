@@ -156,10 +156,19 @@ Phase 5.7 只在 host 已清楚理解使用者對目前 `review_required` 整合
 `accept_direction`，繼續調整是 `request_adjustment`。它不做自然語言 parser；含糊回覆保留
 原本的審閱問題。response 私有地綁定 exact brief、cards、preference、refinement candidate
 與 derived review，任何內容漂移都會拒絕舊回覆。接受只把下一步送到
-`prepare_private_itinerary_candidate` 這個 future private-only seam；結果仍是
+`prepare_private_itinerary_candidate` 這個 private-only seam；結果仍是
 `candidate + unverified`，不建立 trip、不排程、不呼叫 provider、不寫入、不 render、
 不 deploy，也不構成 confirmation／apply authority。若使用者提出新的調整內容，host 必須先
 把其中明確事實重新抽取到目前的 private `TripBriefDraft`，再回到 `refine_private_direction`。
+
+Phase 5.8 用 `GuidedItineraryCandidate` 把已接受整合方向的每一條 refined line，恰好一次放進
+`0..overnight_count` 的相對 day bucket。bucket index 不是 calendar date、time、duration、route
+或可執行 schedule；candidate 只保存 refined line index 與 opaque transport-boundary ID，不接受
+新的自由文字。assessor 會先重驗 Phase 5.7 exact `accept_direction` context，再檢查 line 沒有
+未知、遺漏或重複，並要求 transport boundary exact multiset carryover。只有完整 candidate 才能
+在私有層顯示並請使用者審閱；safe transcript 只能使用 `GuidedItineraryReview.to_dict()`，不能
+序列化 raw candidate。結果仍是 `candidate + unverified`，沒有 provider、scheduler、trip
+creation、filesystem/store write、render、deploy、confirmation 或 apply authority。
 
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，

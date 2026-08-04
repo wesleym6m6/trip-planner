@@ -311,12 +311,29 @@ payload；回覆含糊時保留原本的審閱問題，不建立 response。capt
 驗證並綁定 exact brief、cards、preference、refinement candidate 與 derived review；任一內容
 漂移都拒絕舊回覆。這個 fingerprint 只防 stale／mismatch，不是授權。
 
-`accept_direction` 只把下一步標成 `prepare_private_itinerary_candidate`，代表未來可建立另一個
+`accept_direction` 只把下一步標成 `prepare_private_itinerary_candidate`，代表可建立另一個
 private、process-local 的 itinerary candidate；它本身不建立 trip、不排日期、不呼叫 provider、
 不寫入、不 render、不 deploy，也不提供 confirmation／apply authority。handoff 持續是
 `candidate + unverified` 且 `supports_authoritative_use=false`。`request_adjustment` 回到
 `refine_private_direction`；若使用者同時提供新的明確需求，host 先把它重新抽取到目前 private
 `TripBriefDraft`，再以更新後的 exact context 重新細化，不把自由文字塞進 response schema。
+
+### 接受方向後：來源限定的相對每日候選
+
+只有 exact Phase 5.7 `accept_direction` 仍對應目前 brief、cards、preference 與 refinement 時，
+host 才可建立 `GuidedItineraryCandidate`。每個 `GuidedItineraryDay.relative_day_index` 只能落在
+`0..overnight_count`；它只是從抵達日到離開日的相對 bucket，不是 calendar date、time、
+duration、route 或可執行 schedule。candidate 只能引用 refined direction 的 line index，不能
+複製、解析或接受新自由文字；每條 refined line 必須恰好出現一次。current brief 內的 opaque
+transport boundary ID 也必須 exact multiset carryover，不能未知、遺漏或重複。
+
+用 `assess_guided_itinerary_candidate()` 重驗完整 context。任何 line／day／boundary 問題都只回
+redacted `needs_refinement`，raw candidate 不可顯示；只有 `review_required` 才能顯示 private
+candidate，並揭露「每日候選尚未確認景點身分、營業時間、交通、空位或價格，也不是可執行日程。」
+再詢問一次主觀意見。safe transcript 只使用 `GuidedItineraryReview.to_dict()`；不要 serialize、
+log 或持久化 raw candidate 的 source indexes／boundary IDs。此層仍是 `candidate + unverified`、
+`supports_authoritative_use=false`，沒有 provider、scheduler、trip creation、write、render、
+deploy、confirmation 或 apply path。
 
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。

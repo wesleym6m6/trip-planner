@@ -218,6 +218,15 @@ from .guided_refinement import (
     assess_guided_refinement_response,
     capture_guided_refinement_response,
 )
+from .guided_itinerary import (
+    GUIDED_ITINERARY_VERSION,
+    GuidedItineraryCandidate,
+    GuidedItineraryDay,
+    GuidedItineraryProblemCode,
+    GuidedItineraryReview,
+    GuidedItineraryStatus,
+    assess_guided_itinerary_candidate,
+)
 from .lodging_discovery import (
     LODGING_DISCOVERY_VERSION,
     LodgingDiscoveryProblem,
@@ -462,6 +471,7 @@ __all__ = [
     "LODGING_INTAKE_VERSION",
     "GUIDED_DRAFT_VERSION",
     "GUIDED_DIRECTION_PREFERENCE_VERSION",
+    "GUIDED_ITINERARY_VERSION",
     "GUIDED_PROPOSAL_VERSION",
     "GUIDED_REFINEMENT_VERSION",
     "GUIDED_REFINEMENT_RESPONSE_VERSION",
@@ -473,6 +483,11 @@ __all__ = [
     "GuidedDraftQuestion",
     "GuidedDraftReview",
     "GuidedDraftStatus",
+    "GuidedItineraryCandidate",
+    "GuidedItineraryDay",
+    "GuidedItineraryProblemCode",
+    "GuidedItineraryReview",
+    "GuidedItineraryStatus",
     "GuidedOutlineLine",
     "GuidedProposalReview",
     "GuidedProposalStatus",
@@ -717,6 +732,7 @@ __all__ = [
     "approval_scope_digest",
     "assess_lodging_intake",
     "assess_guided_draft",
+    "assess_guided_itinerary_candidate",
     "capture_guided_direction_preference",
     "assess_guided_direction_preference",
     "assess_guided_proposal",

@@ -17,7 +17,8 @@ timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4
 三張帶來源 badge、需要一次主觀審閱的private direction cards；兩者都只在process memory
 中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
 source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.7再將明確接受／繼續調整
-綁回exact整合方向；五者都沒有CLI、parser、provider、schedule、render或mutation。
+綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
+candidate；六者都沒有CLI、parser、provider、schedule、render或mutation。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -361,6 +362,7 @@ Phase 4.5已完成：
 - 私有、無副作用的 candidate direction cards，保留來源 badge 與一次主觀取捨；
 - 私有、無副作用的 typed direction preference handoff，只進下一輪細化；
 - 私有、無副作用的 source-preserving refinement，遺漏來源時不向使用者展示；
+- 私有、無副作用的 relative-day itinerary candidate，只引用 accepted refinement source；
 - inspect / propose / score / validate / apply；
 - 重寫 trip-planner skill，讓 agent 使用 kernel，而不是把 prompt 當規則引擎；
 - 以統一 envelope 呈現 Phase 4.6 readiness profiles；
@@ -996,6 +998,31 @@ authority。
   專項回歸；完整732個offline tests、Python compile與三個real-trip validators均通過。
   `trips/*/data` aggregate hash維持
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+
+### 2026-08-04 — Phase 5.8 source-only relative-day itinerary candidate 完成
+
+- 新增純process-local的`GuidedItineraryDay`、`GuidedItineraryCandidate`與
+  `assess_guided_itinerary_candidate()`。Assessor先重驗exact Phase 5.7 context，只有目前
+  `accept_direction`可進入；`request_adjustment`、stale brief／cards／preference／refinement／
+  response一律fail closed。
+- candidate只保存refined direction line indexes與opaque transport boundary IDs，不接受title、
+  rationale、日期、時間、duration、route或其他自由文字。`relative_day_index`固定為
+  `0..overnight_count`，上限由exact current brief重新計算；它只表示抵達日至離開日的相對bucket，
+  不等於calendar date或可執行schedule。
+- 每條refined line必須恰好放置一次；unknown、missing、duplicate line或超出trip span的day只回
+  allowlisted problem codes。current brief內的transport boundary也必須exact multiset carryover；
+  unknown、missing或duplicate boundary都保留private `needs_refinement`，不可顯示candidate。
+- 只有`review_required`可顯示private candidate及固定unverified／non-executable disclosure；safe
+  transcript與repr只含aggregate bucket／line／boundary counts。Raw source indexes與boundary IDs
+  不得serialize、log或persist。結果固定為`candidate + unverified`且
+  `supports_authoritative_use=false`，沒有provider、scheduler、trip creation、filesystem/store
+  write、render、deploy、confirmation或apply path。
+- 新增11個專項回歸；完整743個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片才處理使用者對目前private itinerary candidate的明確「接受／繼續調整」回覆；
+  在新的exact response binding完成前，`review_required`不是provider、schedule、trip creation或
+  canonical mutation授權。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
