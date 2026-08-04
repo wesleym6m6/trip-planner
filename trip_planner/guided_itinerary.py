@@ -14,6 +14,9 @@ mutation path.  Every result remains candidate + unverified.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 import unicodedata
 from collections import Counter
 from dataclasses import InitVar, dataclass, field
@@ -24,6 +27,7 @@ from .guided_draft import TripBriefDraft
 from .guided_proposal import (
     GuidedDirectionCard,
     GuidedDirectionPreference,
+    _private_context_value,
 )
 from .guided_refinement import (
     GuidedRefinementCandidate,
@@ -36,6 +40,8 @@ from .models import DecisionState, EvidenceState
 
 
 GUIDED_ITINERARY_VERSION = "guided-itinerary/v1"
+GUIDED_ITINERARY_RESPONSE_VERSION = "guided-itinerary-response/v1"
+_CONTEXT_FINGERPRINT_RE = re.compile(r"[0-9a-f]{64}")
 _MAX_RELATIVE_DAY_INDEX = 366
 _MAX_REFINED_LINE_INDEX = 31
 _MAX_LINES_PER_DAY = 32
@@ -45,8 +51,11 @@ _MAX_RETAINED_TRANSPORT_BOUNDARIES = 64
 _MAX_BOUNDARY_ID_LENGTH = 160
 _MAX_PLACEMENTS = _MAX_DAY_BUCKETS * _MAX_LINES_PER_DAY
 _REVIEW_TOKEN = object()
+_RESPONSE_TOKEN = object()
+_RESPONSE_REVIEW_TOKEN = object()
 _REFINE_ACTION = "refine_private_itinerary_candidate"
 _REVIEW_ACTION = "review_private_itinerary_candidate"
+_EVIDENCE_REQUIREMENTS_ACTION = "prepare_private_evidence_requirements"
 _REVIEW_PROMPT = (
     "這個每日候選安排是否符合你的想法？可以接受安排，或指出要調整的地方。"
 )
@@ -93,6 +102,24 @@ class GuidedItineraryProblemCode(str, Enum):
     TRANSPORT_BOUNDARY_NOT_RETAINED = "transport_boundary_not_retained"
     TRANSPORT_BOUNDARY_RETAINED_MULTIPLE_TIMES = (
         "transport_boundary_retained_multiple_times"
+    )
+
+
+class GuidedItineraryResponseKind(str, Enum):
+    """One clear response to the exact visible private itinerary candidate."""
+
+    ACCEPT_ITINERARY_CANDIDATE = "accept_itinerary_candidate"
+    REQUEST_ITINERARY_ADJUSTMENT = "request_itinerary_adjustment"
+
+
+class GuidedItineraryResponseStatus(str, Enum):
+    """Safe process-local handoff after the itinerary-candidate review."""
+
+    READY_FOR_PRIVATE_EVIDENCE_REQUIREMENTS = (
+        "ready_for_private_evidence_requirements"
+    )
+    READY_FOR_PRIVATE_ITINERARY_REFINEMENT = (
+        "ready_for_private_itinerary_refinement"
     )
 
 
@@ -395,6 +422,177 @@ class GuidedItineraryReview:
         }
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class GuidedItineraryResponse:
+    """Private typed capture of one unambiguous itinerary-candidate response."""
+
+    kind: GuidedItineraryResponseKind
+    _context_fingerprint: str = field(default="", repr=False)
+    _token: InitVar[object | None] = None
+
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _RESPONSE_TOKEN:
+            raise ValueError(
+                "Guided itinerary responses must be captured by the host helper"
+            )
+        if type(self.kind) is not GuidedItineraryResponseKind:
+            raise TypeError("GuidedItineraryResponse.kind must be exact")
+        if (
+            type(self._context_fingerprint) is not str
+            or _CONTEXT_FINGERPRINT_RE.fullmatch(self._context_fingerprint) is None
+        ):
+            raise ValueError(
+                "GuidedItineraryResponse context fingerprint is invalid"
+            )
+
+    def __repr__(self) -> str:
+        return f"GuidedItineraryResponse(kind={self.kind.value!r})"
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class GuidedItineraryResponseReview:
+    """Redacted, non-authoritative handoff from one exact candidate response."""
+
+    status: GuidedItineraryResponseStatus
+    response_kind: GuidedItineraryResponseKind
+    relative_day_bucket_count: int
+    available_relative_day_count: int
+    refined_source_line_count: int
+    placed_source_line_count: int
+    transport_boundary_count: int
+    next_action: str
+    tentative_fields: tuple[str, ...] = ()
+    needs_verification: tuple[str, ...] = ()
+    contract_version: str = GUIDED_ITINERARY_RESPONSE_VERSION
+    _token: InitVar[object | None] = None
+
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _RESPONSE_REVIEW_TOKEN:
+            raise ValueError(
+                "Guided itinerary response reviews must be created by the assessor"
+            )
+        if type(self.status) is not GuidedItineraryResponseStatus:
+            raise TypeError(
+                "GuidedItineraryResponseReview.status must be exact"
+            )
+        if type(self.response_kind) is not GuidedItineraryResponseKind:
+            raise TypeError(
+                "GuidedItineraryResponseReview.response_kind must be exact"
+            )
+        for name, value, maximum in (
+            ("relative_day_bucket_count", self.relative_day_bucket_count, 367),
+            ("available_relative_day_count", self.available_relative_day_count, 367),
+            ("refined_source_line_count", self.refined_source_line_count, 32),
+            ("placed_source_line_count", self.placed_source_line_count, _MAX_PLACEMENTS),
+            (
+                "transport_boundary_count",
+                self.transport_boundary_count,
+                _MAX_TRANSPORT_BOUNDARIES,
+            ),
+        ):
+            if type(value) is not int or not 0 <= value <= maximum:
+                raise ValueError(
+                    f"GuidedItineraryResponseReview.{name} is invalid"
+                )
+        if self.available_relative_day_count < 1:
+            raise ValueError(
+                "GuidedItineraryResponseReview needs at least one relative day"
+            )
+        if (
+            self.relative_day_bucket_count < 1
+            or self.relative_day_bucket_count > self.available_relative_day_count
+            or self.refined_source_line_count < 1
+            or self.placed_source_line_count != self.refined_source_line_count
+        ):
+            raise ValueError(
+                "GuidedItineraryResponseReview candidate counts are inconsistent"
+            )
+        expected = {
+            GuidedItineraryResponseKind.ACCEPT_ITINERARY_CANDIDATE: (
+                GuidedItineraryResponseStatus.READY_FOR_PRIVATE_EVIDENCE_REQUIREMENTS,
+                _EVIDENCE_REQUIREMENTS_ACTION,
+            ),
+            GuidedItineraryResponseKind.REQUEST_ITINERARY_ADJUSTMENT: (
+                GuidedItineraryResponseStatus.READY_FOR_PRIVATE_ITINERARY_REFINEMENT,
+                _REFINE_ACTION,
+            ),
+        }[self.response_kind]
+        if (self.status, self.next_action) != expected:
+            raise ValueError(
+                "GuidedItineraryResponseReview status/action conflicts with response"
+            )
+        if (
+            not isinstance(self.tentative_fields, tuple)
+            or any(item not in _TENTATIVE_FIELDS for item in self.tentative_fields)
+            or len(set(self.tentative_fields)) != len(self.tentative_fields)
+            or not isinstance(self.needs_verification, tuple)
+            or any(
+                item not in _VERIFICATION_TOPICS
+                for item in self.needs_verification
+            )
+            or len(set(self.needs_verification)) != len(self.needs_verification)
+        ):
+            raise ValueError(
+                "GuidedItineraryResponseReview safe topics are invalid"
+            )
+        if self.contract_version != GUIDED_ITINERARY_RESPONSE_VERSION:
+            raise ValueError(
+                "Unsupported guided itinerary response contract version"
+            )
+
+    def __repr__(self) -> str:
+        return (
+            "GuidedItineraryResponseReview("
+            f"status={self.status.value!r}, "
+            f"response_kind={self.response_kind.value!r}, "
+            f"next_action={self.next_action!r}, "
+            f"relative_day_bucket_count={self.relative_day_bucket_count!r}, "
+            f"placed_source_line_count={self.placed_source_line_count!r})"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return aggregate response state without private candidate content."""
+
+        accepted = (
+            self.response_kind
+            is GuidedItineraryResponseKind.ACCEPT_ITINERARY_CANDIDATE
+        )
+        return {
+            "contract_version": self.contract_version,
+            "status": self.status.value,
+            "next_action": self.next_action,
+            "requires_user_response": False,
+            "requires_user_review": False,
+            "requires_user_decision": False,
+            "itinerary_response": {
+                "kind": self.response_kind.value,
+                "accepted_as_private_candidate": accepted,
+                "may_prepare_private_evidence_requirements": accepted,
+                "relative_day_bucket_count": self.relative_day_bucket_count,
+                "available_relative_day_count": self.available_relative_day_count,
+                "refined_source_line_count": self.refined_source_line_count,
+                "placed_source_line_count": self.placed_source_line_count,
+                "transport_boundary_count": self.transport_boundary_count,
+                "is_executable_schedule": False,
+                "decision_state": DecisionState.CANDIDATE.value,
+                "evidence_state": EvidenceState.UNVERIFIED.value,
+                "supports_authoritative_use": False,
+            },
+            "tentative_fields": list(self.tentative_fields),
+            "needs_verification": list(self.needs_verification),
+            "side_effects": {
+                "process_local": True,
+                "writes_to_trip": False,
+                "provider_calls": False,
+                "provider_requests_created": False,
+                "scheduled": False,
+                "trip_created": False,
+                "rendered": False,
+                "deployed": False,
+            },
+        }
+
+
 def assess_guided_itinerary_candidate(
     brief: TripBriefDraft,
     cards: tuple[GuidedDirectionCard, ...],
@@ -510,12 +708,167 @@ def assess_guided_itinerary_candidate(
     )
 
 
+def _itinerary_response_context_fingerprint(
+    brief: TripBriefDraft,
+    cards: tuple[GuidedDirectionCard, ...],
+    preference: GuidedDirectionPreference,
+    refinement: GuidedRefinementCandidate,
+    refinement_response: GuidedRefinementResponse,
+    candidate: GuidedItineraryCandidate,
+    review: GuidedItineraryReview,
+) -> str:
+    """Bind one response to the exact private candidate and derived review."""
+
+    canonical = {
+        "contract_version": GUIDED_ITINERARY_RESPONSE_VERSION,
+        "brief": _private_context_value(brief),
+        "cards": [
+            _private_context_value(card)
+            for card in sorted(cards, key=lambda item: item.card_ref)
+        ],
+        "preference": _private_context_value(preference),
+        "refinement": _private_context_value(refinement),
+        "refinement_response": _private_context_value(refinement_response),
+        "itinerary_candidate": _private_context_value(candidate),
+        "itinerary_review": _private_context_value(review),
+    }
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def capture_guided_itinerary_response(
+    brief: TripBriefDraft,
+    cards: tuple[GuidedDirectionCard, ...],
+    preference: GuidedDirectionPreference,
+    refinement: GuidedRefinementCandidate,
+    refinement_response: GuidedRefinementResponse,
+    candidate: GuidedItineraryCandidate,
+    *,
+    kind: GuidedItineraryResponseKind,
+) -> GuidedItineraryResponse:
+    """Capture one clear response to the exact visible private candidate.
+
+    The host calls this only after understanding an unambiguous user answer.
+    There is deliberately no natural-language parser or free-text payload.
+    """
+
+    if type(kind) is not GuidedItineraryResponseKind:
+        raise TypeError("kind must be an exact GuidedItineraryResponseKind")
+    review = assess_guided_itinerary_candidate(
+        brief,
+        cards,
+        preference,
+        refinement,
+        refinement_response,
+        candidate,
+    )
+    if review.status is not GuidedItineraryStatus.REVIEW_REQUIRED:
+        raise ValueError(
+            "A guided itinerary response requires a current visible candidate"
+        )
+    return GuidedItineraryResponse(
+        kind=kind,
+        _context_fingerprint=_itinerary_response_context_fingerprint(
+            brief,
+            cards,
+            preference,
+            refinement,
+            refinement_response,
+            candidate,
+            review,
+        ),
+        _token=_RESPONSE_TOKEN,
+    )
+
+
+def assess_guided_itinerary_response(
+    brief: TripBriefDraft,
+    cards: tuple[GuidedDirectionCard, ...],
+    preference: GuidedDirectionPreference,
+    refinement: GuidedRefinementCandidate,
+    refinement_response: GuidedRefinementResponse,
+    candidate: GuidedItineraryCandidate,
+    response: GuidedItineraryResponse,
+) -> GuidedItineraryResponseReview:
+    """Revalidate and hand off one exact private candidate response."""
+
+    if type(response) is not GuidedItineraryResponse:
+        raise TypeError("response must be an exact GuidedItineraryResponse")
+    itinerary_review = assess_guided_itinerary_candidate(
+        brief,
+        cards,
+        preference,
+        refinement,
+        refinement_response,
+        candidate,
+    )
+    if itinerary_review.status is not GuidedItineraryStatus.REVIEW_REQUIRED:
+        raise ValueError(
+            "A guided itinerary response requires a current visible candidate"
+        )
+    if response._context_fingerprint != _itinerary_response_context_fingerprint(
+        brief,
+        cards,
+        preference,
+        refinement,
+        refinement_response,
+        candidate,
+        itinerary_review,
+    ):
+        raise ValueError(
+            "Guided itinerary response does not match the current private context"
+        )
+    if (
+        response.kind
+        is GuidedItineraryResponseKind.ACCEPT_ITINERARY_CANDIDATE
+    ):
+        status = (
+            GuidedItineraryResponseStatus.READY_FOR_PRIVATE_EVIDENCE_REQUIREMENTS
+        )
+        next_action = _EVIDENCE_REQUIREMENTS_ACTION
+    else:
+        status = (
+            GuidedItineraryResponseStatus.READY_FOR_PRIVATE_ITINERARY_REFINEMENT
+        )
+        next_action = _REFINE_ACTION
+    return GuidedItineraryResponseReview(
+        status=status,
+        response_kind=response.kind,
+        relative_day_bucket_count=itinerary_review.relative_day_bucket_count,
+        available_relative_day_count=(
+            itinerary_review.available_relative_day_count
+        ),
+        refined_source_line_count=itinerary_review.refined_source_line_count,
+        placed_source_line_count=itinerary_review.placed_source_line_count,
+        transport_boundary_count=(
+            itinerary_review.expected_transport_boundary_count
+        ),
+        next_action=next_action,
+        tentative_fields=itinerary_review.tentative_fields,
+        needs_verification=itinerary_review.needs_verification,
+        _token=_RESPONSE_REVIEW_TOKEN,
+    )
+
+
 __all__ = [
     "GUIDED_ITINERARY_VERSION",
+    "GUIDED_ITINERARY_RESPONSE_VERSION",
     "GuidedItineraryCandidate",
     "GuidedItineraryDay",
     "GuidedItineraryProblemCode",
     "GuidedItineraryReview",
     "GuidedItineraryStatus",
+    "GuidedItineraryResponse",
+    "GuidedItineraryResponseKind",
+    "GuidedItineraryResponseReview",
+    "GuidedItineraryResponseStatus",
     "assess_guided_itinerary_candidate",
+    "assess_guided_itinerary_response",
+    "capture_guided_itinerary_response",
 ]

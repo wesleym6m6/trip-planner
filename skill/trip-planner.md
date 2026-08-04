@@ -335,6 +335,24 @@ log 或持久化 raw candidate 的 source indexes／boundary IDs。此層仍是 
 `supports_authoritative_use=false`，沒有 provider、scheduler、trip creation、write、render、
 deploy、confirmation 或 apply path。
 
+### 每日候選後：精確回覆 handoff
+
+只有 host 已清楚理解使用者對目前 `review_required` private itinerary candidate 的回覆時，才可
+呼叫 `capture_guided_itinerary_response()`。只接受 exact `accept_itinerary_candidate` 或
+`request_itinerary_adjustment` enum；不做 NLP parser，也沒有 free-text payload。capture 與 assess
+都會重新執行 Phase 5.8 assessor，並私有地綁定 exact brief、cards、preference、refinement、
+Phase 5.7 response、itinerary candidate 與 derived review。除 card ordering 可 canonicalize 外，
+任何 context drift 都拒絕舊回覆；fingerprint 只防 stale／mismatch，不是授權。
+
+`accept_itinerary_candidate` 只表示使用者接受目前 private、non-executable candidate，下一步標成
+`prepare_private_evidence_requirements`。這個 label 本身不建立 evidence/provider request、不呼叫
+provider、不排程、不建立 trip、不寫入、不 render、不 deploy，也不授權未來 provider call。
+`request_itinerary_adjustment` 回到 `refine_private_itinerary_candidate`；若回覆含新事實，host 先對
+目前可見 candidate 擷取 typed kind，再把新事實另外重新抽取到 private brief 並重建 exact context，
+不要把原文存進 response。safe transcript 只用 `GuidedItineraryResponseReview.to_dict()`；handoff
+持續是 `candidate + unverified`、`supports_authoritative_use=false`，不是 selection、booking、
+confirmation 或 apply。
+
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 

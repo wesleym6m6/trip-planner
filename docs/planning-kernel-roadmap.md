@@ -18,7 +18,8 @@ timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4
 中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
 source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.7再將明確接受／繼續調整
 綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
-candidate；六者都沒有CLI、parser、provider、schedule、render或mutation。
+candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆；七者都沒有CLI、parser、
+provider、schedule、render或mutation。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -363,6 +364,7 @@ Phase 4.5已完成：
 - 私有、無副作用的 typed direction preference handoff，只進下一輪細化；
 - 私有、無副作用的 source-preserving refinement，遺漏來源時不向使用者展示；
 - 私有、無副作用的 relative-day itinerary candidate，只引用 accepted refinement source；
+- 私有、無副作用的 exact itinerary-candidate response，只進 evidence-requirement planning seam；
 - inspect / propose / score / validate / apply；
 - 重寫 trip-planner skill，讓 agent 使用 kernel，而不是把 prompt 當規則引擎；
 - 以統一 envelope 呈現 Phase 4.6 readiness profiles；
@@ -1023,6 +1025,29 @@ authority。
 - 下一個最小切片才處理使用者對目前private itinerary candidate的明確「接受／繼續調整」回覆；
   在新的exact response binding完成前，`review_required`不是provider、schedule、trip creation或
   canonical mutation授權。
+
+### 2026-08-04 — Phase 5.9 exact private itinerary-response handoff 完成
+
+- 新增`GuidedItineraryResponseKind`、`GuidedItineraryResponse`、
+  `capture_guided_itinerary_response()`與`assess_guided_itinerary_response()`。Host只在目前
+  Phase 5.8 candidate仍為`review_required`且已清楚理解回覆時，擷取exact
+  `accept_itinerary_candidate`或`request_itinerary_adjustment`；沒有NLP parser或free-text payload。
+- capture與assess都重新執行Phase 5.8 assessor；private SHA-256 fingerprint綁exact brief、
+  canonical card contents、preference、refinement、Phase 5.7 response、itinerary candidate及
+  derived review。card order可canonicalize，其他任一context drift都拒絕舊回覆。
+- `accept_itinerary_candidate`只表示接受目前private、non-executable candidate，下一步僅為
+  `prepare_private_evidence_requirements`規劃標籤；本切片不建立evidence/provider request、
+  不呼叫provider，也不提供未來provider call authority。`request_itinerary_adjustment`只回到
+  private candidate refinement；新事實另外回抽取至private brief並重建exact context。
+- safe repr／transcript只含kind與aggregate day／line／boundary counts；不含bucket／line indexes、
+  boundary ID、日期、位置、route value或使用者原文。handoff固定仍是`candidate + unverified`、
+  non-executable且`supports_authoritative_use=false`；沒有scheduler、trip creation、filesystem/store
+  write、render、deploy、selection、booking、confirmation或apply path。
+- 新增8個專項回歸；完整751個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片才設計純offline、typed的private evidence-requirement plan；在該contract完成前，
+  不從自由文字猜provider payload，也不建立request、呼叫API或取得任何外部動作授權。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

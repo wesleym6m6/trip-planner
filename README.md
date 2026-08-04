@@ -170,6 +170,16 @@ Phase 5.8 用 `GuidedItineraryCandidate` 把已接受整合方向的每一條 re
 序列化 raw candidate。結果仍是 `candidate + unverified`，沒有 provider、scheduler、trip
 creation、filesystem/store write、render、deploy、confirmation 或 apply authority。
 
+Phase 5.9 只在 host 已清楚理解使用者對目前 `review_required` private itinerary candidate 的回覆後，
+才用 `capture_guided_itinerary_response()` 擷取 exact `accept_itinerary_candidate` 或
+`request_itinerary_adjustment`；不做自然語言 parser，也不保存 free text。capture 與 assess 都會
+重驗 Phase 5.8，並將 exact brief、cards、preference、refinement、Phase 5.7 response、itinerary
+candidate 與 derived review 綁進 private fingerprint。接受只回
+`prepare_private_evidence_requirements` 這個後續規劃標籤；本切片不建立 provider request、不呼叫
+provider、不排程、不建立或寫入 trip。要求調整則回 `refine_private_itinerary_candidate`；新事實
+另外重新抽取進 private brief，不塞進 response。結果持續是 `candidate + unverified`，不構成
+selection、booking、confirmation、apply 或任何 provider authority。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
