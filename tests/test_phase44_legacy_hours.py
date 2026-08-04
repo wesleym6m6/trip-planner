@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from scripts.check_hours import check_place, check_visit_time, get_periods_for_day
 from trip_planner.opening_hours import evaluate_opening_window
@@ -125,6 +127,32 @@ class LegacyHoursTests(unittest.TestCase):
         )
         self.assertEqual(2, completed.returncode)
         self.assertIn("legacy-only", completed.stderr)
+
+    def test_direct_hours_cli_bootstraps_repo_root(self) -> None:
+        script = Path(__file__).parents[1] / "scripts" / "check_hours.py"
+        with TemporaryDirectory() as temp_dir:
+            trip_dir = Path(temp_dir) / "trip"
+            data_dir = trip_dir / "data"
+            data_dir.mkdir(parents=True)
+            (data_dir / "trip.json").write_text(
+                json.dumps({"date_range": "2026-08-05 ~ 2026-08-05"}),
+                encoding="utf-8",
+            )
+            (data_dir / "itinerary.json").write_text(
+                json.dumps({"days": []}),
+                encoding="utf-8",
+            )
+            (data_dir / "places_cache.json").write_text("{}", encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, "-E", str(script), str(trip_dir)],
+                cwd=temp_dir,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertNotIn("ModuleNotFoundError", completed.stderr)
+        self.assertIn('"checks": []', completed.stdout)
 
     def test_locale_text_never_closes_and_prior_overnight_is_included(self) -> None:
         hours = {

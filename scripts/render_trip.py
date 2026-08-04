@@ -10,7 +10,14 @@ import pathlib
 from datetime import datetime, timedelta, timezone
 from jinja2 import Environment, FileSystemLoader
 
-TEMPLATE_DIR = pathlib.Path(__file__).parent.parent / "template"
+REPO_ROOT = pathlib.Path(__file__).parent.parent
+TEMPLATE_DIR = REPO_ROOT / "template"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from trip_planner.timeline_review import project_timeline_review
+from trip_planner.tripctl import TripctlError, validate_trip, validation_failure
+
 EMOJI_MAP = {
     "flight": "✈️", "hotel": "🏨", "work": "💻",
     "food": "🍜", "spot": "📍", "drink": "☕",
@@ -34,6 +41,16 @@ def load_json_optional(path):
     if path.exists():
         return json.loads(path.read_text())
     return []
+
+
+def timeline_review_context(trip_dir):
+    """Build the template's fixed, aggregate-only timeline review context."""
+
+    try:
+        payload = validate_trip(trip_dir)
+    except TripctlError as error:
+        payload = validation_failure(error)
+    return project_timeline_review(payload).to_dict()
 
 
 def main():
@@ -62,6 +79,7 @@ def main():
     todo = load_json_optional(data_dir / "todo.json")
 
     slug = trip.get("slug", trip_dir.name)
+    timeline_review = timeline_review_context(trip_dir)
 
     # Build map points for Leaflet
     map_points = []
@@ -122,6 +140,7 @@ def main():
         emoji_map=EMOJI_MAP,
         color_map=COLOR_MAP,
         mode_icon=MODE_ICON,
+        timeline_review=timeline_review,
     )
 
     output = trip_dir / "index.html"

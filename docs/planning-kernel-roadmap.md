@@ -10,8 +10,14 @@ exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
 natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
 comparison candidate、Phase 4.5C joint lodging / itinerary recommendation與
 Phase 4.5D host-signed canonical lodging confirmation / apply，以及Phase 4.6A
-read-only readiness projection已完成；真實provider驗收尚待明確授權；下一個
-code slice是Phase 4.6B legacy evidence migration / cleanup preview
+read-only readiness projection與Phase 4.6B legacy evidence / cleanup preview已完成；
+Phase 5 現已有 legacy-only、read-only 的 `tripctl inspect` evidence review 與
+`tripctl validate` deterministic timeline review 起始入口，以及Phase 5.2 static browser
+timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4在其後提供一至
+三張帶來源 badge、需要一次主觀審閱的private direction cards；兩者都只在process memory
+中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement；三者都沒有CLI、
+parser、provider、render或mutation。Phase 6.0 fail-closed public release boundary亦已完成；
+真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
 ## 產品目標
 
@@ -349,6 +355,9 @@ Phase 4.5已完成：
 
 - 單一 `tripctl` CLI；
 - consistent JSON envelope；
+- 私有、無副作用的 future-trip guided draft，先讓 agent 以自然語言收集最小必要資訊；
+- 私有、無副作用的 candidate direction cards，保留來源 badge 與一次主觀取捨；
+- 私有、無副作用的 typed direction preference handoff，只進下一輪細化；
 - inspect / propose / score / validate / apply；
 - 重寫 trip-planner skill，讓 agent 使用 kernel，而不是把 prompt 當規則引擎；
 - 以統一 envelope 呈現 Phase 4.6 readiness profiles；
@@ -380,6 +389,30 @@ Exit gate：
 - public build 不含私人預訂資訊；
 - 未明確要求時不 deploy；
 - 釜山與北海道完整走過 draft → review → travel-ready → private render。
+
+### Phase 6.0 — fail-closed public release boundary
+
+這是 Phase 6 的小型前置切片，不代表整個 Phase 6 已完成。
+
+範圍：
+
+- private legacy renderer 與公開發布來源分離；公開 builder 只讀 `public/`，不讀
+  `trips/`、private HTML、ICS 或 provider cache；
+- `public/trips/{slug}.json` 使用嚴格 allowlist schema，只能表達公開標題、日期標籤、
+  城市與逐日摘要；
+- `public/release.json` 明確 allowlist 每個 public JSON、每個 trip HTML 與首頁 HTML 的
+  exact SHA-256；
+- 無 manifest、digest drift、unsafe regular-file／directory／template source、或非
+  allowlisted artifact 時，在任何 git 或網路動作前 fail closed；
+- private render 保持原樣；不自動 migration、公開既有 trip、呼叫 provider 或變更
+  `gh-pages`。
+
+Exit gate：
+
+- 相同公開來源、模板與 manifest 產出 byte-for-byte 相同的最小 artifact tree；
+- public output 沒有地圖、ICS、訂位、待辦、行李、地址、座標、外部連結或 cache；
+- 使用者只需審閱是否可公開與要求發布；不需手動驗證 private JSON 或 route；
+- 第一次安全替換／下架現有 Pages 仍由使用者另行明確授權。
 
 ## 驗證策略
 
@@ -637,8 +670,9 @@ Exit gate：
 ### 2026-07-28 — Phase 4.2 minimal Places identity 完成
 
 - 新增pure/offline Places identity boundary；trusted EvidenceSnapshot、
-  exact policy、minimal field mask、`pageSize=5`、match scope與既有LKG basis
-  共同綁入request fingerprint，不呼叫HTTP或付費provider。
+  exact policy、minimal field mask（含ephemeral `nextPageToken`以fail closed
+  偵測pagination）、`pageSize=5`、match scope與既有LKG basis共同綁入request
+  fingerprint，不呼叫HTTP或付費provider。
 - Candidate不取第一筆；country、locality、primary type與hard radius先
   fail closed。排序與digest不受response順序影響；pagination截斷、非exact
   token-boundary name、多候選或existing-ID rebind都要求exact human grant。
@@ -756,6 +790,192 @@ Phase 4.6A implementation commit `4368a64`推送至
 `origin/feat/tainan-2026-revival`。此點視為read-only readiness projection的封版
 邊界；後續工作從4.6B另起，不在4.6A內默默擴張provider、confirmation或mutation
 authority。
+
+### 2026-08-02 — Phase 4.6B legacy evidence / cleanup preview 完成
+
+- 新增`preview_legacy_evidence()`與單一只讀CLI
+  `scripts/preview_legacy_evidence.py trips/{slug}`。固定manifest只讀取legacy
+  `trip.json`／`itinerary.json`與已知cache的存在／bounded bytes；不呼叫provider、
+  不建立`FactObservation`、不寫plan或EvidenceStore，也沒有`--migrate`、`--apply`或
+  `--delete`選項。
+- 舊`source=api` travel edge固定列為expired/unknown並回
+  `LEGACY_PROVIDER_EVIDENCE_REFRESH_REQUIRED`；manual與未分類edge分別要求人工
+  classification。place ID與coordinate只輸出aggregate count；不把舊Places profile、
+  hours、coordinates、route value、flight/hotel cache或任何raw cache bytes提升成
+  canonical／evidence。
+- preview私下以legacy fixed-manifest exact bytes綁source revision；legacy source
+  的任何內容、optional cache presence、symlink或nonregular/oversized drift都會使
+  `verify_legacy_evidence_source()` fail closed。公開JSON只含relative artifact
+  metadata、count與digest，不含place ID、地址、座標、價格、URL、token、raw trip ID
+  或source hash。
+- `cleanup_targets`固定為空、`imports=0`。現行legacy與canonical compatibility
+  都仍需要`places_cache.json`；history/current EvidenceStore與未知cache亦只標示
+  review／out-of-scope，沒有任何刪除seam。真正cleanup仍必須由使用者先審閱exact
+  preview後另開受控操作。
+- 三個local legacy trips的只讀acceptance重現65 API／6 manual travel edges、80
+  place IDs、84 coordinate pairs與81 Places cache entries；trip
+  bytes保持不變。新增11個4.6B專項測試，涵蓋分類、redaction、source drift、
+  symlink／oversize、hostile JSON、presence-only out-of-scope artifacts、canonical
+  compatibility、CLI與real-trip inventory；全套635個offline tests、Python compile與
+  三個real-trip validators全過。
+- 下一個需要使用者檢查的邊界是：審閱這份legacy evidence preview，決定是否授權
+  真實provider exit gate或另行定義cleanup；不能藉此preview自動migration或清理。
+
+### 2026-08-02 — Phase 5.0 `tripctl inspect` legacy read-only entry 完成
+
+- 新增單一 `scripts/tripctl.py inspect trips/{slug}` 與可重用的
+  `trip_planner.tripctl` contract。輸出固定、去敏感化 JSON envelope，包含
+  `ok`、`status`、`retryable`、`pending_review_retained`、`next_action`與 aggregate
+  legacy preview；成功只表示 `review_required` 或 `repair_required`，不會宣稱
+  travel-ready、可用 route evidence、migration 或 cleanup authority。
+- inspect 只重用既有 fixed-manifest legacy preview；source 可驗證時才在輸出前重驗，
+  drift 回
+  retryable typed error且不輸出 partial result。原本已不可驗證的 source 則保留
+  aggregate repair problems，回 `repair_required` 而非假 stale。它不呼叫 provider、
+  不開啟會 retention 寫入的 EvidenceStore、不 migration、不 render，也不改動 trip files。
+- 任何 `plan.json`（包括 broken symlink）都優先回
+  `CANONICAL_INSPECT_UNAVAILABLE`；preview 前後都重查，且不 fallback 到相鄰 legacy 資料。canonical
+  readiness 需要 exact trusted snapshot／runtime composition，不能由 disk-only CLI
+  偽造；目前沒有 real canonical trip 作為驗收目標。
+- 新增八個離線 contract tests，涵蓋 redaction、determinism、source drift、unsafe
+  source repair、JSON-only help/version/error envelope、canonical refusal與三個實際
+  legacy trips 的 byte-for-byte 不變性。
+  完整 compile／offline suite／real-trip validators均通過；未呼叫 provider、未修改
+  `trips/`。
+- `inspect` 仍只處理 evidence / cleanup review；後續的 canonical interface 仍必須等
+  canonical trip 與 trusted runtime snapshot 的明確需求出現後，再另行設計 injected-runtime
+  readiness envelope，不在 read-only legacy command 內偷偷加入 store read、provider、
+  proposal 或 mutation authority。
+
+### 2026-08-03 — Phase 5.1 `tripctl validate` legacy timeline review 完成
+
+- 新增 `scripts/tripctl.py validate trips/{slug}` 與可重用的
+  `validate_trip()` contract。它回答的是與七檔 renderer validator 不同的問題：legacy
+  `trip.json` / `itinerary.json` 目前經 deterministic timeline kernel 後有哪些 aggregate
+  blocker；固定 `now=None`，不以牆上時間改變結果。
+- 只讀兩個 fixed source，先以 bounded、`O_NOFOLLOW`、regular-file snapshot copy 載入
+  legacy loader，再跑 pure timeline；不讀取 cache、不呼叫 provider、不開
+  EvidenceStore、不 render、不 migration，也不改動 trip files。公開 envelope 只含
+  timeline status、day/activity/timeline count 與 `(code, severity, affected_count)`，不含
+  title、path、時間、location/activity ID、route/metric 值、evidence ref、details 或原始
+  exception。
+- source 在 snapshot 前後與回傳前都重新比對；任何 drift 都回
+  `STALE_LEGACY_TIMELINE_SOURCE`、retryable 且沒有 partial result。`plan.json`（包括
+  broken symlink）在開始與輸出前都回 `CANONICAL_VALIDATE_UNAVAILABLE`，不 fallback 到
+  相鄰 legacy bytes。source/strict-JSON/loader 問題則是安全的 `repair_required`。
+- 所有成功結果仍是 `review_required`：`timeline_status=feasible` 也不是
+  `travel_ready`，更不能取代 full seven-file `scripts/validate_trip.py`、evidence refresh
+  或 canonical readiness。
+- 新增八個 Phase 5.1 regression cases，覆蓋 deterministic/redacted output、source drift、
+  malformed/unsafe source、redacted loader failure、canonical early/late refusal、JSON-only
+  CLI、三個 real legacy trip acceptance 與 byte-for-byte tree preservation。完整 667 個
+  offline tests、Python compile 與三個 real-trip validators 均通過；未呼叫 provider、
+  未修改 `trips/`。
+- 下一個大段落仍應是有明確 canonical trip / trusted runtime snapshot 需求後的 interface
+  design；不在這個 legacy-only validate 內加入 score、proposal、apply 或任何 mutation。
+
+### 2026-08-03 — Phase 5.2 static browser timeline review entry 完成
+
+- renderer 直接重用 `validate_trip()`，再經一個只出現固定繁中標籤、tone 與 bounded
+  count 的 one-way adapter 傳進 template；template 不接收 raw `tripctl` payload。canonical
+  refusal或驗證失敗一律降級為固定「檢查結果尚不可用」，絕不 fallback legacy。
+- 既有行程頁新增第五個「檢查」tab，`#review` 可直接開啟同一個唯讀面板。它顯示目前
+  status、下一步及 allowlisted aggregate 類別，並明示離線結果不確認即時交通、營業、空位
+  或訂位；沒有寫入按鈕、localStorage、provider call 或新增公開檔案範圍。
+- 新增三個離線 regression cases，覆蓋 hostile input redaction、rejected validation 的固定
+  unavailable state，以及石垣島真實資料在 temporary copy 的 renderer integration；實際
+  Ishigaki render 的 review segment 不含 raw issue token、place ID、coordinates 或 evidence
+  欄位，且三個 `trips/*/data` sources hash 保持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- 完整 670 個 offline tests、Python compile 與三個 real-trip validators 均通過。經使用者
+  明確授權後，已只發布 root index、三個 generated trip HTML 與 ICS 到既有 GitHub Pages
+  `gh-pages`；不提交或修改開發分支，未呼叫 provider。
+
+### 2026-08-03 — Phase 5.3 private guided future-trip draft 完成
+
+- 新增純、process-local 的 `TripBriefDraft`／`assess_guided_draft()` contract。host 從
+  自然語言只抽取已明確說出的目的地、日期、偏好、必去項目、限制、交通與住宿候選；不新增
+  brittle parser、CLI、session persistence、canonical trip、provider call、render 或 deploy。
+- 初始只產生一個最小問題：先缺目的地才問目的地，目的地有了但缺 exact
+  `[start, end)` 日期才問日期。模糊日期只保留private tentative hint，絕不猜成日期；
+  住宿、預算、旅伴、步調與必去項目不阻塞初始候選提案。ready 只表示可開始 proposal，
+  不是 confirmation、booking、route/hours evidence 或 `travel_ready`。
+- 交通只接受既有 binder 產生的 `TransportBoundary`，住宿只接受 `LodgingCandidate`。
+  使用者所說 selected／fixed／booked 仍只留在 `ReportedDecisionClaim`，bound result
+  固定為 `candidate + unverified`；draft review 只投影住宿 status／safe action token與
+  aggregate count。目的地、日期 hint、偏好、私人住宿位置／價格／URL、transport time、
+  source ref、provider ID與candidate ID不會出現在 repr 或 safe transcript。
+- `GuidedDraftReview` 以 private token 拒絕一般 direct construction 或
+  `dataclasses.replace` 的意外破壞，保護 safe transcript 的使用方式；它不是授權或安全
+  邊界，任何未來寫入仍必須走獨立 trusted host gate。新增12個專項回歸，涵蓋最小追問、模糊日期、
+  candidate/unverified claim、住宿衝突、redaction、order invariance、duplicate rejection、
+  no-I/O import boundary與forged review refusal。完整691個offline tests、Python compile
+  與三個real-trip validators通過；`trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+
+### 2026-08-03 — Phase 5.4 private guided direction-card review 完成
+
+- 新增純、process-local 的 `GuidedDirectionCard`／`GuidedOutlineLine`／
+  `assess_guided_proposal()` contract。ready brief 可有一至三張候選方向卡，但沒有選定、
+  排名、apply、canonical trip、CLI、provider、render或deploy path。
+- line 的 `outline_slot` 僅表示相對構想的順序／分組，與住宿夜數或calendar day無關；
+  schema 不建模或驗證日期、時間、duration、route、place identity、price或availability。
+  私有自由文字仍可能提到這些未驗證 claim，因此 host 顯示卡片時必須逐行標示
+  `user_stated`／`tentative`／`ai_candidate`，固定顯示「候選方向尚未確認營業、交通、空位或價格。」
+  並只問一次 A／B／混合／交給我調整的主觀問題。
+- AI suggestion 不可宣稱 user must-do coverage；每張卡都只能由 user-stated line 對
+  user-stated must-do 進行 declared coverage，缺項時保留 agent refinement，而不是把問題
+  偷渡給使用者。所有 line 固定是 `candidate + unverified`；safe review / repr不含 card
+  title、rationale、reference、日期或使用者原文。
+- `REVIEW_REQUIRED` 明確要求使用者回應／決定，但其結果本身不是 authorization；review 的
+  private token 只防一般誤用，不構成安全邊界，未來寫入仍需獨立 trusted host gate。
+- 只有 `REVIEW_REQUIRED` 可向使用者顯示 raw cards 與固定 disclosure；
+  `NEEDS_REFINEMENT` 必須先在私有層補齊 user-stated must-do 的 declared coverage，不能顯示
+  不完整卡片或要求 A／B 取捨。完整701個offline tests、Python compile 與三個real-trip
+  validators通過；`trips/` source working tree 維持未變。
+
+### 2026-08-03 — Phase 5.5 private guided direction-preference handoff 完成
+
+- 新增 `capture_guided_direction_preference()`／`GuidedDirectionPreference`／
+  `assess_guided_direction_preference()`：host 只在 current `REVIEW_REQUIRED` cards 上擷取
+  明確的 `prefer_one`、`mix` 或 `request_refinement` 回覆。它不是 brittle NLP parser；
+  含糊回覆保留既有的一題主觀問題。
+- handoff 每次重新評估 brief 與 cards；未完成目的地／日期 blocker、缺 user-stated
+  must-do coverage、unknown card ref 或不合法數量都 fail closed。capture 私有地綁定 exact
+  brief 與 canonical card contents，之後的 content／brief drift 都拒絕舊回覆；此 binding
+  只防 stale／mismatch，不構成 authorization。card refs 只在當前 process-local card set
+  有效；cards 重新生成後必須重新展示與重新擷取偏好。
+- safe transcript／repr只含 preference mode、aggregate card count與下一步，不含 card ref、
+  title、rationale、使用者原文、日期或位置。偏好及原方向卡持續是
+  `candidate + unverified`，不會建立 trip、選定景點、呼叫 provider、render、CLI、
+  `PlanPatch`或任何 canonical write。
+- 完整711個offline tests、Python compile與三個real-trip validators均通過；
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+  未呼叫provider、未render、未deploy、未修改`trips/`。
+
+### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
+
+- 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only
+  build / prepare scripts。公開來源只能放在 `public/trips/{slug}.json`；strict schema
+  不接受地址、座標、URL、地圖、reservation、price、cache 或任意欄位。private legacy
+  renderer、`build_index.py` 與 `trips/` 流程保持私有，公開 builder 不讀它們。
+- `prepare_public_release.py` 對一個以上 slug 只印出 no-write 的完整候選 manifest；
+  `release.json` 綁 exact public JSON、trip HTML 與首頁 HTML digest。build 會拒絕
+  source／template／排序漂移、symbolic link、hard link、unsafe source、空白或額外 artifact，
+  並只生成首頁、每趟摘要頁與 artifact manifest。
+- `deploy.sh` 不再 render private trips、複製 ICS 或重建 private index。沒有
+  `public/release.json` 時，在 temporary build、git init 或任何網路動作前拒絕；它仍只在
+  使用者明確要求發布時可執行。
+- 新增九個 offline regression cases，覆蓋 deterministic exact artifacts、private sentinel
+  exclusion、HTML escaping、strict JSON、source／trip-template／index-template／ordering drift、
+  source/template symlink、source hard link、兩個 directory-swap race 與 deploy early refusal。
+  完整 679 個 offline tests、Python compile 與三個 real-trip validators 均通過；
+  `trips/*/data` aggregate hash 仍是
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- 此變更沒有建立任何真實公開 trip 或 manifest、沒有呼叫 provider、沒有 deploy、沒有修改
+  `trips/`。它不會回溯替換或移除既有 `gh-pages`；第一次安全發布仍需使用者審閱公開內容
+  並另行要求外部動作。
 
 ### 2026-07-30 — Phase 4.5 product acceptance gate 完成
 

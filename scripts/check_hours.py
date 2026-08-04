@@ -24,8 +24,6 @@ from datetime import datetime, time as local_time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from trip_planner.opening_hours import evaluate_opening_window
-
 if __package__:
     from .plan_compat import (
         load_trip_views,
@@ -36,6 +34,8 @@ else:
         load_trip_views,
         resolve_ordered_local_datetimes,
     )
+
+from trip_planner.opening_hours import evaluate_opening_window
 
 OUTDOOR_TYPES = {
     "street", "park", "neighborhood", "natural_feature", "bridge",

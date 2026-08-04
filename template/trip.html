@@ -194,6 +194,27 @@ a.place:active{background:#e3edfa}
 .cw-tbl th,.cw-tbl td{padding:5px 7px;text-align:left;border-bottom:1px solid #eee;vertical-align:top}
 .cw-tbl th{background:#e8f0fe;font-weight:600;color:#1a5276;white-space:nowrap}
 
+/* Read-only timeline review */
+#review{display:none;padding:16px 12px 30px}
+#review.active{display:block}
+.review-hero{background:#fff;border:1px solid #d9e6f2;border-radius:12px;padding:18px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.review-hero.needs_verification{border-left:5px solid #e67e22}
+.review-hero.infeasible,.review-hero.repair_required{border-left:5px solid #d35400}
+.review-hero.feasible{border-left:5px solid #27ae60}
+.review-hero.unavailable{border-left:5px solid #95a5a6}
+.review-kicker{font-size:12px;font-weight:600;color:#1a5276;letter-spacing:.04em;margin-bottom:6px}
+.review-hero h2{font-size:18px;line-height:1.35;color:#234;letter-spacing:.01em}
+.review-hero p{font-size:13px;line-height:1.7;color:#555;margin-top:8px}
+.review-card{background:#fff;border-radius:10px;padding:15px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.review-card h3{font-size:14px;font-weight:600;color:#1a5276;margin-bottom:8px}
+.review-card p{font-size:13px;line-height:1.7;color:#555}
+.review-list{list-style:none}
+.review-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #edf0f2;font-size:13px;color:#333}
+.review-item:first-child{border-top:none;padding-top:0}
+.review-item:last-child{padding-bottom:0}
+.review-count{flex-shrink:0;color:#a15c00;background:#fff2df;border-radius:999px;padding:3px 8px;font-size:12px;font-variant-numeric:tabular-nums}
+.review-note{font-size:12px;line-height:1.65;color:#7b8790;padding:2px 4px}
+
 /* Floating notes button */
 .notes-fab{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#1a5276,#2e86c1);color:#fff;border:none;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:300;display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s}
 .notes-fab:hover{transform:scale(1.08);box-shadow:0 6px 16px rgba(0,0,0,.3)}
@@ -230,6 +251,7 @@ a.place:active{background:#e3edfa}
   <button class="tab-btn active" onclick="sw('itin',this)">行程</button>
   <button class="tab-btn" onclick="sw('map-panel',this)">地圖</button>
   <button class="tab-btn" onclick="sw('checklist',this)">清單</button>
+  <button class="tab-btn" data-panel="review" onclick="sw('review',this)">檢查</button>
   <button class="tab-btn" onclick="sw('info',this)">實用資訊</button>
 </div>
 </div><!-- /sticky-header -->
@@ -340,6 +362,36 @@ a.place:active{background:#e3edfa}
   <div class="cl-sec" id="cl-packing"></div>
 </div>
 
+<!-- ==================== 行程檢查 TAB ==================== -->
+<div id="review">
+  <section class="review-hero {{ timeline_review.state }}">
+    <div class="review-kicker">行程檢查 · {{ timeline_review.status_label }}</div>
+    <h2>{{ timeline_review.headline }}</h2>
+    <p>{{ timeline_review.description }}</p>
+  </section>
+
+  <section class="review-card">
+    <h3>下一步</h3>
+    <p>{{ timeline_review.next_step }}</p>
+  </section>
+
+  {% if timeline_review["items"] %}
+  <section class="review-card">
+    <h3>需要處理的項目</h3>
+    <ul class="review-list">
+      {% for item in timeline_review["items"] %}
+      <li class="review-item review-{{ item.tone }}">
+        <span>{{ item.label }}</span>
+        <span class="review-count">{{ item.affected_count }} 項</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <p class="review-note">此頁為產生頁面時的離線檢查摘要；不會確認即時交通、營業、空位或訂位。更新資料後請重新產生頁面。</p>
+</div>
+
 <!-- ==================== 實用資訊 TAB ==================== -->
 <div id="info">
 <div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;gap:12px;overflow:hidden">
@@ -403,10 +455,17 @@ a.place:active{background:#e3edfa}
 function sw(id,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['itin','map-panel','checklist','info'].forEach(p=>document.getElementById(p).classList.remove('active'));
+  ['itin','map-panel','checklist','review','info'].forEach(p=>document.getElementById(p).classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if(id==='map-panel'&&!mapReady)initMap();
 }
+
+// Direct review links open the same read-only tab without changing page data.
+(function(){
+  if(window.location.hash!=='#review')return;
+  var reviewBtn=document.querySelector('[data-panel="review"]');
+  if(reviewBtn)sw('review',reviewBtn);
+})();
 
 // ===== Notes =====
 const NOTES_KEY='trip-plan:{{ slug }}:notes';

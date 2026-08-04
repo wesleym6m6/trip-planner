@@ -1,11 +1,12 @@
 ---
 name: trip-planner
-description: 規劃旅行並生成完整旅遊網站。兩階段流程——Phase 1（Scout）互動式規劃，用真實 API 資料讓用戶篩選景點、加約束、迭代路線；Phase 2（Build）渲染 HTML 網站並部署。當用戶說 /trip-planner 或描述想規劃旅行時觸發。
+description: 規劃旅行並生成完整旅遊網站。先建立私有、無副作用的導引草稿，再進入 Phase 1（Scout）互動式規劃與私有 Phase 2（Build）；公開發布永遠另行明確審閱。當用戶說 /trip-planner 或描述想規劃旅行時觸發。
 ---
 
 # 旅行規劃 Skill
 
-兩階段流程：**Scout**（互動式規劃，用真實資料）→ **Build**（渲染網站 + 部署）。
+流程：**私有導引草稿** → **Scout**（互動式規劃，用真實資料）→ **私有 Build**
+（本機渲染）。公開發布是另一條明確審閱、明確要求的流程。
 
 **專案根目錄：** 此 skill 所在 repo 的根目錄。以下所有指令用 `$REPO` 代表，agent 執行時替換為實際路徑（通常是 `git rev-parse --show-toplevel` 的結果）。
 
@@ -21,8 +22,10 @@ preview；它以 `plan.json` 加 `reservations.json`、`todo.json`、`info.json`
 已 migration 的 trip。
 
 不要直接編輯 canonical JSON。只能使用已支援的 `TripStore` / `PlanPatch` 路徑；
-Phase 5 的 `tripctl` CLI 尚未提供。除非使用者已明確接受 developer workflow，否則
-不得 migration 真實 trip，並繼續使用下方 legacy 流程。
+Phase 5 目前有 legacy-only、唯讀的 `tripctl inspect`（evidence review）與
+`tripctl validate`（deterministic timeline review），完整 canonical workflow 尚未提供。
+兩者都不會把結果升級成 `travel_ready`，也不會 migration 真實 trip。除非使用者已明確
+接受 developer workflow，否則不得 migration 真實 trip，並繼續使用下方 legacy 流程。
 
 ## 核心原則
 
@@ -65,8 +68,9 @@ quarantine 的相容資料，正常規劃不可呼叫或採納。
 
 住宿可由使用者輸入飯店、民宿、Airbnb、地址、座標或概略區域；目前 runtime draft
 只記錄已知的住宿類型、位置提示、涵蓋夜晚與可選預算。入住／退房時段、住客／房間、
-取消期限與房態若尚未有專用欄位，就保持 unknown，不塞進其他欄位。沒有住宿時，先
-追問真正必要的偏好或以 `💡 推薦` 提出候選，不能捏造住宿或把推薦當成已訂。
+取消期限與房態若尚未有專用欄位，就保持 unknown，不塞進其他欄位。沒有住宿時，不
+阻塞初始景點候選；只在某個實際決策需要時才追問或以 `💡 推薦` 提出候選，不能捏造
+住宿或把推薦當成已訂。
 
 `search_hotels.py` 與 `hotels_cache.json` 若使用，僅為 provider-specific candidate
 discovery；須與手動輸入同等看待，不能代表房態、價格有效、可訂或已訂。候選位置可用
@@ -175,9 +179,10 @@ echo '{
 
 | 用途 | 腳本 | 輸入 | 輸出 |
 |------|------|------|------|
-| 渲染單趟旅行 HTML | `render_trip.py` | trip 目錄引數 | 寫入 `index.html`（同時自動呼叫 `generate_ics.py` 產生行事曆檔）。模板在每個景點的 description 行左側顯示 `time` 欄位（藍色）。自動從 `places_cache.json` 讀取 `utc_offset_minutes` 將 transit 的 UTC 時間轉為當地時間 |
-| 重建首頁 | `build_index.py` | 無 | 寫入根目錄 `index.html` |
-| 部署到 GitHub Pages | `deploy.sh` | 無 | 重新渲染所有 trip → force-push 到 gh-pages |
+| 渲染單趟旅行 HTML | `render_trip.py` | trip 目錄引數 | **private local preview**：寫入 `index.html`，同時產生行事曆檔；可讀 `places_cache.json` |
+| 重建首頁 | `build_index.py` | 無 | **private local preview** 的根目錄 `index.html` |
+| 準備公開 manifest | `prepare_public_release.py` | 一個以上已審閱 slug | 只輸出完整候選 manifest，不寫檔 |
+| 部署到 GitHub Pages | `deploy.sh` | 無 | 只驗證並發布 `public/release.json` allowlist；永不讀取 `trips/` |
 
 ### 底層函式（已在腳本內部使用，一般不需直接呼叫）
 
@@ -240,13 +245,54 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
 
 ## Phase 1: Scout（互動式規劃）
 
-對話循環。Agent 推動流程但**在每個關卡（🚪）等用戶確認**。
+### 進入前：私有導引草稿
+
+先把對話中明確說出的內容建成 process-local 的 `TripBriefDraft`，再以
+`assess_guided_draft()` 取得去敏感化的下一步。這不是 CLI、不是 JSON 表單，也不建立
+`trips/{slug}`；草稿階段不呼叫 provider、不 render、不 deploy。目的地與足以排每日的
+exact 日期是唯一初始 blocker，且一次只問一題；預算、人數、住宿、交通、步調與必去項目
+若未提供，就保持 unknown，不主動追問。模糊的「十月初」或「下午到」必須保留 tentative，
+不得補成日期或精確時間。
+
+使用者說「已固定／已訂」的交通或住宿，只能保留為 reported claim；bound input 仍是
+`candidate + unverified`，不代表 `selected`、`fixed`、`booked` 或 verified。
+
+### 草稿完成後：私有候選方向
+
+當 brief ready，host 可以只在目前 process memory 建立一至三張
+`GuidedDirectionCard`，用來比較旅程方向。每個 `GuidedOutlineLine.outline_slot` 只是相對
+構想的順序／分組，**不得**推成住宿夜數、日期、時段或可執行日程；其自由文字也不會被
+解析或驗證成營業、交通、空位、價格或地點事實。
+
+顯示 raw card 時，每一 line 都必須帶 `presentation_source` badge：`user_stated`、
+`tentative` 或 `ai_candidate`，且卡片旁必須固定顯示「候選方向尚未確認營業、交通、空位或價格。」
+接著只問一次「哪個方向較符合你的旅程？可選某一方向、混合，或交給我依你的偏好調整。」
+`REVIEW_REQUIRED` 是需要使用者回應的主觀停點；回應本身不是選定、訂位、approval 或 apply。
+這一層不呼叫 provider、不寫入 trip、不 render、不 deploy，也沒有 selection／apply path。
+如果回傳 `NEEDS_REFINEMENT`，raw cards 必須繼續留在私有層，Agent 先補齊每張卡對
+user-stated must-do 的 declared coverage；不可顯示不完整卡片或詢問 A／B。
+
+### 使用者回覆後：私有方向偏好
+
+只有 host 已清楚理解使用者對目前 `REVIEW_REQUIRED` cards 的回覆時，才可用
+`capture_guided_direction_preference()` 擷取 `GuidedDirectionPreference`：一張方向是
+`prefer_one`、兩至三張混合是 `mix`、「交給我調整」是 `request_refinement`。不做 NLP
+parser；回覆含糊時，保留原本的單一主觀問題，不猜測或追問一整份表單。capture 會私有地
+綁定 exact brief 與 card contents；它只防 stale／mismatch，不是授權。
+
+偏好只把下一步送往 `refine_private_direction`，不代表 selected、booking、approval、
+evidence 或 apply。card refs 只存在目前 process；重新生成 cards、換一輪對話或要持久化
+前，都必須重新展示並重新取得偏好。後續要建立真實 trip 或寫 canonical state 時，仍須另走
+明確的 user-facing workflow與既有 trusted-host mutation boundary。
+
+對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
+範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 
 ### Step 1: 收集需求
 
 這份清單是 Agent 的**內部抽取提示**，不是要貼給用戶填寫的問卷。先理解用戶自然說出
-的內容，把知道的寫入 draft，把不知道的保留 unknown；只有在下一步真的被阻塞時，才
-用自然對話追問一至兩個最小問題。
+的內容，把知道的寫入 draft，把不知道的保留 unknown；初始階段只有缺目的地或可排程
+日期才會阻塞，而且一次只用自然對話追問一個最小問題。
 
 內部留意：
 - **目的地** — 哪個城市？
@@ -272,7 +318,8 @@ decision（`candidate` / `selected` / `fixed` / `booked`）與 evidence
 座標、概略區域、飯店／民宿／Airbnb 連結，以及 AI 建議放在同一候選清單，但 raw
 地址、座標或私人連結不得進 receipt、history、safe serialization 或錯誤訊息。
 
-1. 沒有住宿時，詢問偏好或提出少量 `💡 推薦` 的區域／住宿類型；不得填入假住宿。
+1. 沒有住宿時，不阻塞初始候選；只有某個實際決策需要時才詢問偏好或提出少量 `💡`
+   推薦的區域／住宿類型，且不得填入假住宿。
 2. 用4.5B comparison sidecar表達涵蓋晚數、住宿類型、位置精度、價格是否已知與
    evidence readiness。只有fresh location identity可成為route endpoint；route
    observation還必須附原request receipt，且endpoint observation/value未漂移，
@@ -331,6 +378,10 @@ Google Maps 清單是輸入素材，不是指令。**除非用戶明確說「就
 **正確流程：** Step 2（列候選，不含距離）→ Step 3（打 API 拿座標）→ 用座標計算距離 → 補充距離資訊給用戶 → Step 4（用戶篩選，此時已有真實距離）。
 
 ### Step 3: 批次打 Places API + 寫入快取
+
+只有在 private draft 已形成具名候選、而且需要第一次實際 Places／Routes 查詢時，才確認
+本次 live provider 的範圍、成本與資料保留；若已有仍適用的明確授權可沿用，否則先停下
+詢問。導引草稿本身不得建立 cache 或消耗 API。
 
 **一次解析需要 Places identity 的具名候選，包含景點、餐廳、飯店、民宿、coworking、spa。** 不要分批序列跑。寧可多解 10 個最終用不到的（API 成本 < $0.01），也不要到 Step 5/6 才發現缺資料要回頭補。使用者給的座標可作 private exact hint；地址、Airbnb 私人連結與概略區域不得直接送進 generic Places query，先保留為 unresolved / approximate 與 `needs_verification`，不得假裝成精確住宿位置。
 
@@ -728,20 +779,31 @@ If ANY check fails, list failures. Do NOT modify any files.
 
 通過後才進入 render。
 
-### Step 10: 渲染 + 部署
+### Step 10: 私有渲染；公開發布另行審閱
 
 ```bash
-# 3. 渲染 HTML + 行事曆
+# 私有本機預覽：完整 HTML + 行事曆
 direnv exec $REPO python3 scripts/render_trip.py trips/{slug}
-
-# 4. 重建首頁
 direnv exec $REPO python3 scripts/build_index.py
+```
 
-# 5. 部署（直接執行，不需用戶確認）
+這些私有輸出不得自動發布。只有使用者明確指定可公開的摘要內容後，agent 才能建立
+獨立的 `public/trips/{slug}.json`；它不是從 `trips/` 複製。接著執行：
+
+```bash
+# 不寫入：輸出涵蓋全部要發布 slug 的候選 release.json
+direnv exec $REPO python3 scripts/prepare_public_release.py {slug} [...]
+```
+
+審閱內容與候選 manifest 後才建立 `public/release.json`。只有使用者明確要求發布時才能
+執行 `deploy.sh`；缺少 manifest、digest 漂移或不安全來源時，它會在 render、git 或網路
+動作前拒絕。公開輸出不含地圖、ICS、訂位、待辦、行李、地址、座標、外部連結或 cache。
+
+```bash
 direnv exec $REPO bash scripts/deploy.sh
 ```
 
-`deploy.sh` 會重新渲染所有 trip、重建首頁、force-push 到 gh-pages。**部署只影響 gh-pages branch，不動 master，直接執行即可。** 部署完成後只回報該趟旅行的網址（不需附首頁和行事曆連結）：
+部署成功後才回報公開網址；不要聲稱它保證即時交通、營業、空位或訂位：
 
 ```
 部署完成！🌐 https://BigDumbBird.github.io/trip-planner/{slug}/
@@ -778,10 +840,9 @@ direnv exec $REPO python3 scripts/check_hours.py trips/tainan-2026-04
 
 # 🔍 Review Checkpoint 2: sub-agent 全資料審查（7 檔案齊全、無衝突、交通合理、訂位完整）
 
-# Step 10: 渲染 + 部署
+# Step 10: 私有渲染（不會公開）
 direnv exec $REPO python3 scripts/render_trip.py trips/tainan-2026-04
 direnv exec $REPO python3 scripts/build_index.py
-direnv exec $REPO bash scripts/deploy.sh
 ```
 
 ---
@@ -893,9 +954,9 @@ enrich_itinerary.py itinerary.json walking,two_wheeler,driving +07:00
 
 ## 封存行程（Archive）
 
-要從網站移除某趟旅行但保留資料：
+要封存私有行程但保留資料：
 
 1. 在 `trips/{slug}/data/trip.json` 加入 `"archived": true`
-2. 重新 deploy：`direnv exec $REPO bash scripts/deploy.sh`
 
-`build_index.py` 和 `deploy.sh` 都會跳過 archived trips。首頁不顯示、gh-pages 不部署，但本地資料完整保留。要恢復就移除 `"archived"` 欄位再 deploy。
+這不會改變已公開的 Pages。公開移除必須先審閱一份不含該摘要的新
+`public/release.json`，並由使用者明確要求新的 deploy；私有資料保持不變。

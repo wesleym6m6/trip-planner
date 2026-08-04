@@ -5,7 +5,7 @@
 1. `README.md` 看專案用途與資料結構。
 2. Codex 應優先使用已安裝的 `trip-planner` skill；詳細 workflow 在 `~/.codex/skills/trip-planner/SKILL.md`。
 3. 需要 script schema 或 edge cases 時再讀 `skill/trip-planner.md`。
-4. `trips/` 是 local-only trip data，通常被 `.gitignore` 忽略，但 deploy 會讀它產生 GitHub Pages HTML。
+4. `trips/` 是 local-only trip data，通常被 `.gitignore` 忽略。private renderer 可讀它做本機預覽；公開 deploy 永不讀它，只讀明確核准的 `public/release.json` 與 `public/trips/`。
 
 ## 目前狀態
 
@@ -27,7 +27,7 @@ bash scripts/check.sh
 ## 工作邊界
 
 - 不要刪除或覆蓋 local trip data，除非使用者明確要求。
-- 不要執行 `scripts/deploy.sh`，除非任務是部署；部署會根據 local trips 產出並推到 GitHub Pages。
+- 不要執行 `scripts/deploy.sh`，除非使用者明確要求發布已審閱的公開摘要；它會驗證 `public/release.json` 後 force-push 僅含 allowlisted public artifacts 的 GitHub Pages。
 - 不要臆測交通時間、營業時間或價格；沒有來源時標成待確認。
 - 目前 worktree 可能有使用者自己的 `.envrc.example` 變更；非任務需要不要碰。
 

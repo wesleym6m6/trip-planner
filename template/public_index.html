@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trip Planner</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7fa;color:#21313f;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{max-width:720px;margin:0 auto;padding:44px 18px 64px}
+    h1{font-size:28px;margin:0;color:#1a5276}
+    .intro{color:#61717e;line-height:1.65;margin:10px 0 28px}
+    .trips{display:grid;gap:12px}
+    .trip{display:block;padding:18px;background:#fff;border:1px solid #dce6ee;border-radius:12px;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+    .trip:hover{border-color:#2e86c1}
+    .trip h2{font-size:18px;margin:0;color:#1a5276}
+    .trip p{font-size:13px;margin:8px 0 0;color:#61717e;line-height:1.55}
+    .cities{font-size:12px;color:#2e86c1;margin-top:8px}
+    .empty{background:#fff;border:1px dashed #b9c8d4;border-radius:12px;padding:20px;color:#61717e}
+    footer{font-size:12px;color:#7b8790;margin-top:28px;line-height:1.6}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Trip Planner</h1>
+    <p class="intro">此頁僅包含已明確審閱並核准公開的行程摘要。</p>
+    {% if trips %}
+    <div class="trips">
+      {% for trip in trips %}
+      <a class="trip" href="{{ trip.slug }}/">
+        <h2>{{ trip.title }}</h2>
+        <p>{{ trip.date_label }}</p>
+        <div class="cities">{{ trip.cities | join(" · ") }}</div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">目前沒有公開行程。</p>
+    {% endif %}
+    <footer>公開頁不含訂位、待辦、行李、地圖、座標、外部連結或日曆檔。</footer>
+  </main>
+</body>
+</html>

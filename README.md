@@ -1,6 +1,7 @@
 # Trip Planner
 
-用 Claude Code + Google Maps API 規劃旅行，自動生成靜態網站部署到 GitHub Pages。
+用 Claude Code + Google Maps API 規劃旅行。完整行程可在本機產生私有預覽；若要
+發布到 GitHub Pages，則只會發布經明確審閱的精簡公開摘要。
 
 AI-native 自動排程的分階段改造、架構決策與驗收門檻記錄在
 [`docs/planning-kernel-roadmap.md`](docs/planning-kernel-roadmap.md)；canonical
@@ -15,10 +16,10 @@ static policy、memory/disk evidence分流、雙時鐘與promotion gate記錄在
 
 ## 功能
 
-- **自然語言互動式規劃** — AI 先理解固定交通、住宿偏好與景點需求，再提出可比較的行程
+- **自然語言互動式規劃** — AI 先把已知需求形成私有、無副作用草稿，不需手寫 JSON，再提出可比較的行程
 - **真實資料驅動** — Google Places API 營業時間 + Routes API 交通時間
-- **自動生成網站** — 行程表、地圖、行事曆下載、訂位清單、行李清單
-- **GitHub Pages 部署** — 一鍵部署，手機隨時查看
+- **私有本機預覽** — 行程表、地圖、行事曆下載、訂位清單、行李清單
+- **受控公開發布** — 明確審閱後才發布精簡行程摘要到 GitHub Pages
 
 ## Setup
 
@@ -65,6 +66,26 @@ cp skill/trip-planner.md ~/.claude/skills/trip-planner/SKILL.md
 
 到你 fork 的 repo → Settings → Pages → Source 選 `gh-pages` branch。
 
+### 公開發布護欄
+
+`trips/{slug}/data/` 是 private/local-only。`render_trip.py` 與 `build_index.py` 仍可用於
+完整的**本機私有預覽**，但公開 builder 永遠不讀取它們，也不會從既有行程自動搬資料。
+
+要公開某趟旅行時，先由使用者明確說明哪些摘要可以公開；agent 才建立最小的
+`public/trips/{slug}.json`。使用者不需要手寫 JSON，也不應把訂位、待辦、行李、地址、
+座標、地圖連結、provider cache 或 ICS 塞進公開摘要。接著：
+
+1. `python3 scripts/prepare_public_release.py {slug} [...]` 只印出完整候選
+   `release.json`（包含來源與每個 HTML、首頁的 digest），不寫入任何檔案。
+2. 審閱公開內容與候選 manifest 後，才建立精確的 `public/release.json`。
+3. 使用者明確要求發布時才執行 `bash scripts/deploy.sh`。沒有 manifest、來源／模板／
+   HTML digest 漂移或不安全檔案時，腳本會在 render、git 或網路動作前拒絕。
+
+公開輸出只有首頁、每趟公開摘要頁與 artifact manifest；不含地圖、ICS、訂位、待辦、
+行李、地址、座標、外部連結或 provider cache。digest 只能綁定已審閱的內容，不能判斷
+文字本身是否適合公開，因此公開內容仍需要使用者確認。這個新邊界不會追溯清除目前
+已部署的 Pages；第一次安全替換或下架仍是另一個明確的發布操作。
+
 ## 使用
 
 在 Claude Code 裡輸入 `/trip-planner` 開始規劃，或直接描述你的旅行需求。
@@ -77,8 +98,10 @@ cp skill/trip-planner.md ~/.claude/skills/trip-planner/SKILL.md
 preview：它以 `plan.json` 加五個 sidecar（後五個檔案）取代前兩個檔案；現有
 renderer、validator 與部分讀取工具可相容讀取，但 legacy writer 會刻意拒絕修改
 已 migration 的 trip。不要直接編輯 canonical JSON；只能經已支援的 `TripStore` /
-`PlanPatch` 路徑操作。Phase 5 的 `tripctl` CLI 尚未提供，除非已明確接受 developer
-workflow，否則不要 migration 真實 trip。
+`PlanPatch` 路徑操作。目前 Phase 5 的 `tripctl inspect` 與 `tripctl validate` 仍是
+legacy-only、唯讀入口；私有導引草稿不是 `tripctl` CLI，也不建立或修改 trip。完整
+canonical workflow 尚未提供。除非已明確接受 developer workflow，否則不要 migration
+真實 trip。
 
 Phase 4.4 的 Places profile / opening-hours runtime目前也是developer
 boundary：核心只有injected transport，沒有內建credential或live CLI。
@@ -96,6 +119,27 @@ draft，沒有提到的內容保持 unknown。機票、渡輪、鐵路等只接�
 Phase 4.5A 的公開 binding 一律是 candidate + unverified。使用者若清楚說「選這間」
 或「已訂」，AI 會保留成附 opaque source reference 的 reported decision claim，
 不會遺失語意，也不會把 claim 冒充成權威 selected / fixed / booked。
+
+Phase 5.3 的 `TripBriefDraft` 是進入新旅行的私有、process-local 導引草稿：agent 從
+自然語言只抽取明確說過的需求，未知保持 unknown；不寫入 `trips/`、不要求使用者處理
+JSON、不呼叫 API、不 render 或 deploy。初始只在缺目的地、或缺足以排每日的 exact 日期
+時各問一題；其他偏好與住宿可留到真的需要決策時。使用者所稱「固定」只保留為其陳述，
+仍不構成 verified evidence 或權威 booking／decision。
+
+Phase 5.4 在草稿 ready 後只建立一至三張私有候選方向卡，讓使用者在真正需要時選擇
+「某一方向／混合／交給我調整」。每一 line 是相對的構想順序，不會映射成日期或時間表；
+卡片的自由文字也不會被當作已驗證的交通、營業、空位或價格。Host 必須逐行標示
+`user_stated`、`tentative` 或 `ai_candidate`，並顯示「候選方向尚未確認營業、交通、空位或價格。」
+再提出這唯一的主觀問題。這仍不會選定、套用、建立行程、呼叫 API、render 或 deploy。
+若任一方向未涵蓋使用者明確必去項目，Agent 會先在私有層補強，不能顯示卡片或把補強工作
+交給使用者。
+
+Phase 5.5 把使用者的明確回覆接回下一輪私有細化：選一張是 `prefer_one`、混合是 `mix`、
+「交給我調整」是 `request_refinement`。它只接受目前已完成審閱的卡片組；不清楚的回覆就
+維持原本的主觀問題，不用脆弱 parser 猜答案。卡片重新生成後必須重新展示、重新收集偏好。
+擷取時會私有地綁定 exact brief 與 card contents，換卡或需求變動會拒絕舊回覆；這只是
+staleness guard，不是授權。這份偏好仍只是 `candidate + unverified` 的工作方向，不能建立
+trip、選定景點、套用變更或取代既有的受控 canonical mutation／確認流程。
 
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
@@ -152,6 +196,91 @@ retention 兩者較早者；尚待確認住宿會另以 review 到期時間要�
 只有仍有效的 waiting lodging review 會要求 `confirm_lodging`；過期、被拒絕或
 綁錯行程版本的 review 會要求 `restage_lodging_review`。
 
+Phase 4.6B 提供 legacy evidence / cleanup 的**只讀 preview**，用於正式migration或
+合規清理前的使用者審閱：
+
+```bash
+.venv/bin/python scripts/preview_legacy_evidence.py trips/{slug}
+```
+
+它只輸出去敏感化的aggregate分類：舊 `source=api` route 一律是需刷新、manual
+route待使用者分類、Places／flight／hotel cache一律quarantine。輸出固定
+`imports=0`、`cleanup_targets=[]`；沒有`--migrate`、`--apply`或`--delete`，不會
+呼叫provider、寫入plan/EvidenceStore、render或修改`trips/`。目前legacy與canonical
+相容層仍需要`places_cache.json`，所以即使preview存在也不可自行清理cache。任何真實
+provider驗收或破壞性cleanup都必須在你審閱exact preview後另行明確授權。
+
+Phase 5 目前有兩個 legacy-only 的唯讀統一入口：
+
+```bash
+.venv/bin/python scripts/tripctl.py inspect trips/{slug}
+.venv/bin/python scripts/tripctl.py validate trips/{slug}
+```
+
+`inspect` 輸出固定、去敏感化的 JSON envelope，包住同一份 legacy evidence preview；成功只
+表示「可供審閱」，絕不代表 `travel_ready`、可信 route evidence、migration 或 cleanup
+授權。它不呼叫 provider、不開啟可能因 retention 寫入的 EvidenceStore、不 render、也不修改
+`trips/`。若 legacy source 本身缺檔或不安全，inspect 仍會安全輸出既有 aggregate repair
+problems，但狀態會是 `repair_required`，不會把它誤報成可重試的新 stale preview。
+
+`validate` 是另一個問題：它只將 `trip.json` 與 `itinerary.json` 以 bounded、no-follow 的
+temporary snapshot 載入 deterministic timeline kernel（固定 `now=None`），只輸出
+timeline status、issue token/severity/count 與安全 aggregate count。它不讀取 cache、不呼叫
+provider、不寫入 trip，也不取代 `scripts/validate_trip.py` 對完整七檔 renderer 契約的
+結構檢查；成功一樣只是 `review_required`，不是 `travel_ready`。兩個入口遇到任何
+`plan.json`（包括 broken symlink）都不會 fallback 到相鄰 legacy 檔案：`inspect` 回
+`CANONICAL_INSPECT_UNAVAILABLE`，`validate` 回 `CANONICAL_VALIDATE_UNAVAILABLE`。canonical
+readiness 仍必須等安全 reader 與 exact runtime evidence snapshot contract 後另行加入。
+
+已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
+`#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，
+不嵌入 raw issue token、地點、時間、ID、evidence 或 provider 資料；顯示「可行」
+也不代表 `travel_ready`。頁面是產生當下的離線結果，更新資料後必須重新產生，且不會
+確認即時交通、營業、空位或訂位。
+
+Ishigaki 的使用者已授權 live exit gate 時，才可使用下列**固定範圍**命令：
+
+```bash
+direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 --live
+```
+
+它最多作兩次 Places identity search 與一次 driving Routes request；每一階段前後
+都重查固定的`trip.json`、`itinerary.json`與`place_candidates.json`來源；pagination、
+ambiguity 或 source drift 一律停止。所有 identity
+與 route evidence 僅在 process memory 做 typed contract check 後丟棄，不會寫入
+legacy cache、EvidenceStore、`plan.json`、renderer 或 deployment。這是單一 pilot，
+不是一般的 live provider CLI；遠期營業時間仍必須在接近行程日期時重新確認。
+
+若 gate 回報 identity review required，只有使用者要求查看候選時才可額外執行一次
+read-only origin review：
+
+```bash
+direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 --live --review-origin
+```
+
+它只做一個 Places request、零 promotion／merge／route call；候選的名稱、公開地址與
+類型僅作本次人工選擇並附 Google Maps attribution，provider ID、query、座標、token
+與原始回應不會輸出或保存。選擇本身不是 grant；後續仍需新的 exact、source-bound
+review 才可繼續。
+
+若正常 Ishigaki gate 已明確回報`invalid_request`，且使用者另行明確允許最小診斷，才可
+使用：
+
+```bash
+direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 \
+  --live --minimal-route-diagnostic --origin-choice B \
+  --origin-selection-binding-v2 {matching-review-binding}
+```
+
+它仍會重新驗證兩個 identity，並只發出一次同一個 driving request、但回應 field mask
+縮減為`routes.distanceMeters,routes.duration`。這是 provider-acceptance 診斷，不是
+route evidence：只回報 HTTP 是否接受請求，絕不解碼、merge、保存或顯示路線值；任何
+source drift 或選擇綁定變動一律停止。
+
+若最小 mask 仍被拒絕，下一個且同樣需要明確授權的 baseline 診斷會改用
+`--undated-route-diagnostic`；它只移除`departureTime`，以區分遠期時刻與端點／專案
+存取問題。它仍不是十月行程的 route evidence。
+
 這個 readiness seam 不讀寫 store、plan 或 provider，也沒有 mutation／confirmation
 authority；公開行程識別只提供不可逆的`trip_ref`。Canonical 住宿即使已是
 `booked`，其 evidence 仍固定為 `unverified`，
@@ -172,9 +301,12 @@ Phase 4.5D的host-owned住宿確認只接受上述exact request，不會把disco
 legacy 候選 discovery；不能代表房態、訂位或可直接寫入計畫。一般 4.5B 流程只離線
 正規化 caller-supplied response，不會自行呼叫 provider。
 
-兩階段流程：
-1. **Scout** — 互動式規劃：收集需求 → 解析景點 → 用戶篩選 → 路線優化 → 驗證
-2. **Build** — 生成網站：組裝 JSON → 充實交通 → legacy營業時間提示 → 渲染 HTML → 部署
+私有規劃流程：
+1. **Guided draft** — 自然語言 → 私有、無副作用草稿 → 只問真正 blocker
+2. **Scout** — 互動式規劃：候選景點 → 用戶取捨 → 路線優化 → 驗證
+3. **Build** — 組裝 JSON → 充實交通 → legacy營業時間提示 → 渲染私有 HTML
+
+公開發布是另外的、明確審閱流程，不是 Build 的自動步驟。
 
 ## 專案結構
 
@@ -191,12 +323,16 @@ trip-plan/
 │   ├── check_hours.py          # legacy regular-hours advisory（不輸出綠燈）
 │   ├── search_flights.py       # legacy：後續 quarantine，非正常規劃功能
 │   ├── search_hotels.py        # legacy candidate discovery，非訂房／房態來源
-│   ├── render_trip.py          # 渲染 HTML + 行事曆
-│   ├── build_index.py          # 重建首頁
-│   └── deploy.sh               # 部署到 GitHub Pages
+│   ├── render_trip.py          # private local preview：HTML + 行事曆
+│   ├── build_index.py          # private local preview 的首頁
+│   ├── prepare_public_release.py # 不寫入的公開 manifest 候選
+│   ├── build_public_site.py    # 只建置已核准的公開 artifact tree
+│   └── deploy.sh               # explicit public release only
 ├── template/
 │   ├── trip.html               # 行程頁面 Jinja2 模板
 │   ├── index.html              # 首頁模板
+│   ├── public_trip.html        # 精簡公開行程模板
+│   ├── public_index.html       # 精簡公開首頁模板
 │   └── data/                   # JSON 格式模板（agent 參照用）
 ├── skill/
 │   └── trip-planner.md         # Claude Code skill 定義
@@ -210,6 +346,9 @@ trip-plan/
 │           ├── info.json
 │           ├── packing.json
 │           └── places_cache.json
+├── public/                     # 明確審閱後才建立的公開來源
+│   ├── release.json            # source + rendered HTML digest allowlist
+│   └── trips/{slug}.json       # 僅公開摘要，絕不自動由 trips/ 產生
 ├── .envrc.example
 └── requirements.txt
 ```

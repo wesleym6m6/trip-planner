@@ -42,6 +42,7 @@ PLACE_IDENTITY_REVIEW_VERSION = "place-identity-review/v1"
 # Text Search review fields are intentionally separate from the durable value
 # policy.  Only ``provider_place_id`` may enter FactValue/EvidenceStore.
 GOOGLE_PLACE_IDENTITY_FIELD_MASK = (
+    "nextPageToken",
     "places.id",
     "places.displayName",
     "places.formattedAddress",

@@ -459,8 +459,9 @@ AI、reviews、網頁、社群貼文、editorial/generative summary 不可以：
 
 - Search 不可默認取第一筆；name、city/country、type、geographic boundary與
   ambiguity policy 必須通過才可建立 identity fact。
-- Identity Text Search固定`pageSize=5`並綁exact minimal field mask；回應若有
-  `nextPageToken`、多個eligible candidate、非exact token-boundary name match，
+- Identity Text Search固定`pageSize=5`，exact minimal field mask必須包含
+  `nextPageToken`以fail closed偵測截斷；回應若有該token、多個eligible
+  candidate、非exact token-boundary name match，
   或既有LKG將被換成不同place ID，一律進30分鐘human review，不得auto-promote。
 - display name、address、coordinates、types、locality與pagination token只存在
   ephemeral review payload；review畫面固定附Google Maps attribution。Promotion
@@ -643,6 +644,24 @@ text。`retryable=true` 不代表可越過 budget無限重試。
 compliance cleanup：必須先產生 exact preview並由使用者審核，不在 migration
 或 provider failure時偷偷執行。
 
+### Phase 4.6B legacy evidence / cleanup preview（完成）
+
+`preview_legacy_evidence(path)`與
+`scripts/preview_legacy_evidence.py trips/{slug}`只讀固定manifest：legacy
+`trip.json`／`itinerary.json`、`places_cache.json`與optional
+`flights_cache.json`／`hotels_cache.json`，並僅檢查`plan.json`、current evidence
+store與history是否存在。它以private exact source revision偵測content、optional
+cache presence、symlink、non-regular file與oversize drift；公開輸出只保留aggregate
+counts、relative artifact metadata與preview digest，沒有raw provider content、place
+ID、地址、座標、價格、URL、token、raw trip ID或source hash。
+
+此preview固定`imports=0`與`cleanup_targets=[]`：舊cache不會變成
+`FactObservation`、EvidenceStore、canonical data或migration input。現有legacy與
+canonical compatibility均仍需`places_cache.json`；current EvidenceStore、history與
+unknown cache不在此slice的cleanup scope。任何後續destructive cleanup仍須使用者對
+exact preview的明確審核，並由另行設計的trusted-host operation重新驗證source；本
+preview本身不提供delete、apply、migration或provider seam。
+
 ## 實作 slices
 
 ### Phase 4.0 — Fact contract（offline）
@@ -685,8 +704,9 @@ compliance cleanup：必須先產生 exact preview並由使用者審核，不在
 ### Phase 4.2 — Minimal Places identity（完成）
 
 - `PlaceIdentityIntent`與trusted EvidenceSnapshot共同建立exact
-  `resolve-place` request；field mask、`pageSize=5`、match scope與existing LKG
-  basis全部進request fingerprint。
+  `resolve-place` request；field mask（含只作截斷偵測、不保存的
+  `nextPageToken`）、`pageSize=5`、match scope與existing LKG basis全部進
+  request fingerprint。
 - candidate parser只接受bounded allowlist；country、locality、primary type與
   hard radius不可由review grant覆寫，結果排序與candidate-set digest不受provider
   回傳順序影響。
@@ -834,8 +854,8 @@ host-confirmed canonical apply，並通過可讀的Busan／Hokkaido離線walkthr
 Phase 4.6A read-only readiness projection也已完成；全套624個offline tests、三個
 real-trip validators與Python compile通過，29個trip files hash aggregate維持
 `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
-未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.6B legacy
-evidence migration / cleanup preview。
+未呼叫provider、未render、未deploy、未修改`trips/`；4.6B現已先提供
+legacy evidence / cleanup preview，仍不會自動migration或刪除cache。
 
 ### Phase 4.6 — readiness與 compliance preview
 
@@ -860,7 +880,9 @@ evidence migration / cleanup preview。
   mutation authority，safe
   serialization不含provider value、attribution、位置、住宿日期、價格、URL或raw
   state；
-- legacy evidence migration / cleanup preview；
+- 4.6B已提供legacy evidence / cleanup preview：舊API routes固定refresh-required、
+  manual route待分類、Places／flight／hotel cache皆quarantine；固定manifest的source
+  drift fail closed，公開output去敏感化，且沒有import或cleanup authority；
 - 釜山、北海道先用 canned facts，再由使用者授權真實 provider驗收。
 
 ## Phase 4 exit gate

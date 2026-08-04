@@ -62,6 +62,7 @@ SENTINEL_ADDRESS = "987 Restricted Sentinel Road"
 SENTINEL_QUERY = "RESTRICTED_QUERY_SENTINEL"
 
 EXPECTED_SEARCH_FIELD_MASK = (
+    "nextPageToken",
     "places.id",
     "places.displayName",
     "places.formattedAddress",
@@ -282,6 +283,7 @@ class PlacesIdentityContractTests(unittest.TestCase):
             EXPECTED_SEARCH_FIELD_MASK,
             GOOGLE_PLACE_IDENTITY_FIELD_MASK,
         )
+        self.assertIn("nextPageToken", GOOGLE_PLACE_IDENTITY_FIELD_MASK)
         self.assertEqual("id", GOOGLE_PLACE_ID_REFRESH_FIELD_MASK)
         self.assertEqual(
             EXPECTED_SEARCH_FIELD_MASK,
