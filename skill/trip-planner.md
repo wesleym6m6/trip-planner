@@ -372,6 +372,27 @@ multiset 有未知、遺漏或重複時，只使用 redacted `needs_refinement` 
 persist raw plan。結果始終是 `candidate + unverified`、`supports_authoritative_use=false`，沒有
 provider、CLI、scheduler、trip creation、write、render、deploy、confirmation 或 apply path。
 
+### Evidence requirements 後：bounded provider scope review
+
+只有 exact Phase 5.10 plan 為 `ready_for_private_provider_scope` 時，host 才可建立
+`GuidedProviderScopeProposal`。每個 item 只能保存 `GuidedEvidenceTopic`、固定對應的
+`GuidedProviderCapability` 與正整數 `max_request_count`；不得保存 line ref、地點／日期值、
+provider resource ID、query、payload、URL、credential 或自由文字。Capability mapping 由 contract
+固定：place identity／current hours 使用對應 Google Places capability，route 使用 Google Routes，
+lodging／availability／price 使用 SerpAPI Google Hotels；caller 不能任意換 provider。每個 nonzero
+topic 必須恰好一項，aggregate request cap 不得超過 32。這只是請求次數上限，不是金額上限或
+完成查證的承諾。
+
+用 `assess_guided_provider_scope()` 重驗完整 upstream context。missing／extra／duplicate topic、
+capability mismatch 或總 cap 超限只回 redacted `needs_refinement`。有效非空 scope 才能顯示
+`GuidedProviderScopeReview.to_dict()`，並揭露 typed capability、derived data categories、
+`potentially_billable=true`、`pricing_verified=false`，以及真正呼叫前仍須 current pricing、provider
+policy、provider terms／retention、host-managed credentials 與 exact request gate；再詢問使用者接受、
+縮小或取消。這個主觀 scope review 不是 provider authorization。零 topic 只能搭配空 scope，回
+`no_provider_scope_required`且不追問，但仍是 `candidate + unverified`，不表示已驗證或可執行。
+Raw proposal不應serialize／log／persist；本層不建立request、不讀credential、不呼叫provider，
+也沒有CLI、scheduler、trip creation、write、render、deploy、confirmation或apply path。
+
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 

@@ -191,6 +191,16 @@ context；未知、遺漏或重複 line 只回 redacted `needs_refinement`。完
 不排程、不建立或寫入 trip。結果持續是 `candidate + unverified`，不構成 selection、booking、
 confirmation、apply 或 authoritative use。
 
+Phase 5.11 用 `GuidedProviderScopeProposal` 將 Phase 5.10 的 nonzero evidence topics 映射成
+固定、可稽核的 provider capability 與每項 request-count cap：Google Places identity／current
+hours、Google Routes，以及 SerpAPI Google Hotels。每個 required topic 必須恰好一項，總 cap
+最多 32；cap 只是請求次數邊界，不是金額上限。`assess_guided_provider_scope()` 會重驗完整
+Phase 5.10 context，並在 safe review 中顯示 capability、可能需要送出的資料類別、可能計費、
+價格尚未核對及 provider policy／credentials 仍待後續檢查。有效非空 scope 才回
+`review_required` 並請使用者接受、縮小或取消；零 topic 只回 `no_provider_scope_required`，但仍
+是 `candidate + unverified`。本切片不保存 query／payload／place ID／credential、不建立 request、
+不呼叫 API，也不授權未來 provider call；scope 回覆與 exact policy/request gate 都是後續獨立邊界。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

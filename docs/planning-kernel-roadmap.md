@@ -19,8 +19,8 @@ timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4
 source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.7再將明確接受／繼續調整
 綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
 candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆，Phase 5.10則為每條
-refined line建立typed、provider-neutral evidence requirement；八者都沒有CLI、parser、provider
-call、schedule、render或mutation。
+refined line建立typed、provider-neutral evidence requirement，Phase 5.11再建立bounded、可審閱的
+provider capability scope；九者都沒有CLI、parser、provider call、schedule、render或mutation。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1071,6 +1071,31 @@ authority。
 - 下一個最小切片是Phase 5.11 bounded private provider-scope review：先以typed、可審閱的範圍、
   cost與資料使用邊界取得使用者明確決定；在該contract及回覆binding完成前仍不建立request、
   不呼叫provider。
+
+### 2026-08-04 — Phase 5.11 bounded private provider-scope review 完成
+
+- 新增`GuidedProviderScopeItem`、`GuidedProviderScopeProposal`與
+  `assess_guided_provider_scope()`。Assessor先重驗exact Phase 5.10 ready plan；invalid upstream
+  plan、adjustment response或任一更早context drift都拒絕。
+- 每個nonzero evidence topic必須exact once映射到contract固定的Google Places identity／current
+  hours、Google Routes或SerpAPI Google Hotels capability。Item只含topic、capability與正整數
+  request cap；missing／extra／duplicate topic、mapping mismatch或aggregate cap超過32都只回
+  redacted `needs_refinement`。
+- Safe review顯示typed scope item與derived data-category disclosure，明示可能計費、current pricing
+  尚未核對、request cap不是金額上限，且真正呼叫前仍須provider policy、terms／retention、
+  host-managed credential及exact request gate。它不含line index、private value、provider resource
+  ID、query、payload、URL或credential。
+- 有效非空scope才為`review_required`並詢問接受、縮小或取消；這個主觀回覆不是provider
+  authorization。零topic只能搭配空scope，回`no_provider_scope_required`而不追問，但仍固定為
+  `candidate + unverified`且`supports_authoritative_use=false`，不跳成travel-ready或可執行。
+- 本切片沒有response parser/capture、provider request/call、credential access、pricing lookup、CLI、
+  scheduler、trip creation、filesystem/store write、render、deploy、confirmation或apply path。
+- 新增11個專項回歸；完整772個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.12 exact provider-scope response handoff：只綁定使用者明確的接受、
+  縮小或取消回覆；即使接受也只前往另一個private policy/request planning seam，不建立request、
+  不讀credential、不呼叫provider或授權外部動作。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
