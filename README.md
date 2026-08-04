@@ -180,6 +180,17 @@ provider、不排程、不建立或寫入 trip。要求調整則回 `refine_priv
 另外重新抽取進 private brief，不塞進 response。結果持續是 `candidate + unverified`，不構成
 selection、booking、confirmation、apply 或任何 provider authority。
 
+Phase 5.10 用 `GuidedEvidenceRequirementPlan` 為已接受 itinerary 的每條 refined source line
+恰好建立一個 provider-neutral typed declaration。`requires_verification` 必須列出至少一個
+`place_identity`、`current_opening_hours`、`route`、`lodging`、`availability` 或 `price` topic；
+`no_external_evidence_identified` 不帶 topic，但仍只代表目前尚未識別外部證據需求，絕不表示
+已驗證或可執行。`assess_guided_evidence_requirement_plan()` 會先重驗 exact Phase 5.9 accepted
+context；未知、遺漏或重複 line 只回 redacted `needs_refinement`。完整計畫也只回
+`prepare_private_provider_scope_review` planning label；safe transcript 只用 aggregate review，
+不序列化 raw line indexes，且不建立 provider request、不呼叫 API、不授權 provider scope、
+不排程、不建立或寫入 trip。結果持續是 `candidate + unverified`，不構成 selection、booking、
+confirmation、apply 或 authoritative use。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

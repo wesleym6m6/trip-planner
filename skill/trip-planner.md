@@ -353,6 +353,25 @@ provider、不排程、不建立 trip、不寫入、不 render、不 deploy，�
 持續是 `candidate + unverified`、`supports_authoritative_use=false`，不是 selection、booking、
 confirmation 或 apply。
 
+### 接受每日候選後：逐行 evidence requirement plan
+
+只有 exact Phase 5.9 `accept_itinerary_candidate` 仍對應目前完整 private context 時，才可建立
+`GuidedEvidenceRequirementPlan`。每條 refined source line 必須恰好有一個
+`GuidedLineEvidenceRequirement`，而且 declaration 只能保存 line index、typed disposition 與
+provider-neutral topic。`requires_verification` 至少要有一個 allowlisted topic；
+`no_external_evidence_identified` 必須沒有 topic，且只表示目前尚未識別外部證據需求，不能解讀為
+已驗證、不需驗證或可執行。不要放 line text、bucket、boundary ID、日期、provider ID、query、
+payload、URL 或自由文字。
+
+用 `assess_guided_evidence_requirement_plan()` 重新驗證完整 Phase 5.9 accepted context。line index
+multiset 有未知、遺漏或重複時，只使用 redacted `needs_refinement` 與
+`refine_private_evidence_requirements`，不可進到 provider scope。完整 plan 只會得到
+`prepare_private_provider_scope_review` planning label；這表示可以準備下一個私有 scope review，
+不是 provider 授權，也不建立 request 或呼叫 API。safe transcript 只使用
+`GuidedEvidencePlanReview.to_dict()` 的 aggregate declaration/topic counts，不能 serialize、log 或
+persist raw plan。結果始終是 `candidate + unverified`、`supports_authoritative_use=false`，沒有
+provider、CLI、scheduler、trip creation、write、render、deploy、confirmation 或 apply path。
+
 對話循環由 Agent 推動，不為每個小節點停下。只在真正 blocker、第一次實際 live provider
 範圍、主觀提案取捨、精確住宿確認或公開發布時要求使用者決定／審閱。
 

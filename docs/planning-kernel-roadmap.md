@@ -18,8 +18,9 @@ timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4
 中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
 source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.7再將明確接受／繼續調整
 綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
-candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆；七者都沒有CLI、parser、
-provider、schedule、render或mutation。
+candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆，Phase 5.10則為每條
+refined line建立typed、provider-neutral evidence requirement；八者都沒有CLI、parser、provider
+call、schedule、render或mutation。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1048,6 +1049,28 @@ authority。
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
 - 下一個最小切片才設計純offline、typed的private evidence-requirement plan；在該contract完成前，
   不從自由文字猜provider payload，也不建立request、呼叫API或取得任何外部動作授權。
+
+### 2026-08-04 — Phase 5.10 private evidence-requirement plan 完成
+
+- 新增`GuidedLineEvidenceRequirement`、`GuidedEvidenceRequirementPlan`與
+  `assess_guided_evidence_requirement_plan()`。Assessor先重新執行exact Phase 5.9 accepted
+  response contract；adjustment response或任一upstream context drift都拒絕。
+- 每條refined source line必須恰好一個declaration。`requires_verification`至少列一個
+  provider-neutral `place_identity`／`current_opening_hours`／`route`／`lodging`／`availability`／
+  `price` topic；`no_external_evidence_identified`不得帶topic，且仍固定是unverified，不代表
+  已驗證、不需驗證或可執行。unknown／missing／duplicate line只回redacted repair code。
+- Raw plan只有line index、typed disposition與topic，沒有line text、bucket、boundary ID、日期、
+  provider ID、query、payload、URL或free text。safe transcript只含aggregate declaration/topic
+  counts，結果固定為`candidate + unverified`且`supports_authoritative_use=false`。
+- 完整plan只把下一步標成`prepare_private_provider_scope_review`；這只是下一個private planning
+  seam，不建立provider request、不呼叫API、不授權scope，也沒有CLI、scheduler、trip creation、
+  filesystem/store write、render、deploy、confirmation或apply path。
+- 新增10個專項回歸；完整761個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.11 bounded private provider-scope review：先以typed、可審閱的範圍、
+  cost與資料使用邊界取得使用者明確決定；在該contract及回覆binding完成前仍不建立request、
+  不呼叫provider。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
