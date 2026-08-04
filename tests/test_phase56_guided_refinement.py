@@ -441,6 +441,80 @@ class GuidedRefinementTests(unittest.TestCase):
             review.problem_codes,
         )
 
+    def test_unpreferred_source_content_cannot_bypass_an_omitted_ref(self) -> None:
+        brief = _brief()
+        cards = _cards()
+        preference = _preference(
+            brief,
+            cards,
+            GuidedDirectionPreferenceKind.PREFER_ONE,
+            ("card-a",),
+        )
+        output_lines = (
+            replace(cards[0].lines[0], outline_slot=1),
+            replace(cards[0].lines[1], outline_slot=2),
+            replace(cards[1].lines[2], outline_slot=3),
+        )
+        review = assess_guided_refinement(
+            brief,
+            cards,
+            preference,
+            _candidate_from_sources(
+                cards,
+                (("card-a", 0), ("card-a", 1)),
+                output_lines=output_lines,
+            ),
+        )
+
+        self.assertEqual(GuidedRefinementStatus.NEEDS_REFINEMENT, review.status)
+        self.assertEqual(
+            (GuidedRefinementProblemCode.UNPREFERRED_SOURCE_INCLUDED,),
+            review.problem_codes,
+        )
+
+    def test_duplicate_source_content_requires_duplicate_output_carryover(self) -> None:
+        brief = _brief()
+        original_cards = _cards()
+        duplicated_ai_line = replace(
+            original_cards[0].lines[1],
+            outline_slot=3,
+        )
+        cards = (
+            replace(
+                original_cards[0],
+                lines=(*original_cards[0].lines, duplicated_ai_line),
+            ),
+            original_cards[1],
+        )
+        preference = _preference(
+            brief,
+            cards,
+            GuidedDirectionPreferenceKind.PREFER_ONE,
+            ("card-a",),
+        )
+        output_lines = (
+            replace(cards[0].lines[0], outline_slot=1),
+            replace(cards[0].lines[1], outline_slot=2),
+        )
+        review = assess_guided_refinement(
+            brief,
+            cards,
+            preference,
+            _candidate_from_sources(
+                cards,
+                (("card-a", 0), ("card-a", 1), ("card-a", 2)),
+                output_lines=output_lines,
+            ),
+        )
+
+        self.assertEqual(GuidedRefinementStatus.NEEDS_REFINEMENT, review.status)
+        self.assertEqual(
+            (
+                GuidedRefinementProblemCode.RETAINED_SOURCE_LINE_NOT_CARRIED,
+            ),
+            review.problem_codes,
+        )
+
     def test_unknown_duplicate_out_of_range_and_colliding_refs_fail_closed(self) -> None:
         brief = _brief()
         cards = _cards()
@@ -599,6 +673,7 @@ class GuidedRefinementTests(unittest.TestCase):
         allowed_imports = {"re", "unicodedata"}
         allowed_from_imports = {
             (0, "__future__"),
+            (0, "collections"),
             (0, "dataclasses"),
             (0, "enum"),
             (0, "typing"),

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import InitVar, dataclass, field
 from enum import Enum
 from typing import Any
@@ -464,6 +465,26 @@ def assess_guided_refinement(
                 GuidedRefinementProblemCode.PREFERRED_CARD_NOT_RETAINED
             )
 
+    if preference.kind is not GuidedDirectionPreferenceKind.REQUEST_REFINEMENT:
+        selected_signatures = {
+            _line_signature(line)
+            for card_ref in selected_card_refs
+            for line in cards_by_ref[card_ref].lines
+        }
+        unpreferred_only_signatures = {
+            _line_signature(line)
+            for card_ref, card in cards_by_ref.items()
+            if card_ref not in selected_card_refs
+            for line in card.lines
+        }.difference(selected_signatures)
+        if any(
+            _line_signature(line) in unpreferred_only_signatures
+            for line in candidate.direction.lines
+        ):
+            problems.add(
+                GuidedRefinementProblemCode.UNPREFERRED_SOURCE_INCLUDED
+            )
+
     user_source_card_refs = (
         selected_card_refs
         if preference.kind is not GuidedDirectionPreferenceKind.REQUEST_REFINEMENT
@@ -480,13 +501,13 @@ def assess_guided_refinement(
             GuidedRefinementProblemCode.USER_STATED_LINE_NOT_RETAINED
         )
 
-    refined_signatures = {
+    retained_signature_counts = Counter(
+        _line_signature(source_line) for _, source_line in resolved
+    )
+    refined_signature_counts = Counter(
         _line_signature(line) for line in candidate.direction.lines
-    }
-    if any(
-        _line_signature(source_line) not in refined_signatures
-        for _, source_line in resolved
-    ):
+    )
+    if retained_signature_counts - refined_signature_counts:
         problems.add(
             GuidedRefinementProblemCode.RETAINED_SOURCE_LINE_NOT_CARRIED
         )

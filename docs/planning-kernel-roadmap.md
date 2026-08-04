@@ -972,7 +972,7 @@ authority。
   日期、位置或使用者原文。
 - 整合方向固定仍是`candidate + unverified`且`supports_authoritative_use=false`；沒有CLI、
   parser、provider、schedule、trip creation、render、deploy、confirmation或apply path。
-  新增12個專項回歸；完整723個offline tests、Python compile與三個real-trip validators均通過。
+  新增14個專項回歸；完整725個offline tests、Python compile與三個real-trip validators均通過。
   `trips/*/data` aggregate hash維持
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
 - 下一個切片才會處理使用者對整合方向的明確「接受／繼續調整」回覆；在新的exact binding與
