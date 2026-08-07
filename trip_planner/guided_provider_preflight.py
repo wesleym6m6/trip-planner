@@ -548,6 +548,29 @@ class GuidedProviderPreflightReview:
     def review_disclosure(self) -> str | None:
         return _REVIEW_DISCLOSURE if self.may_present_execution_review else None
 
+    @property
+    def estimated_first_paid_tier_google_cost_usd_micros(self) -> int:
+        """Return a list-rate planning estimate, never an invoice or hard cap."""
+
+        return sum(_google_list_cost(item) for item in self.items)
+
+    @property
+    def serpapi_plan_credit_cap(self) -> int:
+        """Return the maximum successful SerpApi searches in this preflight."""
+
+        return sum(
+            item.max_request_count
+            for item in self.items
+            if item.capability
+            is GuidedProviderCapability.SERPAPI_GOOGLE_HOTELS
+        )
+
+    @property
+    def all_provider_costs_have_currency_list_rate_estimates(self) -> bool:
+        """Whether every scoped provider has a currency list-rate estimate."""
+
+        return self.serpapi_plan_credit_cap == 0
+
     def __repr__(self) -> str:
         return (
             "GuidedProviderPreflightReview("
@@ -565,12 +588,12 @@ class GuidedProviderPreflightReview:
             _STRUCTURAL_PROBLEMS
         )
         visible_items = self.items if structurally_valid else ()
-        google_cost = sum(_google_list_cost(item) for item in visible_items)
-        serpapi_credit_cap = sum(
-            item.max_request_count
-            for item in visible_items
-            if item.capability
-            is GuidedProviderCapability.SERPAPI_GOOGLE_HOTELS
+        google_cost = (
+            self.estimated_first_paid_tier_google_cost_usd_micros
+            if structurally_valid else 0
+        )
+        serpapi_credit_cap = (
+            self.serpapi_plan_credit_cap if structurally_valid else 0
         )
         credentials_available = bool(visible_items) and all(
             item.credential_status is GuidedProviderCredentialStatus.AVAILABLE
@@ -609,7 +632,8 @@ class GuidedProviderPreflightReview:
                 "estimated_first_paid_tier_google_cost_usd_micros": google_cost,
                 "serpapi_plan_credit_cap": serpapi_credit_cap,
                 "all_provider_costs_have_currency_list_rate_estimates": (
-                    serpapi_credit_cap == 0
+                    structurally_valid
+                    and self.all_provider_costs_have_currency_list_rate_estimates
                 ),
                 "monthly_free_usage_remaining_checked": False,
                 "cost_estimate_is_hard_currency_cap": False,

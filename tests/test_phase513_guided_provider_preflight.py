@@ -165,6 +165,14 @@ class GuidedProviderPreflightTests(unittest.TestCase):
             review.status,
         )
         self.assertEqual(
+            136_000,
+            review.estimated_first_paid_tier_google_cost_usd_micros,
+        )
+        self.assertEqual(0, review.serpapi_plan_credit_cap)
+        self.assertTrue(
+            review.all_provider_costs_have_currency_list_rate_estimates
+        )
+        self.assertEqual(
             "review_private_provider_execution_authorization",
             safe["next_action"],
         )

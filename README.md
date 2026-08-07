@@ -233,6 +233,17 @@ Safe review 只顯示 aggregate 與 typed profiles，不含 query、payload、cr
 不讀 credential、不呼叫 provider，且結果持續是 `candidate + unverified`。官方價格、欄位
 與政策快照來源記錄在 roadmap 的 Phase 5.13 checkpoint。
 
+Phase 5.14 只在 Phase 5.13 preflight 仍為 fresh `review_required` 時，用
+`capture_guided_provider_preflight_response()` 擷取 exact `accept_provider_preflight`、
+`request_smaller_provider_preflight` 或 `cancel_external_execution`。Response 沒有自由文字，
+private fingerprint 綁完整 guided context、scope response、preflight bundle、derived review 與
+不對外顯示的 capture time。Assessment 會同時重建原 review 與以當前 trusted UTC 重驗
+freshness；過期、時鐘倒退或任何 context／profile／cap drift 都拒絕。接受只回
+`prepare_private_provider_execution_authorization`，讓 host 準備下一個 exact execution
+authorization review；縮小不會自動修改 scope，取消也保留 evidence requirements。三種
+分支都不授權 provider、不建立 request、不讀 credential、不呼叫 API，並維持
+`candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

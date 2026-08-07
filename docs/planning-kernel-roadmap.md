@@ -21,7 +21,8 @@ source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.
 candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆，Phase 5.10則為每條
 refined line建立typed、provider-neutral evidence requirement，Phase 5.11再建立bounded、可審閱的
 provider capability scope，Phase 5.12再將scope的明確接受／縮小／取消綁回exact context；
-Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight。它們
+Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight，
+Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exact context。它們
 都沒有CLI、parser、provider call、schedule、render或mutation；下一個外部execution authorization
 仍需使用者當輪明確參與。
 Phase 6.0 fail-closed public release boundary亦已完成；
@@ -1172,9 +1173,47 @@ authority。
 - 同日secret-safe的live readiness檢查只得到Bitwarden locked、Google Maps／SerpApi key在當前
   process不可用，且Google billing region尚未由host證實；因此provider calls為0，也沒有
   建立fixture、讀取secret或改動trip data。
-- 下一個最小切片是Phase 5.14 exact execution-authorization response：只擷取使用者對當輪
-  ready preflight的明確接受／縮小／取消；它仍不是provider call，真正request materialization與
-  execution-time recheck必須留在之後的獨立boundary。
+- 下一個最小切片是Phase 5.14 exact provider-preflight response handoff：只擷取使用者
+  對當輪ready preflight的明確接受／縮小／取消；它仍不是provider call，真正request
+  materialization與execution-time recheck必須留在之後的獨立boundary。
+
+### 2026-08-07 — Phase 5.14 exact provider-preflight response handoff 完成
+
+- 新增獨立`guided_provider_preflight_response.py`、
+  `GuidedProviderPreflightResponseKind`、`capture_guided_provider_preflight_response()`與
+  `assess_guided_provider_preflight_response()`。只有在trusted UTC下仍為fresh
+  `review_required`的exact Phase 5.13 preflight可擷取`accept_provider_preflight`、
+  `request_smaller_provider_preflight`或`cancel_external_execution`；沒有parser、free-text payload或
+  任何request material。
+- Response的private SHA-256 fingerprint綁response kind、完整guided context、accepted scope與response、完整
+  preflight items／profiles／caps／checked-at／expiry、fresh derived review與capture time。Card ordering
+  會canonicalize，其餘brief、card content、preference、itinerary、evidence、scope、profile、cap、
+  preflight或time drift都fail closed。
+- Assessment先以response內部的private capture time重建原review與fingerprint，再用caller提供的
+  當前trusted UTC重驗preflight。Current evaluation早於capture、到期邊界或任何blocker都
+  拒絕，因此舊ready response不能在24小時attestation過期後replay。
+- Accept只回`ready_for_private_provider_execution_authorization` 與
+  `prepare_private_provider_execution_authorization`；它只允許準備下一個exact review，不是
+  authorization。Reduce只回`refine_private_provider_preflight`，不自動刪topic、改profile或降cap；
+  Cancel只關閉當前external execution path並回`continue_private_evidence_review`，保留原
+  evidence requirements。
+- Safe handoff只有response kind、data categories、capability／scope／preflight counts、request cap、
+  list-rate estimate coverage與plan-credit cap；不顯示capture time、private context、query、payload、provider ID、
+  credential、billing address或policy text。所有分支固定
+  `explicit_execution_authorization_required_before_any_call=true`、
+  `provider_scope_authorized=false`、`provider_requests_created=false`、`provider_calls_permitted=false`、
+  `candidate + unverified`與`supports_authoritative_use=false`。
+- Phase 5.13 review另新增typed read-only cost properties，供response原樣繼承Google first-paid-tier
+  planning estimate、SerpApi plan-credit cap與「所有provider是否都有currency list-rate estimate」；仍明示
+  monthly free usage未查且試算不是hard cap。
+- 新增9個專項回歸；完整799個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 本切片沒有environment／vault access、provider request／call、CLI、scheduler、trip creation、
+  filesystem／store write、render、deploy、confirmation或canonical apply path。
+- 下一個最小切片是Phase 5.15 private exact provider-execution authorization review：只準備
+  當輪可審閱的exact request shape／provider／field mask／cap／retention／cost disclosure與execution-time
+  recheck requirements；在其response boundary完成前仍不materialize request或呼叫provider。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
