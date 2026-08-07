@@ -255,6 +255,17 @@ Phase 5.14 context 與 private preparation time，assessment 會用當前 truste
 後續必須以 canonical private preimage 或現有 trusted evidence contract 做 exact binding，不接受
 caller 單獨提供的 digest。
 
+Phase 5.16 用 `GuidedProviderExecutionTargetPreimage` 將每個 Phase 5.15 target requirement
+綁到 exact typed private preimage 與其實際服務的 source-line indexes。Places identity 直接接受
+canonical `PlaceIdentityIntent`；current hours／Routes 只接受現有 token-gated、snapshot-bound 的
+`GooglePlaceDetailsRequest`／`GoogleRouteRequest`；SerpApi Hotels 則把 process-local
+`LodgingDiscoveryRequest` 當作 private search intent，而不是 provider provenance。Binder 會自行計算
+domain-separated fingerprint，並對 trusted Google contracts 綁定 policy registry、snapshot、store 與
+evidence revisions；caller 不能只交 digest，缺漏／重複 line coverage、錯誤 contract type、日期越界、
+stale endpoint 或任一 context drift 都會拒絕。回傳物不保留 raw query、Place ID 或 target preimage，
+也不建立 HTTP request、不呼叫 provider、不授權 scope；完整 binding 只前進到另一個 private
+execution-authorization review preparation，結果仍是 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

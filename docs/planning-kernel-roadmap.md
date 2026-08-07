@@ -23,7 +23,8 @@ refined line建立typed、provider-neutral evidence requirement，Phase 5.11再�
 provider capability scope，Phase 5.12再將scope的明確接受／縮小／取消綁回exact context；
 Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight，
 Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exact context，Phase 5.15
-則為已接受preflight衍生每項capability仍需要的private execution-target type。它們
+則為已接受preflight衍生每項capability仍需要的private execution-target type，Phase 5.16再將
+每個target與canonical private preimage／trusted evidence request contract及source lines做exact binding。它們
 都沒有CLI、parser、provider call、schedule、render或mutation；下一個外部execution authorization
 仍需使用者當輪明確參與。
 Phase 6.0 fail-closed public release boundary亦已完成；
@@ -1249,6 +1250,41 @@ authority。
   private preimage或現有trusted evidence／request contracts，由contract自行計算digest並綁policy／snapshot／
   evidence revision；不接受caller單獨提供的digest。直到後續exact authorization response與
   execution-time gate完成前都不建立HTTP request或呼叫provider。
+
+### 2026-08-07 — Phase 5.16 exact private execution-target binding 完成
+
+- 新增獨立`guided_provider_execution_target_bindings.py`、
+  `GuidedProviderExecutionTargetPreimage`、token-gated
+  `GuidedProviderExecutionTargetBindings`與
+  `assess_guided_provider_execution_target_bindings()`。只有fresh、exact Phase 5.15 plan可進入；
+  preflight expiry、clock rollback或任何guided／scope／preflight／target-plan drift都fail closed。
+- 每個preimage都必須標出它服務的private source-line indexes；binder依Phase 5.10 plan驗證每個
+  required topic的line coverage恰好一次，並限制實際target數不超過該topic已接受的request cap。
+  缺漏、重複、額外topic、錯誤target type或超過cap都拒絕，不允許partial binding。
+- Exact type mapping固定為：Places identity接受canonical `PlaceIdentityIntent`；current hours只接受
+  `PlaceDetailsKind.CURRENT_HOURS`的token-gated `GooglePlaceDetailsRequest`；Routes只接受
+  token-gated `GoogleRouteRequest`；SerpApi Hotels把process-local `LodgingDiscoveryRequest`當作
+  private search intent，而不是provider provenance。Hours／hotel dates及route departure另須落在
+  exact trip span內。
+- Contract從exact typed preimage自行計算domain-separated SHA-256 fingerprint，caller沒有提供
+  digest的欄位。Google request contracts還會重驗non-EEA static policy、非未來snapshot／purge time、
+  endpoint freshness，並綁policy-registry、snapshot、store與evidence revisions；assessment要求caller
+  重新提供exact preimages，任何preimage／revision／freshness drift都拒絕。
+- 回傳binding只保留private fingerprints、source-line refs與revision bindings，不保留raw query、
+  Place ID、payload或target object。Safe output只揭露topic／capability／request profile／target kind、
+  bound target／line-reference counts、source-contract kind與revision-binding counts；fingerprint與line index
+  本身不序列化。
+- 完整binding只回`ready_for_private_provider_execution_authorization_review`與
+  `prepare_private_provider_execution_authorization_review`。它不建立provider／HTTP request、不執行
+  已傳入的request contract、不讀credential、不呼叫provider，且固定`provider_scope_authorized=false`、
+  禁止partial authorization／provider-result自動授權follow-up，維持`candidate + unverified`。
+- Correctness、product-contract與security agents均無剩餘actionable finding。新增9個專項回歸；完整
+  816個offline tests、Python compile與三個real-trip validators均通過。`trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.17 private execution-authorization review：以本binding與重新提供的exact
+  preimages產生可讓使用者理解的bounded target／資料傳送／實際request-count review，並綁目前仍fresh
+  的pricing／policy／retention／credential attestations；本階段仍不擷取authorization response、不建立
+  HTTP request或呼叫provider。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
