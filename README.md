@@ -244,6 +244,17 @@ authorization review；縮小不會自動修改 scope，取消也保留 evidence
 分支都不授權 provider、不建立 request、不讀 credential、不呼叫 API，並維持
 `candidate + unverified`。
 
+Phase 5.15 不猜測或接收真實 request target，而是由fresh accepted Phase 5.14 context
+自動產生 `GuidedProviderExecutionTargets`：Places identity 需要 private typed identity intent，
+current hours 需要既有或未來的 trusted place-identity evidence，Routes 需要兩個有順序的
+trusted endpoints，SerpApi Hotels 需要 private typed hotel-search intent。本切片不讀 line text、
+query、payload、Place ID、位址、座標或 target digest，因此所有 item 都明示為 deferred；
+partial execution authorization 與 provider-result 自動授權 follow-up 一律禁止。Plan 綁完整
+Phase 5.14 context 與 private preparation time，assessment 會用當前 trusted UTC 重驗過期與漂移。
+它只回 `prepare_private_provider_execution_targets`，不是 execution review、request 或授權；
+後續必須以 canonical private preimage 或現有 trusted evidence contract 做 exact binding，不接受
+caller 單獨提供的 digest。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

@@ -22,7 +22,8 @@ candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整�
 refined line建立typed、provider-neutral evidence requirement，Phase 5.11再建立bounded、可審閱的
 provider capability scope，Phase 5.12再將scope的明確接受／縮小／取消綁回exact context；
 Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight，
-Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exact context。它們
+Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exact context，Phase 5.15
+則為已接受preflight衍生每項capability仍需要的private execution-target type。它們
 都沒有CLI、parser、provider call、schedule、render或mutation；下一個外部execution authorization
 仍需使用者當輪明確參與。
 Phase 6.0 fail-closed public release boundary亦已完成；
@@ -1211,9 +1212,43 @@ authority。
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
 - 本切片沒有environment／vault access、provider request／call、CLI、scheduler、trip creation、
   filesystem／store write、render、deploy、confirmation或canonical apply path。
-- 下一個最小切片是Phase 5.15 private exact provider-execution authorization review：只準備
-  當輪可審閱的exact request shape／provider／field mask／cap／retention／cost disclosure與execution-time
-  recheck requirements；在其response boundary完成前仍不materialize request或呼叫provider。
+- 下一個最小切片是Phase 5.15 private provider-execution target requirement plan：先分開
+  可從目前private context綁定的target與必須等待trusted provider-result evidence的target，不從自由
+  文字猜query、Place ID或route endpoints。
+
+### 2026-08-07 — Phase 5.15 provider-execution target requirement plan 完成
+
+- 新增`guided_provider_execution_targets.py`、`GuidedProviderExecutionTargetItem`、token-gated
+  `GuidedProviderExecutionTargets`與`assess_guided_provider_execution_targets()`。只有fresh Phase 5.14
+  `accept_provider_preflight`可準備plan；reduce／cancel、stale／blocked preflight、clock rollback或
+  任何upstream drift都fail closed。
+- Target mapping完全由accepted capability決定：Google Places identity需
+  `private_place_identity_intent`；current hours需`trusted_place_endpoint`且依賴existing／future
+  `trusted_place_identity_evidence`；Routes需`trusted_route_endpoint_pair`且依賴
+  `trusted_route_endpoint_evidence`；SerpApi Google Hotels需`private_serpapi_hotel_search_intent`。
+  Topic／capability／request-profile／target-kind／dependency是contract-fixed exact mapping，不可由caller修改。
+- Plan不接受任何target value或digest。Private fingerprint綁完整guided context、scope／response、
+  preflight／response及derived review、deterministic target items與private preparation time。Assessment先重建
+  preparation-time review，再用當前trusted UTC重驗；preflight到期後不能replay舊plan。
+- 因本切片尚未做exact target binding，所有item都回deferred、
+  `eligible_for_execution_authorization_item_count=0`、`all_execution_targets_bound=false`與
+  `partial_execution_authorization_permitted=false`。Existing或future provider evidence只能滿足對應typed
+  dependency，`provider_result_dependency_auto_authorizes_followup=false`，不能授權另一provider或call。
+- Safe output只顯示topic／capability／request profile／target kind／dependency／cap、aggregate
+  counts、data categories、Google list-rate planning estimate與SerpApi credit cap。它不讀或顯示line
+  text／index、query、payload、Place ID、provider resource ID、地址／座標、private date／time、credential、
+  billing data或caller-supplied digest。
+- 結果固定`needs_private_execution_targets`與`prepare_private_provider_execution_targets`；
+  `provider_scope_authorized=false`、`provider_requests_created=false`、`provider_calls_permitted=false`、
+  `candidate + unverified`與`supports_authoritative_use=false`。沒有target binding、HTTP request、credential／
+  env／vault access、provider call、store／trip write、scheduler、render、deploy或canonical apply path。
+- 新增8個專項回歸；完整807個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.16 exact private execution-target binding：只接受canonical
+  private preimage或現有trusted evidence／request contracts，由contract自行計算digest並綁policy／snapshot／
+  evidence revision；不接受caller單獨提供的digest。直到後續exact authorization response與
+  execution-time gate完成前都不建立HTTP request或呼叫provider。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
