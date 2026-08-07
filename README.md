@@ -216,6 +216,23 @@ Phase 5.3–5.12 至此完成純 offline guided-scope section。下一個 provid
 重新核對 current pricing、provider policy／terms／retention、credential/session availability 與 exact
 request scope，並取得使用者明確參與；上述任何 planning label 或 response 都不能替代該邊界。
 
+Phase 5.13 用 `GuidedProviderPreflight` 將 trusted host 針對已接受 Phase 5.12 scope 所做的
+短效、typed preflight attestation 綁回完整 private context。每項只保留 capability、版本化
+request／pricing／policy／retention profile、billing-region 分類、boolean credential status 與
+request cap；SerpApi 項目另保留最多 32 的 capped plan-credit、auto-renewal status 與
+ZeroTrace entitlement status。Attestation 必須是
+UTC、最長 24 小時，且 exact context 或 profile 漂移都 fail closed。這些 profile 是 host 對
+官方文件與本機狀態的聲明，不是 provider 自行驗證；list-rate 試算不是實際帳單或
+金額上限，monthly free usage 也仍須執行時重查。
+
+目前 contract 只支援 Google Maps non-EEA profile，並固定對應 Text Search Pro、Place
+Details Enterprise 與 Compute Routes Essentials；EEA 或不明 billing region 會阻擋而不會
+從旅行地點推測。SerpApi 則區分 standard provider storage 與 Enterprise-only ZeroTrace。
+Safe review 只顯示 aggregate 與 typed profiles，不含 query、payload、credential、私人日期或地點；
+`review_required` 也只允許進入下一個當輪 execution-authorization review，仍不建立 request、
+不讀 credential、不呼叫 provider，且結果持續是 `candidate + unverified`。官方價格、欄位
+與政策快照來源記錄在 roadmap 的 Phase 5.13 checkpoint。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

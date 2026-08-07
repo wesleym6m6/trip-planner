@@ -20,9 +20,10 @@ source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.
 綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
 candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆，Phase 5.10則為每條
 refined line建立typed、provider-neutral evidence requirement，Phase 5.11再建立bounded、可審閱的
-provider capability scope，Phase 5.12最後將scope的明確接受／縮小／取消綁回exact context；十者
-都沒有CLI、parser、provider call、schedule、render或mutation。純offline guided-scope section至此
-收束，下一個外部preflight需使用者明確參與。
+provider capability scope，Phase 5.12再將scope的明確接受／縮小／取消綁回exact context；
+Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight。它們
+都沒有CLI、parser、provider call、schedule、render或mutation；下一個外部execution authorization
+仍需使用者當輪明確參與。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1122,6 +1123,58 @@ authority。
 - Phase 5.3–5.12純offline guided-scope section至此收束。下一個external provider preflight必須在
   執行當下重新核對current pricing、provider policy／terms／retention、credential/session與exact
   request scope，並取得使用者明確參與；任何本段label或response都不能替代該邊界。
+
+### 2026-08-07 — Phase 5.13 exact offline provider-preflight attestation 完成
+
+- 新增`guided_provider_preflight.py`、`GuidedProviderPreflightItem`、token-gated
+  `GuidedProviderPreflight`與`assess_guided_provider_preflight()`。只有exact Phase 5.12
+  `accept_provider_scope`可由trusted host準備preflight；SHA-256 private fingerprint綁完整guided
+  context、accepted scope、derived review、全部attestation items及時間範圍，除card ordering外任何
+  drift都拒絕舊bundle。
+- 每項attestation只含topic、capability、版本化request／pricing／policy／retention profile、
+  opaque billing-region分類、boolean-equivalent credential status與request cap。SerpApi另有bounded
+  remaining-plan-credit（只保留到contract的32-call上限）、auto-renewal與ZeroTrace entitlement
+  status；沒有query、payload、resource ID、credential、policy text、
+  帳單地址或private itinerary value。
+- `checked_at`／`expires_at`必須是UTC且有效期最長24小時，assessor只接受當下
+  `evaluation_at`內的fresh attestation。Missing／extra／duplicate item、capability／profile／retention
+  mismatch、超出accepted cap或同provider credential status矛盾回`needs_refinement`；credential不可用、
+  billing region未確認、stale attestation、SerpApi plan state未確認／credit不足／auto-renewal
+  啟用則fail closed為`blocked`。
+- Google目前只接受non-EEA policy profile；不從旅行地點推測billing account region。
+  Request profile固定為Text Search Pro、Place Details Enterprise及無advanced traffic options的
+  Compute Routes Essentials。Safe output只顯示以first paid tier試算的規劃值、published monthly
+  free cap與SerpApi plan-credit cap；明示monthly remaining usage未查、試算不是hard currency cap。
+- 2026-08-07 host重查官方快照；Google profile日期依pricing page標示的
+  2026-07-31 last update。Google [pricing list](https://developers.google.com/maps/billing-and-pricing/pricing)
+  列Text Search Pro為5,000 monthly free cap、首個付費tier USD 32/1,000；Place Details
+  Enterprise為1,000與USD 20/1,000；Compute Routes Essentials為10,000與USD 5/1,000。
+  [Places fields/SKUs](https://developers.google.com/maps/documentation/places/web-service/data-fields)
+  將identity fields對應Text Search Pro、`currentOpeningHours`對應Place Details Enterprise；
+  [Routes billing](https://developers.google.com/maps/documentation/routes/usage-and-billing)說明未使用
+  `TRAFFIC_AWARE`等advanced feature時為Essentials。
+- Google [Places policy](https://developers.google.com/maps/documentation/places/web-service/policies)、
+  [place ID policy](https://developers.google.com/maps/documentation/places/web-service/place-id)、
+  [general terms](https://cloud.google.com/maps-platform/terms)及
+  [service-specific terms](https://cloud.google.com/maps-platform/terms/maps-service-terms)是本次policy／
+  retention profile來源；本切片只宣告process-local result handling，不新增任何disk cache。
+  SerpApi profile來源為[pricing](https://serpapi.com/pricing)、
+  [Google Hotels API](https://serpapi.com/google-hotels-api)、[terms](https://serpapi.com/legal)與
+  [ZeroTrace](https://serpapi.com/zero-trace-mode)；每個successful non-cached search以一個plan
+  credit規劃，ZeroTrace只能在Enterprise plan中聲明。
+- Profiles只是caller／host attestation，不是provider verification。結構與blocker都通過時也只回
+  `review_private_provider_execution_authorization`；`provider_calls_permitted=false`、
+  `explicit_execution_authorization_required=true`，仍是`candidate + unverified`，不建立request、
+  不讀credential、不呼叫provider、不寫trip、不render或deploy。
+- 新增10個專項回歸；完整790個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 同日secret-safe的live readiness檢查只得到Bitwarden locked、Google Maps／SerpApi key在當前
+  process不可用，且Google billing region尚未由host證實；因此provider calls為0，也沒有
+  建立fixture、讀取secret或改動trip data。
+- 下一個最小切片是Phase 5.14 exact execution-authorization response：只擷取使用者對當輪
+  ready preflight的明確接受／縮小／取消；它仍不是provider call，真正request materialization與
+  execution-time recheck必須留在之後的獨立boundary。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
