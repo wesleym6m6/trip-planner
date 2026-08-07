@@ -266,6 +266,19 @@ stale endpoint 或任一 context drift 都會拒絕。回傳物不保留 raw que
 也不建立 HTTP request、不呼叫 provider、不授權 scope；完整 binding 只前進到另一個 private
 execution-authorization review preparation，結果仍是 `candidate + unverified`。
 
+Phase 5.17 重新提供同一批 exact preimages，並以完整 Phase 5.16 binding chain 準備
+`GuidedProviderExecutionAuthorizationReview`。預設 `to_dict()` 只列出 target kind、將傳送與僅供
+本機審閱的欄位名稱、user-stated／tentative／AI-candidate 來源數量、exact-bound request count、
+核准上限、Google 第一付費級距試算與 SerpApi plan-credit 數，不包含 query、日期、stable local label
+或任何 provider Place ID。只有明確呼叫 `to_ephemeral_private_review_payload()` 才會產生供目前使用者
+直接審閱的 process-local 私人值；stable local labels 會清楚標示為非 provider Place IDs，真正的
+provider identifier、fingerprint、credential 與 snapshot／evidence revision 仍不顯示。所有來源行都
+保持 needs-verification，safe 與 private view 都明示它們不是 authoritative。Review 綁目前 fresh 的
+pricing／policy／retention／credential attestations，且把「若接受時的精確綁定請求數」和 cap 分開；
+本階段建立的 request contract、HTTP request 與觀察到的 provider call 數都是 0。它只要求下一個
+exact accept／request-smaller／cancel response gate，不擷取回覆、不授權 provider，結果仍是
+`candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

@@ -1282,9 +1282,44 @@ authority。
   816個offline tests、Python compile與三個real-trip validators均通過。`trips/*/data` aggregate hash維持
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
 - 下一個最小切片是Phase 5.17 private execution-authorization review：以本binding與重新提供的exact
-  preimages產生可讓使用者理解的bounded target／資料傳送／實際request-count review，並綁目前仍fresh
-  的pricing／policy／retention／credential attestations；本階段仍不擷取authorization response、不建立
-  HTTP request或呼叫provider。
+  preimages產生可讓使用者理解的bounded target／資料傳送／exact-bound request-count review，並綁目前
+  仍fresh的pricing／policy／retention／credential attestations；本階段仍不擷取authorization response、
+  不建立HTTP request或呼叫provider。
+
+### 2026-08-07 — Phase 5.17 private execution-authorization review 完成
+
+- 新增獨立`guided_provider_execution_authorization_review.py`、token-gated
+  `GuidedProviderExecutionAuthorizationReview`與prepare／assess API。Preparation先重驗完整Phase 5.16
+  binding chain；assessment會在原preparation time重建exact review，再以當前trusted UTC重驗preflight、
+  endpoint freshness、preimages與所有guided／scope／target／binding context。Expiry、clock rollback或任一
+  context／profile／target drift都fail closed。
+- 每個review item都從exact typed preimage衍生provider-transmitted field names／values與local review context；
+  raw target object不保留。預設`to_dict()`只顯示欄位名稱、target／source-contract kind與aggregate counts；
+  只有明確呼叫`to_ephemeral_private_review_payload()`才會顯示query、日期、旅客數與stable local labels，且
+  payload明示只能process-local direct-human review、回覆擷取前必須重新assessment，不可持久化。
+- Stable local labels改以`stable_local_*`命名並明示不是provider Place IDs；Google Place IDs只顯示redacted
+  欄位名稱／數量，不顯示值。Safe與private projections均不含target fingerprint、provider request
+  fingerprint、credential、billing address、policy-registry／snapshot／store／evidence revision。Billing只保留
+  已驗證的non-EEA classification，不保留地址或其他身分資料。
+- 每個item會由exact evidence declaration與refined line重建`source_state_counts`，分開列出user-stated、
+  tentative與AI-candidate line counts；三者總和必須等於該target的source-line refs。所有來源行均明示
+  `requires_verification`且不是authoritative，line text與indexes不輸出。
+- `bound_request_count`是「若後續接受時」已exact-bound的請求數，不是已建立或已送出的request；它和
+  accepted cap、Google／SerpApi provider counts分開。Google只提供目前versioned pricing profile的第一付費
+  級距bound estimate與accepted-max estimate；SerpApi只列bound plan-credit count／cap，沒有currency list-rate
+  時明示。月免費額度未查、試算不是hard currency cap，且execution前仍須重驗pricing／policy／retention／
+  credential。
+- Review固定`review_required`，只提供下一個exact response gate的`accept`／`request_smaller`／`cancel`
+  選項。本切片不擷取response、不允許partial authorization、不授權scope；review所建立的provider request
+  contract、HTTP request與觀察到的provider call counts都為0，沒有env／vault／credential access、trip write、
+  scheduler、render、deploy或canonical apply path，維持`candidate + unverified`。
+- Correctness、product-contract與security agents的初審findings已修正，複核均無剩餘actionable finding。
+  新增10個專項回歸；完整826個offline tests、Python compile與三個real-trip validators均通過。
+  `trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.18 exact execution-authorization response gate：只接受綁定同一份仍fresh私人
+  review的`accept`／`request_smaller`／`cancel`；accept也只前進到獨立execution-time recheck／request-
+  materialization gate，不能在capture或assessment內建立HTTP request、讀credential或呼叫provider。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

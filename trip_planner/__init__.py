@@ -313,6 +313,13 @@ from .guided_provider_execution_target_bindings import (
     assess_guided_provider_execution_target_bindings,
     bind_guided_provider_execution_targets,
 )
+from .guided_provider_execution_authorization_review import (
+    GUIDED_PROVIDER_EXECUTION_AUTHORIZATION_REVIEW_VERSION,
+    GuidedProviderExecutionAuthorizationReview,
+    GuidedProviderExecutionAuthorizationReviewStatus,
+    assess_guided_provider_execution_authorization_review,
+    prepare_guided_provider_execution_authorization_review,
+)
 from .lodging_discovery import (
     LODGING_DISCOVERY_VERSION,
     LodgingDiscoveryProblem,
@@ -563,6 +570,7 @@ __all__ = [
     "GUIDED_PROPOSAL_VERSION",
     "GUIDED_PROVIDER_PREFLIGHT_VERSION",
     "GUIDED_PROVIDER_PREFLIGHT_RESPONSE_VERSION",
+    "GUIDED_PROVIDER_EXECUTION_AUTHORIZATION_REVIEW_VERSION",
     "GUIDED_PROVIDER_EXECUTION_TARGET_BINDINGS_VERSION",
     "GUIDED_PROVIDER_EXECUTION_TARGETS_VERSION",
     "GUIDED_PROVIDER_SCOPE_VERSION",
@@ -607,6 +615,8 @@ __all__ = [
     "GuidedProviderPreflightResponseKind",
     "GuidedProviderPreflightResponseReview",
     "GuidedProviderPreflightResponseStatus",
+    "GuidedProviderExecutionAuthorizationReview",
+    "GuidedProviderExecutionAuthorizationReviewStatus",
     "GuidedProviderExecutionTargetDependency",
     "GuidedProviderExecutionTargetBindingItem",
     "GuidedProviderExecutionTargetBindings",
@@ -879,6 +889,7 @@ __all__ = [
     "assess_guided_evidence_requirement_plan",
     "assess_guided_itinerary_candidate",
     "assess_guided_itinerary_response",
+    "assess_guided_provider_execution_authorization_review",
     "assess_guided_provider_preflight",
     "assess_guided_provider_preflight_response",
     "assess_guided_provider_execution_target_bindings",
@@ -889,6 +900,7 @@ __all__ = [
     "capture_guided_itinerary_response",
     "capture_guided_provider_scope_response",
     "capture_guided_provider_preflight_response",
+    "prepare_guided_provider_execution_authorization_review",
     "prepare_guided_provider_preflight",
     "prepare_guided_provider_execution_targets",
     "assess_guided_direction_preference",
