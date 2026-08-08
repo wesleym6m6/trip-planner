@@ -315,6 +315,17 @@ chain。下一關只接受 `prepare_materialization`、`request_smaller` 或 `ca
 不是立即執行。Phase 5.20 不建立 executable provider contract／HTTP request、不選 transport endpoint／
 method、不讀 credential、不啟用 authority、不呼叫 provider，維持 `candidate + unverified`。
 
+Phase 5.21 用 `GuidedProviderRequestMaterializationResponse` 擷取對同一份仍 fresh Phase 5.20 私人
+review 的 exact `prepare_materialization`、`request_smaller` 或 `cancel`。Capture API 只接受 typed enum，
+不解析自然語言、不保存 free text 或 caller digest；capture／assess 都會用同一批 exact preimages 與目前
+trusted UTC 重驗完整 authorization、execution-time recheck 與 candidate-review chain，而且 response 不能
+活得比原五分鐘 recheck 更久。`prepare_materialization` 只接受該份 review 並回
+`prepare_private_provider_request_contract_materialization`，不是立即建立或執行 request；`request_smaller`
+只回 targets refinement，所有 binding／review 都必須重建；`cancel` 關閉目前 materialization path 並保留
+evidence requirements。三個分支都不修改 targets／caps／candidates、不建立新 candidate、executable provider
+contract 或 HTTP request、不讀 credential、不啟用 authority、不呼叫 provider，仍是
+`candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

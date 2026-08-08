@@ -1417,6 +1417,40 @@ authority。
   contract materialization gate；capture／assessment內仍不得建立executable request／HTTP request、讀取
   credential、授權provider call或執行network side effect。
 
+### 2026-08-08 — Phase 5.21 exact request-materialization response gate 完成
+
+- 新增獨立`guided_provider_request_materialization_response.py`、token-gated
+  `GuidedProviderRequestMaterializationResponse`、typed `prepare_materialization`／`request_smaller`／`cancel`
+  enum與capture／assess API。它不做自然語言parser、不接受free text、target subset、cap修改或caller-supplied
+  authorization digest；response只保存kind、private capture time與contract自行計算的context fingerprint。
+- Capture用同一批exact preimages與trusted UTC重驗Phase 5.20 visible private review；assessment先在原capture
+  time重建review與response fingerprint，再以目前trusted UTC重驗完整guided／scope／preflight／targets／
+  bindings／authorization／execution-time recheck／materialization-review chain。Clock rollback、五分鐘recheck
+  expiry、endpoint staleness、preimage／review／response-kind或任一context drift都fail closed。
+- Safe handoff保留response kind、scope-topic／candidate／bound request counts、accepted cap、Google／SerpApi與
+  capability counts、source-state provenance、list-rate estimate／plan-credit cap及fresh pricing／policy／retention／
+  billing／credential／plan-state flags。不顯示query、stable local label、provider identifier、fingerprint、
+  credential、exact plan state、private candidate values、raw preimage、revision或capture／expiry time。
+- `prepare_materialization`只表示接受exact private candidate review，回
+  `ready_for_private_provider_request_contract_materialization`與
+  `prepare_private_provider_request_contract_materialization`；它仍只是準備下一個獨立gate，不立即materialize、
+  execute或啟用authority。Eligible count只是可進下一關的exact-bound candidate數，不代表request已建立。
+- `request_smaller`只回`refine_private_provider_execution_targets`，不修改target、binding、candidate、cap、scope
+  或evidence declaration，後續必須重建整條exact chain。`cancel`只回`continue_private_evidence_review`並關閉
+  目前materialization path；若重開也必須產生新review。三個分支均保留evidence requirements且禁止partial
+  materialization authorization。
+- Response建立的新candidate、executable provider request contract、HTTP request與觀察到的provider call
+  counts皆為0；沒有env／vault／credential access、network、trip／store write、scheduler、render、deploy、
+  confirmation、canonical apply或authoritative-use path，維持`candidate + unverified`。
+- Correctness、product-contract與security agents均無actionable finding。新增9個專項回歸，含三分支、
+  1 topic／2 requests與SerpApi credit；Phase 5.20相容tests與完整864個offline tests、Python compile、三個
+  real-trip validators均通過。`trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.22 exact private provider-request contract materialization：只消費fresh
+  `prepare_materialization` response與同一批exact preimages，再準備token-gated、不可送出的provider request
+  contracts；仍不建立HTTP transport、注入／讀取credential或呼叫provider，且必須保留另一個explicit send
+  authorization gate。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

@@ -578,7 +578,7 @@ class GuidedProviderRequestMaterializationReviewTests(unittest.TestCase):
                 serpapi_plan_credit_cap=0,
             )
 
-    def test_public_surface_has_review_but_no_response_http_or_execution_path(self) -> None:
+    def test_public_surface_has_review_and_review_module_has_no_execution_path(self) -> None:
         for name in (
             "GUIDED_PROVIDER_REQUEST_MATERIALIZATION_REVIEW_VERSION",
             "GuidedProviderRequestContractCandidate",
@@ -595,7 +595,6 @@ class GuidedProviderRequestMaterializationReviewTests(unittest.TestCase):
             GUIDED_PROVIDER_REQUEST_MATERIALIZATION_REVIEW_VERSION,
         )
         for unsupported_name in (
-            "capture_guided_provider_request_materialization_response",
             "materialize_guided_provider_request",
             "authorize_guided_provider_execution",
             "build_guided_provider_http_request",
@@ -603,6 +602,12 @@ class GuidedProviderRequestMaterializationReviewTests(unittest.TestCase):
             "call_guided_provider",
         ):
             self.assertFalse(hasattr(trip_planner, unsupported_name))
+        self.assertFalse(
+            hasattr(
+                materialization_module,
+                "capture_guided_provider_request_materialization_response",
+            )
+        )
 
         tree = ast.parse(inspect.getsource(materialization_module))
         imported_roots = {
