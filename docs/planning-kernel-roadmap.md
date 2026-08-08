@@ -36,8 +36,10 @@ availability attestation建立exact live credential-binding review，Phase 5.29�
 `accept_live_credential_binding`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、自然語言response
 parser、credential value access／binding、HTTP request、provider call、schedule、render或mutation；accepted
 response也仍不可執行或送出，只能前進到後續獨立ephemeral credential-value binding gate。
-Phase 6.0 fail-closed public release boundary亦已完成；
-真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
+M0已把Phase 5.13–5.29凍結為`Provider Execution Safety Reference v1`，並把剩餘產品交付
+收斂為Phase 5.30–5.33；runtime gate名稱不再各自占用roadmap phase編號。Phase 6.0
+fail-closed public release boundary亦已完成；真實provider驗收仍只在明確授權範圍內進行，
+完整canonical CLI/interface仍待後續有限切片。
 
 ## 產品目標
 
@@ -393,6 +395,46 @@ Exit gate：
 - 一個 AI agent 可只靠 typed tool contract 完成規劃與修復；
 - 多 agent 只能提交 proposal / evidence，不直接並行寫 canonical state；
 - 使用者在關鍵主觀取捨、付款、取消與公開發布前才需要確認。
+
+#### M0 — Phase 5 rebaseline 與測試收斂
+
+Phase 5.13–5.29的安全邊界不是廢棄工作；它們自M0起凍結為
+`Provider Execution Safety Reference v1`。Exact fingerprints、五分鐘expiry、trusted-clock
+rollback protection、replay／tamper／drift rejection、typed contracts、transport／credential
+slots、redaction與既有regressions都保留。後續可修正明確bug，但不得再因拆出一個internal
+runtime gate就增加roadmap phase。
+
+剩餘Phase 5只有四個macro phases：
+
+- **5.30 — composed pre-execution facade**：把既有Safety Reference組成單一typed facade；只在
+  fresh exact consent下，經host-only non-serializable seam完成短效credential binding、allowlisted
+  request construction與最後一次執行前重核。仍不呼叫provider、不寫trip、不授予可重播authority。
+- **5.31 — bounded provider execution**：加入明確request／time／cost界線、typed outcomes、
+  unknown-outcome retry policy與result quarantine；只有這個macro phase可跨越provider-call boundary。
+- **5.32 — evidence-to-canonical workflow**：將隔離結果轉成source-backed evidence，接回
+  composition、validate、schedule／repair與使用者審閱後的canonical apply；provider結果本身不能
+  直接寫canonical state。
+- **5.33 — unified product interface**：完成單一`tripctl`、consistent JSON envelope、
+  inspect／propose／score／validate／apply、resume／retry語義、skill改寫，以及Busan／Hokkaido canned
+  E2E與另行授權的bounded live smoke。通過原Phase 5 exit gate後即凍結Phase 5。
+
+不存在默認的Phase 5.34。若5.33後仍有工作，只能是bug／maintenance、已定義的Phase 6 scope，或經
+明確產品rebaseline後的新roadmap；不得把尚未命名的小型安全seam自動轉成新phase。
+
+M0 testing contract：
+
+- internal gate只跑Python compile、changed focused tests與直接predecessor compatibility；
+- 每個5.30–5.33 macro phase、push／PR與release才跑完整offline suite、三個real-trip validators與
+  `trips/*/data` aggregate hash；
+- default exact-chain fixtures可共用frozen、process-local checkpoint；任何帶explicit arguments的
+  alternate branch、drift、tamper、expiry或rollback fixture一律繞過cache並獨立建立；
+- 937個既有tests與assertions全部保留，且至少保留一條由真實production contracts建立的
+  Phase 5.3→5.29 full-chain E2E；
+- 在目前開發環境以完整gate約15分鐘內為M0效能目標。若未達標，先處理測試重建熱點，不以刪除
+  safety coverage或改寫production semantics換取速度。
+
+M0明確不新增generic workflow DSL、database／event sourcing、microservice、queue或新test dependency。
+這些都不是完成原Phase 5產品exit gate所需的最小工作。
 
 ### Phase 6 — Delivery, Privacy, and Operations
 
@@ -1721,10 +1763,31 @@ authority。
   module isolation，10 tests均通過（461.605秒）；Phase 5.28相容9 tests亦全過（225.245秒）。完整937個offline
   tests（2162.881秒）、Python compile與三個real-trip validators均通過。`trips/*/data`的23個files aggregate hash
   維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
-- 下一個最小切片是Phase 5.30 explicit ephemeral credential-value binding preparation／review：只消費fresh Phase 5.29
-  exact accept response、完整context、同一批preimages與原slot availability attestations，經trusted host的獨立
-  non-serializable seam短效綁定exact required slots。該切片仍不得在safe output、repr或log顯示secret，也不得建立
-  HTTP request或呼叫provider；任何真實send仍須保留在後續另一個明確bounded gate。
+- 此checkpoint後先執行M0 rebaseline與測試收斂，不再逐一新增runtime-gate phase。下一個產品切片是上方
+  有限計畫中的Phase 5.30 composed pre-execution facade；Phase 5.13–5.29則凍結為
+  `Provider Execution Safety Reference v1`，不得刪除、弱化或以新抽象重寫。
+
+### 2026-08-08 — M0 Phase 5 rebaseline／test fixture convergence 完成
+
+- Roadmap現只保留Phase 5.30–5.33四個macro phases，並明訂沒有默認Phase 5.34；Phase 5.13–5.29
+  凍結為`Provider Execution Safety Reference v1`。Runtime safety gates、roadmap delivery phases與
+  full-test cadence不再混用同一套編號。
+- 新增test-only `phase5_fixture_cache.py`。無參數default builders只共用frozen process-local graph；
+  explicit builder arguments仍建立獨立fixture。Guided module內匯入的pure upstream assessors另以完整
+  positional／keyword input作checkpoint key；unhashable values以保留物件的identity key隔離。每個module
+  自己正在受測的public assessor不包cache，因此first traversal仍執行真實production contract，任何context、
+  time、preimage、branch或attestation變化也會產生新key並重新驗證。
+- Phase 5.10–5.29 default fixture helpers已接上共享checkpoint；Phase 5.28／5.29另外共用同一份實際建立的
+  live credential review／response graph。沒有刪除或改寫任一既有test method、assertion、production module或
+  Safety Reference contract。
+- Phase 5 focused 277 tests全過（6.735秒）；最深的Phase 5.28–5.29 compatibility 19 tests全過
+  （0.314秒）。完整937個offline tests全過（27.656秒），完整`bash scripts/check.sh`含Python compile與三個
+  real-trip validators共30.07秒，低於M0約15分鐘目標；相較Phase 5.29 checkpoint的2162.881秒test baseline，
+  test runtime約縮短78倍。
+- `trips/*/data`仍為23個files，aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。本M0沒有修改`trip_planner/`、
+  `scripts/`、`trips/`或使用者既有`.envrc.example`變更，沒有provider call、credential access、render、
+  deploy或canonical mutation。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

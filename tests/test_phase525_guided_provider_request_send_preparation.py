@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_request_send_preparation as preparation_module
 from tests.test_phase513_guided_provider_preflight import _google_item
 from tests.test_phase516_guided_provider_execution_target_bindings import (
@@ -73,6 +74,7 @@ PREPARE_SEND_PREPARATION_AT = (
 ASSESS_SEND_PREPARATION_AT = PREPARE_SEND_PREPARATION_AT + timedelta(seconds=2)
 
 
+@reuse_immutable_default_fixture
 def _prepared_send_preparation(
     *,
     response_context: tuple[object, ...] | None = None,

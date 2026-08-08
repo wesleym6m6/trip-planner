@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_execution_authorization_response as response_module
 from tests.test_phase513_guided_provider_preflight import EXPIRES_AT
 from tests.test_phase516_guided_provider_execution_target_bindings import (
@@ -49,6 +50,7 @@ CAPTURE_AT = REASSESS_AT + timedelta(minutes=1)
 ASSESS_RESPONSE_AT = CAPTURE_AT + timedelta(minutes=1)
 
 
+@reuse_immutable_default_fixture
 def _captured_response(
     kind: GuidedProviderExecutionAuthorizationResponseKind = (
         GuidedProviderExecutionAuthorizationResponseKind.ACCEPT

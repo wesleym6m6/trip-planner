@@ -11,6 +11,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 from trip_planner import (
     guided_provider_request_credential_binding_response as response_module,
 )
@@ -68,6 +69,7 @@ ASSESS_CREDENTIAL_BINDING_RESPONSE_AT = (
 )
 
 
+@reuse_immutable_default_fixture
 def _captured_credential_binding_response(
     kind: GuidedProviderRequestCredentialBindingResponseKind = (
         GuidedProviderRequestCredentialBindingResponseKind

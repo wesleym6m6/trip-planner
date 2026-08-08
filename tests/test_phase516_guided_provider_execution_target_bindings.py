@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import date, timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.facts as facts_module
 import trip_planner.guided_provider_execution_target_bindings as bindings_module
 from tests.test_phase44_place_details import _Fixture as PlaceDetailsFixture
@@ -94,6 +95,7 @@ def _place_details_request(*, now=BIND_AT - timedelta(minutes=1)):
     )
 
 
+@reuse_immutable_default_fixture
 def _default_preimages(
     *,
     identity: PlaceIdentityIntent | None = None,
@@ -115,6 +117,7 @@ def _default_preimages(
     )
 
 
+@reuse_immutable_default_fixture
 def _prepared_bindings(
     *,
     context: tuple[object, ...] | None = None,

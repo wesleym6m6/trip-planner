@@ -11,6 +11,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 from trip_planner import (
     guided_provider_request_live_credential_binding_response as response_module,
 )
@@ -52,12 +53,11 @@ from tests.test_phase526_guided_provider_request_credential_binding_review impor
 )
 from tests.test_phase527_guided_provider_request_credential_binding_response import (
     CAPTURE_CREDENTIAL_BINDING_RESPONSE_AT,
-    _captured_credential_binding_response,
 )
 from tests.test_phase528_guided_provider_request_live_credential_binding_review import (
     ASSESS_LIVE_CREDENTIAL_BINDING_REVIEW_AT,
     PREPARE_LIVE_CREDENTIAL_BINDING_REVIEW_AT,
-    _availability_attestations,
+    _prepared_live_credential_binding_review,
 )
 from trip_planner.guided_provider_preflight import (
     GuidedProviderCredentialStatus,
@@ -75,7 +75,6 @@ from trip_planner.guided_provider_request_live_credential_binding_review import 
     GuidedProviderRequestCredentialAvailabilityAttestation,
     GuidedProviderRequestLiveCredentialBindingReview,
     GuidedProviderRequestLiveCredentialBindingReviewStatus,
-    prepare_guided_provider_request_live_credential_binding_review,
 )
 
 
@@ -89,41 +88,37 @@ ASSESS_LIVE_CREDENTIAL_BINDING_RESPONSE_AT = (
 )
 
 
+@reuse_immutable_default_fixture
+def _captured_live_credential_binding_response():
+    review_context, preimages, attestations = (
+        _prepared_live_credential_binding_review()
+    )
+    response = capture_guided_provider_request_live_credential_binding_response(
+        *review_context,
+        preimages=preimages,
+        kind=(
+            GuidedProviderRequestLiveCredentialBindingResponseKind
+            .ACCEPT_LIVE_CREDENTIAL_BINDING
+        ),
+        evaluation_at=CAPTURE_LIVE_CREDENTIAL_BINDING_RESPONSE_AT,
+    )
+    return (*review_context, response), preimages, attestations
+
+
 class GuidedProviderRequestLiveCredentialBindingResponseTests(
     unittest.TestCase
 ):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.credential_response_context, cls.default_preimages = (
-            _captured_credential_binding_response()
-        )
-        cls.default_attestations = _availability_attestations(
-            cls.credential_response_context
-        )
-        cls.live_review = (
-            prepare_guided_provider_request_live_credential_binding_review(
-                *cls.credential_response_context,
-                preimages=cls.default_preimages,
-                availability_attestations=cls.default_attestations,
-                evaluation_at=PREPARE_LIVE_CREDENTIAL_BINDING_REVIEW_AT,
-            )
-        )
-        cls.review_context = (
-            *cls.credential_response_context,
-            cls.live_review,
-        )
-        cls.default_response = (
-            capture_guided_provider_request_live_credential_binding_response(
-                *cls.review_context,
-                preimages=cls.default_preimages,
-                kind=(
-                    GuidedProviderRequestLiveCredentialBindingResponseKind
-                    .ACCEPT_LIVE_CREDENTIAL_BINDING
-                ),
-                evaluation_at=CAPTURE_LIVE_CREDENTIAL_BINDING_RESPONSE_AT,
-            )
-        )
-        cls.default_context = (*cls.review_context, cls.default_response)
+        (
+            cls.default_context,
+            cls.default_preimages,
+            cls.default_attestations,
+        ) = _captured_live_credential_binding_response()
+        cls.review_context = cls.default_context[:-1]
+        cls.credential_response_context = cls.review_context[:-1]
+        cls.live_review = cls.review_context[-1]
+        cls.default_response = cls.default_context[-1]
         with patch.object(
             response_module,
             "assess_guided_provider_request_live_credential_binding_review",

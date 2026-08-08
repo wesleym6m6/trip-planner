@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_request_materialization_review as materialization_module
 from tests.test_phase510_guided_evidence_plan import (
     _accepted_response_context,
@@ -88,6 +89,7 @@ PREPARE_REVIEW_AT = ASSESS_RECHECK_AT + timedelta(minutes=1)
 ASSESS_REVIEW_AT = PREPARE_REVIEW_AT + timedelta(minutes=1)
 
 
+@reuse_immutable_default_fixture
 def _prepared_materialization_review(*, items: tuple[object, ...] | None = None):
     context, preimages = _prepared_recheck(items=items)
     review = prepare_guided_provider_request_materialization_review(
@@ -132,6 +134,7 @@ def _prepared_single_capability_review(
     return (*accepted, recheck, review), preimages
 
 
+@reuse_immutable_default_fixture
 def _prepared_two_requests_for_one_scope_item():
     topic = GuidedEvidenceTopic.PLACE_IDENTITY
     capability = GuidedProviderCapability.GOOGLE_PLACES_IDENTITY_LOOKUP

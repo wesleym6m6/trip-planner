@@ -11,6 +11,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 from trip_planner import (
     guided_provider_request_credential_binding_response as response_module,
 )
@@ -108,26 +109,31 @@ def _availability_attestations(
     )
 
 
+@reuse_immutable_default_fixture
+def _prepared_live_credential_binding_review():
+    response_context, preimages = _captured_credential_binding_response()
+    attestations = _availability_attestations(response_context)
+    review = prepare_guided_provider_request_live_credential_binding_review(
+        *response_context,
+        preimages=preimages,
+        availability_attestations=attestations,
+        evaluation_at=PREPARE_LIVE_CREDENTIAL_BINDING_REVIEW_AT,
+    )
+    return (*response_context, review), preimages, attestations
+
+
 class GuidedProviderRequestLiveCredentialBindingReviewTests(
     unittest.TestCase
 ):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.response_context, cls.default_preimages = (
-            _captured_credential_binding_response()
-        )
-        cls.default_attestations = _availability_attestations(
-            cls.response_context
-        )
-        cls.default_review = (
-            prepare_guided_provider_request_live_credential_binding_review(
-                *cls.response_context,
-                preimages=cls.default_preimages,
-                availability_attestations=cls.default_attestations,
-                evaluation_at=PREPARE_LIVE_CREDENTIAL_BINDING_REVIEW_AT,
-            )
-        )
-        cls.default_context = (*cls.response_context, cls.default_review)
+        (
+            cls.default_context,
+            cls.default_preimages,
+            cls.default_attestations,
+        ) = _prepared_live_credential_binding_review()
+        cls.response_context = cls.default_context[:-1]
+        cls.default_review = cls.default_context[-1]
         cls.response_review = (
             cls.default_review._credential_binding_response_review
         )

@@ -9,6 +9,7 @@ import unittest
 from dataclasses import fields, replace
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_scope as guided_provider_scope_module
 from tests.test_phase53_guided_draft import _transport_boundary
 from tests.test_phase56_guided_refinement import PRIVATE, _preference
@@ -64,6 +65,7 @@ def _proposal(
     return GuidedProviderScopeProposal(items=items)
 
 
+@reuse_immutable_default_fixture
 def _complete_scope() -> GuidedProviderScopeProposal:
     return _proposal(
         _scope_item(

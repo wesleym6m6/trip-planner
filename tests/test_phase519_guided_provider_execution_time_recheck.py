@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_execution_time_recheck as recheck_module
 from tests.test_phase513_guided_provider_preflight import EXPIRES_AT
 from tests.test_phase516_guided_provider_execution_target_bindings import (
@@ -60,6 +61,7 @@ RECHECK_AT = ASSESS_RESPONSE_AT + timedelta(minutes=1)
 ASSESS_RECHECK_AT = RECHECK_AT + timedelta(minutes=1)
 
 
+@reuse_immutable_default_fixture
 def _prepared_recheck(
     kind: GuidedProviderExecutionAuthorizationResponseKind = (
         GuidedProviderExecutionAuthorizationResponseKind.ACCEPT
@@ -78,6 +80,7 @@ def _prepared_recheck(
     return (*context, recheck), preimages
 
 
+@reuse_immutable_default_fixture
 def _captured_serpapi_response():
     context, preimages = _single_topic_review(
         GuidedEvidenceTopic.LODGING,

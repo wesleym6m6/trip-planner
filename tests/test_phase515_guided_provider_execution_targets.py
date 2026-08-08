@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_execution_targets as targets_module
 from tests.test_phase510_guided_evidence_plan import (
     _accepted_response_context,
@@ -65,6 +66,7 @@ TARGETS_PREPARED_AT = EVALUATION_AT + timedelta(minutes=1)
 TARGETS_ASSESSED_AT = TARGETS_PREPARED_AT + timedelta(minutes=1)
 
 
+@reuse_immutable_default_fixture
 def _accepted_preflight_context(
     *,
     context: tuple[object, ...] | None = None,
@@ -78,6 +80,7 @@ def _accepted_preflight_context(
     return (*exact_context, response)
 
 
+@reuse_immutable_default_fixture
 def _prepared_targets(*, context: tuple[object, ...] | None = None):
     exact_context = (
         _accepted_preflight_context() if context is None else context

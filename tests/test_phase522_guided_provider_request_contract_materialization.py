@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_request_contract_materialization as contract_module
 from tests.test_phase513_guided_provider_preflight import EXPIRES_AT, _google_item
 from tests.test_phase516_guided_provider_execution_target_bindings import (
@@ -58,6 +59,7 @@ MATERIALIZE_CONTRACTS_AT = (
 ASSESS_CONTRACTS_AT = MATERIALIZE_CONTRACTS_AT + timedelta(seconds=15)
 
 
+@reuse_immutable_default_fixture
 def _materialized_contracts(
     *,
     response_context: tuple[object, ...] | None = None,

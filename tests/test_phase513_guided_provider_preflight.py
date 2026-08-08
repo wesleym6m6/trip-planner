@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import datetime, timedelta, timezone
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_preflight as preflight_module
 from tests.test_phase510_guided_evidence_plan import (
     _accepted_response_context,
@@ -134,6 +135,7 @@ def _complete_google_items(
     )
 
 
+@reuse_immutable_default_fixture
 def _prepared(
     *,
     items: tuple[GuidedProviderPreflightItem, ...] | None = None,

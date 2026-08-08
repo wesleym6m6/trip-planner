@@ -9,6 +9,7 @@ import unittest
 from dataclasses import fields, replace
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_scope_response as scope_response_module
 from tests.test_phase53_guided_draft import _transport_boundary
 from tests.test_phase56_guided_refinement import PRIVATE, _preference
@@ -48,6 +49,7 @@ from trip_planner.guided_refinement import (
 )
 
 
+@reuse_immutable_default_fixture
 def _reviewable_context():
     return (
         *_accepted_response_context(),

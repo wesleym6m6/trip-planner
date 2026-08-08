@@ -103,6 +103,12 @@ legacy-only、唯讀入口；私有導引草稿不是 `tripctl` CLI，也不建�
 canonical workflow 尚未提供。除非已明確接受 developer workflow，否則不要 migration
 真實 trip。
 
+Phase 5已在M0重新收斂：Phase 5.13–5.29保留為`Provider Execution Safety Reference v1`，
+不再讓每個internal runtime gate各占一個roadmap phase；剩餘產品交付固定為5.30 composed
+pre-execution、5.31 bounded provider execution、5.32 evidence-to-canonical與5.33 unified
+`tripctl`／skill驗收。5.33通過後Phase 5即凍結，沒有默認的5.34。完整定義與測試節奏見
+[`docs/planning-kernel-roadmap.md`](docs/planning-kernel-roadmap.md)。
+
 Phase 4.4 的 Places profile / opening-hours runtime目前也是developer
 boundary：核心只有injected transport，沒有內建credential或live CLI。
 只有fresh、無衝突的`currentOpeningHours`可限制完整活動時段；

@@ -9,6 +9,10 @@ import unittest
 from dataclasses import fields, replace
 
 import trip_planner
+from tests.phase5_fixture_cache import (
+    install_guided_assessment_checkpoint_cache,
+    reuse_immutable_default_fixture,
+)
 import trip_planner.guided_evidence_plan as guided_evidence_plan_module
 from tests.test_phase53_guided_draft import _transport_boundary
 from tests.test_phase56_guided_refinement import PRIVATE, _preference
@@ -36,6 +40,9 @@ from trip_planner.guided_refinement import (
 from trip_planner.models import DecisionState, EvidenceState
 
 
+install_guided_assessment_checkpoint_cache()
+
+
 def _requirement(
     source_line_index: int,
     *topics: GuidedEvidenceTopic,
@@ -56,12 +63,14 @@ def _plan(
     return GuidedEvidenceRequirementPlan(declarations=declarations)
 
 
+@reuse_immutable_default_fixture
 def _accepted_response_context():
     return _capture(
         GuidedItineraryResponseKind.ACCEPT_ITINERARY_CANDIDATE
     )
 
 
+@reuse_immutable_default_fixture
 def _complete_plan() -> GuidedEvidenceRequirementPlan:
     return _plan(
         _requirement(

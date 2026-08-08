@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_request_credential_binding_review as review_module
 from tests.test_phase513_guided_provider_preflight import _google_item
 from tests.test_phase516_guided_provider_execution_target_bindings import (
@@ -71,6 +72,7 @@ ASSESS_CREDENTIAL_BINDING_REVIEW_AT = (
 )
 
 
+@reuse_immutable_default_fixture
 def _prepared_credential_binding_review(
     *,
     preparation_context: tuple[object, ...] | None = None,

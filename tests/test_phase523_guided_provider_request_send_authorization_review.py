@@ -10,6 +10,7 @@ from dataclasses import fields, replace
 from datetime import timedelta
 
 import trip_planner
+from tests.phase5_fixture_cache import reuse_immutable_default_fixture
 import trip_planner.guided_provider_request_send_authorization_review as review_module
 from tests.test_phase513_guided_provider_preflight import EXPIRES_AT, _google_item
 from tests.test_phase516_guided_provider_execution_target_bindings import (
@@ -57,6 +58,7 @@ PREPARE_SEND_REVIEW_AT = ASSESS_CONTRACTS_AT + timedelta(seconds=15)
 ASSESS_SEND_REVIEW_AT = PREPARE_SEND_REVIEW_AT + timedelta(seconds=15)
 
 
+@reuse_immutable_default_fixture
 def _prepared_send_review(
     *,
     materialized_context: tuple[object, ...] | None = None,
