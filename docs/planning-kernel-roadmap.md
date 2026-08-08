@@ -1451,6 +1451,39 @@ authority。
   contracts；仍不建立HTTP transport、注入／讀取credential或呼叫provider，且必須保留另一個explicit send
   authorization gate。
 
+### 2026-08-08 — Phase 5.22 exact private provider-request contract materialization 完成
+
+- 新增獨立`guided_provider_request_contract_materialization.py`、token-gated
+  `GuidedProviderRequestContract`／`GuidedProviderRequestContractMaterialization`／review與materialize／assess API。
+  Materialize只接受fresh Phase 5.21 exact `prepare_materialization` response與同一批exact preimages；
+  `request_smaller`／`cancel`不能進入此路徑。
+- 每個已reviewed exact-bound preimage各產生一個process-local contract，支援Google Places Text Search、Place
+  Details、Routes Compute Routes與SerpApi Google Hotels四種typed surface。Contract保留exact provider-transmitted
+  values；Place Details／Routes的provider Place IDs、stable local result binding與source-binding fingerprint均為
+  private fields，且bundle不保留raw target preimage。Candidate／contract／bound-request counts維持相等；同一個
+  scope topic可在accepted cap內保有多個不同requests。
+- Assessment先在原materialization time重建Phase 5.21 response、四種contracts與bundle fingerprint，再以目前
+  trusted UTC重驗完整guided／scope／preflight／targets／bindings／authorization／recheck／materialization
+  chain。Bundle expiry沿用且不超過Phase 5.19五分鐘recheck；clock rollback、expiry、preimage／contract／
+  response-kind或任一context drift都fail closed。
+- Safe view只顯示topic／capability／request／pricing／policy／retention／target profiles、private field names、
+  source-state provenance、accepted／bound caps、Google／SerpApi counts、list-rate estimate／plan-credit cap與fresh
+  attestation flags。不顯示exact query／日期、stable local label、provider identifier、source／context fingerprint、
+  credential、exact SerpApi plan state、raw preimage、revision或materialization／expiry time。
+- Contracts明確non-executable且non-sendable；沒有transport endpoint、HTTP method、credential slot/value、HTTP
+  request、send／execution authority、env／vault access、network、provider call、trip／store write、scheduler、
+  render、deploy、confirmation、canonical apply或authoritative-use path，維持`candidate + unverified`。Ready只回
+  `prepare_private_provider_request_send_authorization_review`。
+- Correctness、product-contract與security agents均無actionable finding。新增10個Phase 5.22專項回歸，含四種
+  typed request surfaces、1 topic／2 requests、SerpApi credit、expiry／drift／redaction／token-gating；Phase 5.21
+  相容tests與完整874個offline tests、Python compile、三個real-trip validators均通過。`trips/*/data`的23個
+  files aggregate hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改
+  `trips/`。
+- 下一個最小切片是Phase 5.23 exact private provider-request send-authorization review：只消費fresh Phase 5.22
+  materialization與同一批exact preimages，讓使用者在任何transport／credential binding前再次審閱將送出的
+  exact contracts。此review本身仍不得選endpoint／HTTP method、建立HTTP request、讀取credential、授權或
+  呼叫provider；真正send response與execution仍保留在後續獨立gate。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

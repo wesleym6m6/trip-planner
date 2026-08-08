@@ -416,7 +416,7 @@ class GuidedProviderRequestMaterializationResponseTests(unittest.TestCase):
                 serpapi_plan_credit_cap=0,
             )
 
-    def test_public_contract_has_response_but_no_materialization_or_execution_path(self) -> None:
+    def test_response_surface_stays_response_only_and_has_no_execution_path(self) -> None:
         for name in (
             "GUIDED_PROVIDER_REQUEST_MATERIALIZATION_RESPONSE_VERSION",
             "GuidedProviderRequestMaterializationResponse",
@@ -431,6 +431,12 @@ class GuidedProviderRequestMaterializationResponseTests(unittest.TestCase):
         self.assertEqual(
             "guided-provider-request-materialization-response/v1",
             GUIDED_PROVIDER_REQUEST_MATERIALIZATION_RESPONSE_VERSION,
+        )
+        self.assertFalse(
+            hasattr(
+                response_module,
+                "materialize_guided_provider_request_contracts",
+            )
         )
         for unsupported_name in (
             "materialize_guided_provider_request",

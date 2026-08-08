@@ -326,6 +326,19 @@ evidence requirements。三個分支都不修改 targets／caps／candidates、�
 contract 或 HTTP request、不讀 credential、不啟用 authority、不呼叫 provider，仍是
 `candidate + unverified`。
 
+Phase 5.22 用 `GuidedProviderRequestContractMaterialization` 消費 fresh Phase 5.21
+`prepare_materialization` response 與同一批 exact preimages，建立 process-local、token-gated 的
+`GuidedProviderRequestContract`。四種 typed surface 會保留真正要傳給 provider 的 exact values；Place
+Details／Routes 的 provider Place IDs、stable local result binding 與 source-binding fingerprint 也只留在
+private fields，bundle 不保留 raw preimage。Materialize／assess 都會在原 materialization time 與目前
+trusted UTC 重建完整 chain，而且 bundle expiry 不得超過 Phase 5.19 的五分鐘 execution recheck；過期、
+clock rollback、response kind、context、preimage 或 contract drift 都會 fail closed。Safe view 只顯示 field
+names、counts、profiles、cost／credit／provenance aggregates 與 freshness flags，不顯示 exact query、日期、
+provider／local IDs、fingerprints、credentials、SerpApi exact plan state 或時間。這些 contracts 明確不可執行、
+不可送出，也沒有 endpoint、HTTP method、credential slot、HTTP request、send／execution authority 或 provider
+call；結果仍是 `candidate + unverified`，只前進到另一個獨立的
+`prepare_private_provider_request_send_authorization_review` gate。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
