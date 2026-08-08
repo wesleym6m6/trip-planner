@@ -1385,6 +1385,38 @@ authority。
   fields／bound count；本切片仍不得建立HTTP request、讀取credential、授權或呼叫provider，且任一recheck
   expiry／context drift都必須重做Phase 5.19。
 
+### 2026-08-08 — Phase 5.20 exact private request-materialization review 完成
+
+- 新增獨立`guided_provider_request_materialization_review.py`、token-gated
+  `GuidedProviderRequestContractCandidate`／`GuidedProviderRequestMaterializationReview`與prepare／assess API。
+  Preparation只接受fresh、ready Phase 5.19 recheck及同一批exact preimages；assessment先在原prepared time
+  重建recheck、authorization review與candidate fingerprint，再用目前trusted UTC重驗完整chain。Review
+  expiry不超過原五分鐘recheck；clock rollback、expiry或任一context／preimage／recheck drift都fail closed。
+- 從已重驗的exact Phase 5.17 private disclosures衍生四種provider-neutral materialization kind：Google Places
+  Text Search、Place Details、Routes Compute Routes與SerpApi Google Hotels。每個exact-bound preimage各產生一個
+  non-executable candidate；candidate count等於bound request count，允許同一scope topic在accepted cap內有
+  多個requests，不把scope-item count誤當request count。
+- Safe view只保留topic／capability／request profile／materialization kind／target kind、transmitted與local field
+  names、source provenance、accepted／bound caps、Google／SerpApi counts、list-rate estimate／plan-credit cap及
+  fresh pricing／policy／retention／billing／credential／plan-state recheck flags。不顯示query、日期、stable local
+  label、provider identifier、fingerprint、credential、exact SerpApi plan state、raw preimage、revision或時間。
+- 只有明確呼叫`to_ephemeral_private_review_payload()`才會顯示非identifier的exact transmitted values與local
+  review context，並標成process-local direct-human review only；provider Place IDs仍只顯示redacted field names。
+  Review本身不保留raw preimages，只保留derived private disclosure，capture前必須再次assessment。
+- 下一個typed response options是`prepare_materialization`／`request_smaller`／`cancel`；命名與disclosure明示
+  prepare只代表準備下一階段，不是立即materialize或execute。Candidate不可執行；executable provider request
+  contract、HTTP request與觀察到的provider call counts皆為0，沒有transport endpoint／method selection、env／
+  vault／credential access、network、trip／store write、scheduler、render、deploy、confirmation、canonical
+  apply或authoritative-use path，維持`candidate + unverified`。
+- Correctness、product-contract與security agents的初審與delta複核均無剩餘actionable finding；產品命名建議
+  已採納。新增10個專項回歸，含四種materialization surfaces與1 topic／2 requests edge；完整855個offline
+  tests、Python compile、三個real-trip validators均通過。`trips/*/data` aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.21 exact request-materialization response gate：只擷取同一份仍fresh私人review的
+  typed `prepare_materialization`／`request_smaller`／`cancel`。Prepare也只前進到另一個exact provider-request
+  contract materialization gate；capture／assessment內仍不得建立executable request／HTTP request、讀取
+  credential、授權provider call或執行network side effect。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

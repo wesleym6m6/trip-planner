@@ -303,6 +303,18 @@ target、provider identifier、fingerprint、credential、exact plan balance 或
 `prepare_private_provider_request_materialization_review`；本階段不建立 provider request contract／HTTP
 request、不啟用 execution authority、不呼叫 provider，仍是 `candidate + unverified`。
 
+Phase 5.20 用 `GuidedProviderRequestMaterializationReview` 把仍 fresh、ready 的 Phase 5.19 recheck
+與同一批 exact preimages 轉成四種 non-executable `GuidedProviderRequestContractCandidate`：Google
+Places Text Search、Place Details、Routes Compute Routes 與 SerpApi Google Hotels。Candidate 數等於
+exact-bound request 數，不會誤用 scope topic 數；多個 request 仍必須落在 accepted cap 內。Safe view
+只列 request profile／materialization kind、field names、aggregate request／cost／credit／provenance counts
+與 fresh recheck flags；明確呼叫 `to_ephemeral_private_review_payload()` 才會顯示 query、日期、語系與
+stable local labels，provider Place IDs、fingerprints、credentials 與 SerpApi exact plan state 在 private view
+也不顯示。Review 不得超過五分鐘 recheck expiry，capture response 前還要以目前 trusted UTC 重驗完整
+chain。下一關只接受 `prepare_materialization`、`request_smaller` 或 `cancel`；前者明示只是準備下一階段，
+不是立即執行。Phase 5.20 不建立 executable provider contract／HTTP request、不選 transport endpoint／
+method、不讀 credential、不啟用 authority、不呼叫 provider，維持 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
