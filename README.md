@@ -364,6 +364,23 @@ fingerprints、credentials、SerpApi exact plan state 或時間。`accept_send` 
 endpoint／HTTP method、不綁 credential、不建立 HTTP request、不呼叫 provider，結果仍是
 `candidate + unverified`。
 
+Phase 5.25 用 `GuidedProviderRequestSendPreparation` 消費同一份仍 fresh Phase 5.24
+`accept_send` response、完整 exact context、同一批 preimages 與 materialized contracts，並將每個 contract
+綁到 versioned allowlist：Google [Places Text Search (New)](https://developers.google.com/maps/documentation/places/web-service/text-search)
+使用 `POST https://places.googleapis.com/v1/places:searchText`、[Place Details (New)](https://developers.google.com/maps/documentation/places/web-service/place-details)
+使用 `GET https://places.googleapis.com/v1/places/{provider_place_id}`、[Routes Compute Routes](https://developers.google.com/maps/documentation/routes/compute_route_directions)
+使用 `POST https://routes.googleapis.com/directions/v2:computeRoutes`，而 [SerpApi Google Hotels](https://serpapi.com/google-hotels-api)
+使用 `GET https://serpapi.com/search.json` 與固定 `engine=google_hotels`。Binding 只記錄公開 endpoint
+template、HTTP method、provider field placement 與 credential slot：Google Maps 為 `X-Goog-Api-Key` header，
+SerpApi 為 `api_key` query parameter；它不讀取或保存 credential value，也不展開 Place ID path、不組 query／
+JSON／headers 或 HTTP request。Prepare／assess 會在原 preparation time 與目前 trusted UTC 重建完整 chain，
+保留原五分鐘 expiry，clock rollback、expiry、response kind、preimage、contract、transport allowlist 或 context
+drift 一律 fail closed。Safe view 可顯示上述公開 transport shape 與 aggregate counts，但不顯示 exact request
+values、provider／local IDs、fingerprints、credentials、SerpApi exact plan state 或時間。Bundle 仍不可執行、
+不可送出，沒有 network／provider call 或 send／execution authority，維持 `candidate + unverified`；它只前進到
+獨立 `prepare_private_provider_request_credential_binding_review` gate，任何 credential value binding 與 live send
+仍須另行明確授權。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

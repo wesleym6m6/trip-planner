@@ -28,9 +28,10 @@ Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exac
 Phase 5.17–5.18完成private execution-authorization review與exact response，Phase 5.19在執行當下重核
 pricing／policy／retention／billing／credential state，Phase 5.20–5.21完成request-materialization review與
 exact response，Phase 5.22建立不可送出的typed private request contracts，Phase 5.23–5.24再完成最後一份
-private send review與exact `accept_send`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、parser、
-transport／credential binding、HTTP request、provider call、schedule、render或mutation；`accept_send`也只前進
-到後續獨立send-preparation gate。
+private send review與exact `accept_send`／`request_smaller`／`cancel` response，Phase 5.25再把accepted exact
+contracts綁到allowlisted public transport profile、endpoint／method、field placement與credential slot。這條chain
+仍沒有CLI、parser、credential value binding、HTTP request、provider call、schedule、render或mutation；
+transport-bound bundle也仍不可執行或送出，只能前進到後續獨立credential-binding review gate。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1553,6 +1554,41 @@ authority。
   `accept_send` response、同一批exact preimages與materialized contracts，將它們綁到allowlisted transport
   profile、endpoint／HTTP method與credential slot。該切片仍不得讀取credential value、建立credential-bearing
   HTTP request或呼叫provider；任何真實credential binding與send都必須保留在另一個明確live gate。
+
+### 2026-08-08 — Phase 5.25 exact private provider-request send preparation 完成
+
+- 新增獨立`guided_provider_request_send_preparation.py`、token-gated
+  `GuidedProviderRequestTransportBinding`／`GuidedProviderRequestSendPreparation`與prepare／assess API。Preparation
+  只接受fresh Phase 5.24 exact `accept_send` response、完整guided context、同一批exact preimages與同一份
+  materialized contracts；`request_smaller`／`cancel`、generic continue或任何非exact response均不能前進。
+- 四種materialization surface綁到2026-08-08重新核對的official transport allowlist：Google Places Text Search
+  v1為`POST https://places.googleapis.com/v1/places:searchText`、Place Details v1為
+  `GET https://places.googleapis.com/v1/places/{provider_place_id}`、Routes Compute Routes v2為
+  `POST https://routes.googleapis.com/directions/v2:computeRoutes`，SerpApi Google Hotels為
+  `GET https://serpapi.com/search.json`並固定query parameter `engine=google_hotels`。Google credential slot只記
+  `X-Goog-Api-Key` header，SerpApi只記`api_key` query parameter；provider-transmitted／identifier field也只綁
+  公開provider field name與header／JSON body／query／URL path placement。
+- Prepare在trusted UTC重驗Phase 5.24 response與Phase 5.22 exact contract assessment；assessment再於原prepared time
+  重建完整bundle fingerprint，並於目前trusted UTC重驗整條Phase 5.11–5.24 chain。Bundle不延長Phase 5.19原五
+  分鐘expiry；clock rollback、expiry、preimage／context／response／contract／transport binding drift或cross-context
+  replay均fail closed，bundle不保留raw preimage。
+- Safe view可顯示上述公開endpoint template、method、field placement、credential slot、profile counts及既有
+  request／cost／credit／provenance aggregates，但不顯示exact query／date、stable local label、provider identifier
+  value、source／context fingerprint、credential value、SerpApi exact plan state或時間。Exact contract只在
+  process-local private binding內保留，結果仍固定`candidate + unverified`。
+- Module不import OS／filesystem／HTTP／socket／subprocess surface，沒有env／vault／credential value access，也不
+  展開Place ID path、不建立query／headers／JSON或HTTP request、不啟用send／execution authority、不呼叫provider，
+  且不做trip／store write、schedule、render、deploy、confirmation或canonical mutation。Next action只到
+  `prepare_private_provider_request_credential_binding_review`，不是credential binding或live send。
+- 新增9個Phase 5.25專項回歸，涵蓋四種official transport profile、exact `accept_send`、1 topic／2 requests、
+  SerpApi plan credit、expiry／drift／redaction／token-gating與module isolation；Phase 5.24相容9 tests亦全過。
+  完整901個offline tests（934.691秒）、Python compile與三個real-trip validators均通過。
+  `trips/*/data`的23個files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.26 exact private provider-request credential-binding review：只消費fresh Phase 5.25
+  transport-bound bundle、同一批exact preimages與完整context，產生本次current-user可審閱的transport／credential
+  slot handoff及typed response options。該review仍不得讀取credential value或env／vault、建立HTTP request或
+  呼叫provider；任何credential value binding與live send仍保留在之後另一個明確授權gate。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
