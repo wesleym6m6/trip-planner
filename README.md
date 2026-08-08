@@ -381,6 +381,20 @@ values、provider／local IDs、fingerprints、credentials、SerpApi exact plan 
 獨立 `prepare_private_provider_request_credential_binding_review` gate，任何 credential value binding 與 live send
 仍須另行明確授權。
 
+Phase 5.26 用 `GuidedProviderRequestCredentialBindingReview` 將同一份仍 fresh Phase 5.25 transport-bound
+bundle 轉成 current-user private review。Prepare／assess 都必須重新提供同一批 exact preimages，並在原 review
+time 與目前 trusted UTC 重驗完整 Phase 5.11–5.25 chain；review expiry 仍沿用 Phase 5.19 原五分鐘邊界，
+clock rollback、expiry、preimage、context、response、contract、transport profile 或 credential-slot drift 全部
+fail closed。預設 safe view 只顯示公開 endpoint template、HTTP method、provider field placement、credential
+slot、aggregate request／cost／credit／provenance counts及 `accept_credential_binding`、`request_smaller`、`cancel`
+三個 typed options；只有明確呼叫 `to_ephemeral_private_review_payload()` 才會顯示 exact non-identifier query、
+日期與其他 provider-transmitted values。Provider identifier values、local-result values、fingerprints、credential
+values、SerpApi exact plan state與private times在兩種 view 都不顯示，URL path也不展開。Review只回
+`capture_private_provider_request_credential_binding_response`，本階段尚未擷取選項；`accept_credential_binding`
+只是下一個 response gate 的選項，不代表目前已有 credential access、binding 或 send authority。Module不讀
+env／vault、不取得或保存 key、不建立 headers／query／JSON／HTTP request、不使用network、不呼叫provider，
+也不寫trip／store、不schedule／render／deploy，結果維持 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
