@@ -365,6 +365,13 @@ from .guided_provider_request_contract_materialization import (
     assess_guided_provider_request_contract_materialization,
     materialize_guided_provider_request_contracts,
 )
+from .guided_provider_request_send_authorization_review import (
+    GUIDED_PROVIDER_REQUEST_SEND_AUTHORIZATION_REVIEW_VERSION,
+    GuidedProviderRequestSendAuthorizationReview,
+    GuidedProviderRequestSendAuthorizationReviewStatus,
+    assess_guided_provider_request_send_authorization_review,
+    prepare_guided_provider_request_send_authorization_review,
+)
 from .lodging_discovery import (
     LODGING_DISCOVERY_VERSION,
     LodgingDiscoveryProblem,
@@ -621,6 +628,7 @@ __all__ = [
     "GUIDED_PROVIDER_REQUEST_MATERIALIZATION_REVIEW_VERSION",
     "GUIDED_PROVIDER_REQUEST_MATERIALIZATION_RESPONSE_VERSION",
     "GUIDED_PROVIDER_REQUEST_CONTRACT_MATERIALIZATION_VERSION",
+    "GUIDED_PROVIDER_REQUEST_SEND_AUTHORIZATION_REVIEW_VERSION",
     "GUIDED_PROVIDER_EXECUTION_TARGET_BINDINGS_VERSION",
     "GUIDED_PROVIDER_EXECUTION_TARGETS_VERSION",
     "GUIDED_PROVIDER_SCOPE_VERSION",
@@ -680,6 +688,8 @@ __all__ = [
     "GuidedProviderRequestContractMaterialization",
     "GuidedProviderRequestContractMaterializationReview",
     "GuidedProviderRequestContractMaterializationStatus",
+    "GuidedProviderRequestSendAuthorizationReview",
+    "GuidedProviderRequestSendAuthorizationReviewStatus",
     "GuidedProviderRequestMaterializationKind",
     "GuidedProviderRequestMaterializationReview",
     "GuidedProviderRequestMaterializationReviewStatus",
@@ -965,6 +975,7 @@ __all__ = [
     "assess_guided_provider_request_materialization_review",
     "assess_guided_provider_request_materialization_response",
     "assess_guided_provider_request_contract_materialization",
+    "assess_guided_provider_request_send_authorization_review",
     "assess_guided_provider_preflight",
     "assess_guided_provider_preflight_response",
     "assess_guided_provider_execution_target_bindings",
@@ -981,6 +992,7 @@ __all__ = [
     "prepare_guided_provider_execution_authorization_review",
     "prepare_guided_provider_execution_time_recheck",
     "prepare_guided_provider_request_materialization_review",
+    "prepare_guided_provider_request_send_authorization_review",
     "prepare_guided_provider_preflight",
     "prepare_guided_provider_execution_targets",
     "assess_guided_direction_preference",

@@ -472,7 +472,7 @@ class GuidedProviderRequestContractMaterializationTests(unittest.TestCase):
             )
         )
 
-    def test_public_surface_has_materialization_but_no_send_or_execution_path(
+    def test_materialization_surface_has_no_direct_send_or_execution_path(
         self,
     ) -> None:
         for name in (
@@ -489,6 +489,12 @@ class GuidedProviderRequestContractMaterializationTests(unittest.TestCase):
         self.assertEqual(
             "guided-provider-request-contract-materialization/v1",
             GUIDED_PROVIDER_REQUEST_CONTRACT_MATERIALIZATION_VERSION,
+        )
+        self.assertFalse(
+            hasattr(
+                contract_module,
+                "prepare_guided_provider_request_send_authorization_review",
+            )
         )
         for unsupported_name in (
             "authorize_guided_provider_request_send",

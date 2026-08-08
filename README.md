@@ -339,6 +339,17 @@ provider／local IDs、fingerprints、credentials、SerpApi exact plan state 或
 call；結果仍是 `candidate + unverified`，只前進到另一個獨立的
 `prepare_private_provider_request_send_authorization_review` gate。
 
+Phase 5.23 用 `GuidedProviderRequestSendAuthorizationReview` 把同一份仍 fresh Phase 5.22
+materialization 轉成最後一道 private human review。預設 safe view 只列 contract shapes、field names、
+request／cost／credit／provenance aggregates 與 typed `accept_send`、`request_smaller`、`cancel` options；只有
+明確呼叫 `to_ephemeral_private_review_payload()` 才會顯示 exact non-identifier provider-transmitted values
+與 local result binding values。Provider Place IDs 仍只顯示 redacted field names，source／context fingerprints、
+credentials、SerpApi exact plan state 與時間也不顯示。Prepare／assess 會在原 review time 與目前 trusted UTC
+重驗完整 Phase 5.22 chain、同一批 preimages 與五分鐘 expiry；review 不保留 raw preimage。它只回
+`capture_private_provider_request_send_authorization_response`，尚未擷取選項；三個 options 都不等於目前已有
+send authority。本階段仍沒有 endpoint、HTTP method、credential binding、HTTP request、network 或 provider
+call，結果維持 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
