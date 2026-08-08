@@ -437,7 +437,7 @@ class GuidedProviderExecutionAuthorizationReviewTests(unittest.TestCase):
                 host_attestation_fresh=True,
             )
 
-    def test_public_contract_has_review_but_no_response_or_execution_path(self) -> None:
+    def test_review_module_has_no_response_or_execution_path(self) -> None:
         for name in (
             "GUIDED_PROVIDER_EXECUTION_AUTHORIZATION_REVIEW_VERSION",
             "GuidedProviderExecutionAuthorizationReview",
@@ -447,8 +447,13 @@ class GuidedProviderExecutionAuthorizationReviewTests(unittest.TestCase):
         ):
             self.assertTrue(hasattr(trip_planner, name))
             self.assertIn(name, trip_planner.__all__)
+        self.assertFalse(
+            hasattr(
+                review_module,
+                "capture_guided_provider_execution_authorization_response",
+            )
+        )
         for unsupported_name in (
-            "capture_guided_provider_execution_authorization_response",
             "authorize_guided_provider_execution",
             "build_guided_provider_http_request",
             "execute_guided_provider_request",

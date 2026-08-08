@@ -1321,6 +1321,40 @@ authority。
   review的`accept`／`request_smaller`／`cancel`；accept也只前進到獨立execution-time recheck／request-
   materialization gate，不能在capture或assessment內建立HTTP request、讀credential或呼叫provider。
 
+### 2026-08-08 — Phase 5.18 exact execution-authorization response gate 完成
+
+- 新增獨立`guided_provider_execution_authorization_response.py`、token-gated
+  `GuidedProviderExecutionAuthorizationResponse`、typed `accept`／`request_smaller`／`cancel` enum與
+  capture／assess API。它不做自然語言parser、不接受free text、target subset、cap修改或caller-supplied
+  authorization digest；response只保存kind、private capture time與contract自行計算的context fingerprint。
+- Capture會用exact preimages與trusted UTC重驗同一份Phase 5.17 visible private review；assessment先在原
+  capture time重建review與response fingerprint，再以目前trusted UTC重驗完整guided／scope／preflight／
+  targets／bindings／review chain。Clock rollback、preflight expiry、endpoint staleness、preimage／review／
+  response-kind或任一context drift都fail closed。
+- Safe handoff只顯示response kind、accepted／bound request caps、Google／SerpApi與capability counts、
+  user-stated／tentative／AI-candidate source-reference counts、versioned Google bound／accepted-max list-rate
+  estimate、SerpApi bound credit／cap及attestation flags。不顯示query、stable local label、provider Place ID、
+  target／request fingerprint、credential、billing address、policy-registry／snapshot／store／evidence revision、
+  raw preimage、private review values或capture／expiry time。
+- `accept`只回`ready_for_private_provider_execution_time_recheck`與
+  `prepare_private_provider_execution_time_recheck`；它只記錄exact review acceptance，不啟用immediate
+  execution authority，且要求下一關重新提供preimages並重驗pricing／policy／retention／credential。
+  Eligible count只是可進入recheck的exact-bound count，不代表已建立或已送出request。
+- `request_smaller`只回`refine_private_provider_execution_targets`，不修改任何target、binding、cap、scope或
+  evidence declaration；後續變更必須重建exact binding與新review。`cancel`只回
+  `continue_private_evidence_review`並關閉目前external-execution path；若未來重開也必須產生新review。
+  三個分支均保留evidence requirements且禁止partial authorization。
+- Response建立的provider request contract、HTTP request與觀察到的provider call counts皆為0；沒有env／
+  vault／credential access、network、trip／store write、scheduler、render、deploy、confirmation、canonical
+  apply或authoritative-use path，維持`candidate + unverified`。
+- Correctness、product-contract與security agents均無actionable finding。新增9個專項回歸；Phase 5.17相容
+  tests與完整835個offline tests、Python compile、三個real-trip validators均通過。`trips/*/data` aggregate
+  hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.19 private execution-time recheck：只消費fresh Phase 5.18 accept response與同一
+  批exact preimages，接受trusted host重新提供的current pricing／policy／retention／billing classification／
+  boolean credential availability attestations並重驗endpoint freshness。它最多只前進到另一個exact request-
+  materialization review，仍不讀取或保存credential、不建立HTTP request、不呼叫provider。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

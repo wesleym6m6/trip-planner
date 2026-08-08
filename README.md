@@ -279,6 +279,18 @@ pricing／policy／retention／credential attestations，且把「若接受時�
 exact accept／request-smaller／cancel response gate，不擷取回覆、不授權 provider，結果仍是
 `candidate + unverified`。
 
+Phase 5.18 用 `GuidedProviderExecutionAuthorizationResponse` 擷取使用者對同一份仍 fresh 私人
+review 的 exact `accept`、`request_smaller` 或 `cancel`；capture API 只接受 typed enum，不做自然
+語言 parser、不保留 free text 或 caller-supplied authorization digest。Capture 與 assessment 都會重新
+提供 exact preimages，並分別在 private capture time 與目前 trusted UTC 重驗完整 guided context、
+preflight、endpoint freshness、targets、bindings 與 Phase 5.17 review。Safe handoff 只保留 response
+kind、bound request／cost／credit／capability counts、source-state counts 與 attestation flags，不顯示 query、
+stable local label、provider identifier、fingerprint、credential、revision 或時間。接受只回
+`prepare_private_provider_execution_time_recheck`，不會立即啟用 execution authority；縮小只回 target
+refinement，不會自動修改 targets 或 caps，且必須重建新的 exact review；取消只關閉目前 execution path，
+保留 evidence requirements。三種分支都不建立 provider request contract／HTTP request、不讀 credential、
+不呼叫 provider，也維持 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
