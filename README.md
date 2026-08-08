@@ -422,6 +422,20 @@ provider／local IDs、fingerprints、SerpApi exact plan state 或時間。Modul
 不展開 URL、不建立 HTTP request、不使用 network、不呼叫 provider，也不授予 send／execution authority；結果
 仍是 `candidate + unverified`。
 
+Phase 5.29 用 `GuidedProviderRequestLiveCredentialBindingResponse` 擷取對同一份仍 fresh Phase 5.28
+`review_required` private review 的 exact `accept_live_credential_binding`、`request_smaller` 或 `cancel`。Capture
+API 只接受 typed enum；自然語言、free text、一般「繼續」、blocked／unavailable review、caller digest、target
+subset、cap mutation 或 partial response 都不能前進。Capture 先在 trusted UTC 重驗 Phase 5.28 review；assess
+再於原 capture time 與目前 trusted UTC 以同一批 exact preimages、transport bindings 及原 slot-level availability
+attestations 重驗完整 chain，沿用 Phase 5.19 五分鐘 expiry，rollback、expiry、context／review／attestation drift、
+tamper 或 replay 一律 fail closed。Safe handoff 只保留 response kind、public credential-slot availability booleans 與
+既有 request／cost／credit／provenance aggregates，不顯示 private request values、provider／local IDs、fingerprints、
+credential values、SerpApi exact plan state 或時間。`accept_live_credential_binding` 只回
+`prepare_private_provider_request_ephemeral_credential_value_binding_gate`，允許準備另一個獨立短效 gate；它本身
+不讀 env／vault／key、不綁 credential value、不建 HTTP request，也不授予 send／execution authority。
+`request_smaller` 回 execution-target refinement；`cancel` 關閉目前 live binding path。三個分支都不使用 network、
+不呼叫 provider、不寫 trip／store、不 schedule／render／deploy，結果仍是 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

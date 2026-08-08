@@ -32,9 +32,10 @@ private send review與exact `accept_send`／`request_smaller`／`cancel` respons
 contracts綁到allowlisted public transport profile、endpoint／method、field placement與credential slot，Phase 5.26
 再建立該transport-bound bundle的exact private credential-binding review，Phase 5.27再擷取exact
 `accept_credential_binding`／`request_smaller`／`cancel` response，Phase 5.28再以host提供的slot-level boolean
-availability attestation建立exact live credential-binding review。這條chain仍沒有CLI、自然語言response parser、
-credential value access／binding、HTTP request、provider call、schedule、render或mutation；review也仍不可執行或
-送出，只能前進到後續獨立typed response gate。
+availability attestation建立exact live credential-binding review，Phase 5.29再擷取exact
+`accept_live_credential_binding`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、自然語言response
+parser、credential value access／binding、HTTP request、provider call、schedule、render或mutation；accepted
+response也仍不可執行或送出，只能前進到後續獨立ephemeral credential-value binding gate。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1689,6 +1690,41 @@ authority。
   review的typed `accept_live_credential_binding`／`request_smaller`／`cancel` enum，並在original／current trusted
   UTC以同一批preimages與availability attestations重驗完整chain。Acceptance仍只能準備另一個明確ephemeral
   credential-value binding gate，不得在response capture中讀key、建立HTTP request或呼叫provider。
+
+### 2026-08-08 — Phase 5.29 exact live credential-binding response-only gate 完成
+
+- 新增獨立`guided_provider_request_live_credential_binding_response.py`、token-gated
+  `GuidedProviderRequestLiveCredentialBindingResponse`／`Review`與capture／assess API。Capture只接受exact typed
+  `accept_live_credential_binding`／`request_smaller`／`cancel` enum；不解析自然語言、不保存free text，也不接受
+  caller digest、target subset、cap mutation或partial response。一般進度指令或「繼續」不等於
+  `accept_live_credential_binding`。
+- Capture只接受仍fresh、`review_required`且所有required credential slots仍available的Phase 5.28 review；
+  `blocked`／unavailable review無法擷取response。Capture先於trusted UTC重驗目前review，assessment再於原
+  capture time及目前trusted UTC兩次呼叫Phase 5.28 assessor，以同一批exact preimages、transport bindings、
+  slot coverage與原availability attestations重驗完整Phase 5.11–5.28 chain。
+- Response沿用Phase 5.19五分鐘expiry且不延長；clock rollback、expiry、preimage／context／review／transport／
+  slot／attestation drift、fingerprint tamper或replay均fail closed，response不保留raw preimage或transport metadata。
+- `accept_live_credential_binding`只回
+  `prepare_private_provider_request_ephemeral_credential_value_binding_gate`；它只能準備後續獨立短效gate，不能讀取
+  或綁定credential value。`request_smaller`只回`refine_private_provider_execution_targets`並要求重建後續chain；
+  `cancel`回`continue_private_evidence_review`並關閉目前live-binding path。三個分支都不修改scope、caps、targets、
+  bindings、contracts、availability attestations或evidence requirements。
+- Safe view只顯示response kind、public slot名稱與availability boolean、transport-profile counts及既有request／cost／
+  credit／provenance aggregates；不顯示exact request values、provider／local IDs、source／context fingerprints、
+  credential values、SerpApi exact plan state或private times，結果維持`candidate + unverified`。
+- Module沒有OS／filesystem／HTTP／socket／subprocess import，不讀env／vault、不取得、保存或綁定credential
+  value、不展開Place ID path、不建立headers／query／JSON／URL或HTTP request、不使用network、不呼叫provider，
+  也不做trip／store write、schedule、render、deploy、confirmation或canonical mutation，且不授予send／execution
+  authority。
+- 新增10個Phase 5.29專項回歸；一條完整Phase 5.28 review→Phase 5.29 capture E2E搭配三分支、exact enum、
+  blocked review、original／current recheck、rollback／expiry／tamper、redaction、aggregate preservation、token-gating與
+  module isolation，10 tests均通過（461.605秒）；Phase 5.28相容9 tests亦全過（225.245秒）。完整937個offline
+  tests（2162.881秒）、Python compile與三個real-trip validators均通過。`trips/*/data`的23個files aggregate hash
+  維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.30 explicit ephemeral credential-value binding preparation／review：只消費fresh Phase 5.29
+  exact accept response、完整context、同一批preimages與原slot availability attestations，經trusted host的獨立
+  non-serializable seam短效綁定exact required slots。該切片仍不得在safe output、repr或log顯示secret，也不得建立
+  HTTP request或呼叫provider；任何真實send仍須保留在後續另一個明確bounded gate。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
