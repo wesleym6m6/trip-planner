@@ -1812,6 +1812,30 @@ authority。
   canonical mutation；沒有讀取真實credential或修改`trips/`。下一個macro phase是5.31 bounded injected-transport
   execution與private quarantine；不為非阻斷hardening另增phase。
 
+### 2026-08-08 — Phase 5.31 bounded provider execution／private quarantine 完成
+
+- 新增`guided_provider_execution.py`，以唯一的host-injected transport seam消耗Phase 5.30 single-use claim。
+  Executor先複製caller limits與每筆prepared request的exact wire／cost／credit資料；每次send前原子保留attempt、
+  Google list cost／SerpAPI credit及timeout／absolute deadline，先完成全request initial pass，再只對
+  `outcome_unknown`使用同一credential-bearing wire最多重試一次。Transport沒有內建live client，並收到1 MiB body、
+  32 headers及每個header name／value的streaming上限；所有terminal path都重新取trusted UTC。
+- Delivery只接受typed `known_not_sent`證明未送；invalid return、malformed exception certainty、buffer cap違反、
+  post-send clock失效或deadline越界都保守視為unknown並停止自動前進。Claim後任何普通／`BaseException`失敗都會
+  清除已建立wire與claim前捕捉的原始credential lease；caller在send期間替換bundle欄位不能略過cleanup。
+- 每筆prepared request與Places Identity／Details／Routes／SerpAPI Hotels native target都在claim前建立private exact
+  fingerprint，並在每次send前後重算。Binding涵蓋完整contract／wire／cost、snapshot／policy、private Place ID、
+  hotel query及lease metadata，但safe output只顯示public aggregate；request kind／cost、nested policy／purge、endpoint、
+  query或caller caps的TOCTOU drift一律fail closed。
+- Valid raw HTTP response只進sealed、不可序列化的`GuidedProviderQuarantinedResponse`，保留exact prepared request、
+  native adapter target與context／source／request／target bindings供Phase 5.32重驗。Quarantine及aggregate仍為
+  `candidate + unverified`；本phase沒有generic normalizer、AuthorizedProviderResult、EvidenceStore／EvidenceSession、
+  TripStore／PlanPatch、schedule、render、deploy或canonical write。
+- 兩位獨立agent完成architecture/security與Phase 5.32 integration重驗。新增22個Phase 5.31專項回歸；Phase 5.25、
+  5.29、5.30、5.31共51個focused tests全過。完整969個offline tests（29.365秒）、Python compile與三個real-trip
+  validators均通過；23個trip data files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。全程沒有讀取真實credential、呼叫live
+  provider、修改`trips/`或deploy；下一個macro phase是5.32 provider-specific evidence-to-canonical workflow。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

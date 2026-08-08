@@ -453,6 +453,16 @@ raw preimages、credential value、private request values、provider／local IDs
 transport、network、provider call、evidence promotion 或 canonical write；唯一下一步是 Phase 5.31 的 bounded
 injected-transport execution。
 
+Phase 5.31 以 `execute_guided_provider_requests()` 消耗一次 Phase 5.30 claim，且只接受 host-injected
+transport。每次 send 前會保留 request／Google list cost／SerpAPI credit／timeout／absolute deadline budget；
+所有 request 先各得一次 initial chance，只有 delivery outcome unknown 可在同一份 exact wire 上重試一次。
+Caller limits、prepared request、credential lease 與四種 provider-specific normalization target 都以 executor-owned
+snapshot 及 send 前後 private exact fingerprint 防止 TOCTOU；response stream、header 與 body 有固定上限，late、
+malformed 或 delivery certainty 不明一律轉入 manual reconciliation。HTTP response 只會進 sealed、不可序列化的
+private quarantine，保留 Places Identity／Details／Routes／SerpAPI Hotels 各自的 typed adapter target；safe output
+仍是 `candidate + unverified`，不會直接 normalize、寫 evidence、修改 canonical plan 或把 hotel DTO 當 provenance。
+唯一下一步是 Phase 5.32 的 provider-specific assessment。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
