@@ -24,9 +24,13 @@ provider capability scope，Phase 5.12再將scope的明確接受／縮小／取�
 Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight，
 Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exact context，Phase 5.15
 則為已接受preflight衍生每項capability仍需要的private execution-target type，Phase 5.16再將
-每個target與canonical private preimage／trusted evidence request contract及source lines做exact binding。它們
-都沒有CLI、parser、provider call、schedule、render或mutation；下一個外部execution authorization
-仍需使用者當輪明確參與。
+每個target與canonical private preimage／trusted evidence request contract及source lines做exact binding；
+Phase 5.17–5.18完成private execution-authorization review與exact response，Phase 5.19在執行當下重核
+pricing／policy／retention／billing／credential state，Phase 5.20–5.21完成request-materialization review與
+exact response，Phase 5.22建立不可送出的typed private request contracts，Phase 5.23–5.24再完成最後一份
+private send review與exact `accept_send`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、parser、
+transport／credential binding、HTTP request、provider call、schedule、render或mutation；`accept_send`也只前進
+到後續獨立send-preparation gate。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1515,6 +1519,40 @@ authority。
   private review的typed `accept_send`／`request_smaller`／`cancel`，不解析free text、不接受caller digest或
   target／cap mutation。Response capture與assessment本身仍不得選transport、綁credential、建立HTTP request或
   呼叫provider；任何實際send preparation繼續留在後續獨立gate。
+
+### 2026-08-08 — Phase 5.24 exact provider-request send-authorization response gate 完成
+
+- 新增獨立`guided_provider_request_send_authorization_response.py`、token-gated
+  `GuidedProviderRequestSendAuthorizationResponse`、typed `accept_send`／`request_smaller`／`cancel` enum與
+  capture／assess API。它不做自然語言parser、不接受free text、target subset、cap mutation或caller-supplied
+  authorization digest；response只保存kind、private capture time與contract自行計算的context fingerprint。
+- Capture用同一批exact preimages與trusted UTC重驗Phase 5.23 visible private review；assessment先在原capture
+  time重建review與response fingerprint，再以目前trusted UTC重驗完整guided／scope／preflight／targets／
+  bindings／authorization／execution-time recheck／materialization／send-review chain。Clock rollback、五分鐘
+  recheck expiry、endpoint staleness、preimage／contract／review／response-kind或任一context drift都fail closed。
+- Safe handoff只保留response kind、materialized-contract／bound-request counts、accepted cap、Google／SerpApi與
+  capability counts、source-state provenance、list-rate estimate／plan-credit cap及fresh pricing／policy／retention／
+  billing／credential／plan-state flags。不顯示exact request values、stable local label、provider identifier、
+  source／context fingerprint、credential、exact SerpApi plan state、raw preimage、revision或capture／expiry time。
+- `accept_send`只表示接受exact private send review，回
+  `ready_for_private_provider_request_send_preparation`與`prepare_private_provider_request_send_preparation`；它只
+  前進到後續獨立send-preparation gate，不使contract可送出、不選transport／HTTP method、不綁credential，也不
+  啟用immediate send authority。Eligible count只是可進下一關的exact-bound contract數，不代表request已送出。
+- `request_smaller`只回`refine_private_provider_execution_targets`，不修改target、binding、contract、cap、scope或
+  evidence declaration，後續必須重建整條exact chain。`cancel`只回`continue_private_evidence_review`並關閉目前
+  send path；若重開也必須產生新review。三個分支均保留evidence requirements且禁止partial send authorization。
+- Response建立的executable provider request contract與HTTP request counts皆為0；沒有env／vault／credential
+  access、transport selection、network、provider call、trip／store write、scheduler、render、deploy、confirmation、
+  canonical apply或authoritative-use path，維持`candidate + unverified`。
+- 新增9個Phase 5.24專項回歸，含三分支、exact enum、1 topic／2 requests、SerpApi credit、expiry／drift／
+  redaction／token-gating與module isolation；Phase 5.23相容test已窄化為允許intentional typed response API但仍
+  禁止review module直接capture、send或network。完整892個offline tests、Python compile、三個real-trip
+  validators均通過。`trips/*/data`的23個files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是獨立private provider-request send-preparation contract：只消費fresh Phase 5.24
+  `accept_send` response、同一批exact preimages與materialized contracts，將它們綁到allowlisted transport
+  profile、endpoint／HTTP method與credential slot。該切片仍不得讀取credential value、建立credential-bearing
+  HTTP request或呼叫provider；任何真實credential binding與send都必須保留在另一個明確live gate。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

@@ -453,7 +453,7 @@ class GuidedProviderRequestSendAuthorizationReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             replace(review, next_action="send_provider_request")
 
-    def test_public_surface_has_review_but_no_response_send_or_network_path(
+    def test_review_module_has_no_response_send_or_network_path(
         self,
     ) -> None:
         for name in (
@@ -469,8 +469,13 @@ class GuidedProviderRequestSendAuthorizationReviewTests(unittest.TestCase):
             "guided-provider-request-send-authorization-review/v1",
             GUIDED_PROVIDER_REQUEST_SEND_AUTHORIZATION_REVIEW_VERSION,
         )
+        self.assertFalse(
+            hasattr(
+                review_module,
+                "capture_guided_provider_request_send_authorization_response",
+            )
+        )
         for unsupported_name in (
-            "capture_guided_provider_request_send_authorization_response",
             "authorize_guided_provider_request_send",
             "send_guided_provider_request",
             "build_guided_provider_http_request",

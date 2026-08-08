@@ -350,6 +350,20 @@ credentials、SerpApi exact plan state 與時間也不顯示。Prepare／assess 
 send authority。本階段仍沒有 endpoint、HTTP method、credential binding、HTTP request、network 或 provider
 call，結果維持 `candidate + unverified`。
 
+Phase 5.24 用 `GuidedProviderRequestSendAuthorizationResponse` 擷取對同一份仍 fresh Phase 5.23
+private review 的 exact `accept_send`、`request_smaller` 或 `cancel`。Capture API 只接受 typed enum，
+不解析自然語言、不保存 free text，也不接受 caller-supplied digest、target subset 或 cap mutation；
+capture／assess 都會用同一批 exact preimages，在原 capture time 與目前 trusted UTC 重驗完整
+authorization、execution-time recheck、materialization 與 send-review chain，而且 response 不能活得比
+原五分鐘 execution recheck 更久。Safe handoff 只保留 response kind、contract／request／cost／credit／
+provenance aggregates 與 fresh attestation flags，不顯示 exact request values、provider／local IDs、
+fingerprints、credentials、SerpApi exact plan state 或時間。`accept_send` 只接受該份 review 並回
+`prepare_private_provider_request_send_preparation`，讓後續獨立 gate 重新準備 send；它不會使 contract
+可送出或啟用 send authority。`request_smaller` 只回 execution-target refinement，所有 bindings、contracts
+與 reviews 都必須重建；`cancel` 關閉目前 send path 並保留 evidence requirements。三個分支都不選
+endpoint／HTTP method、不綁 credential、不建立 HTTP request、不呼叫 provider，結果仍是
+`candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用
