@@ -409,6 +409,19 @@ authority。`request_smaller` 回 execution-target refinement；`cancel` 關閉�
 都不使用 network、不呼叫 provider、不寫 trip／store、不 schedule／render／deploy，結果仍是
 `candidate + unverified`。
 
+Phase 5.28 用 `GuidedProviderRequestLiveCredentialBindingReview` 消費同一份仍 fresh Phase 5.27 exact
+`accept_credential_binding` response，並要求 host 為 Phase 5.25 bundle 實際需要的每個 public credential slot
+提供一筆 typed `available`／`unavailable` boolean-equivalent attestation。Slot 缺漏、重複、多餘或類型不符直接
+拒絕；任一 unavailable 只回 `blocked` 與 refresh attestation，不顯示 response options。全部 available 才回
+`review_required`，並只提供 `accept_live_credential_binding`、`request_smaller`、`cancel` 三個下一階段 exact
+options；一般「繼續」不算 live credential-binding 授權。Prepare 在 trusted UTC 重驗 Phase 5.27 response，
+assess 再於原 preparation time 與目前 trusted UTC 重驗完整 chain、同一批 preimages、slot coverage 與
+fingerprint，且沿用 Phase 5.19 expiry、不延長安全窗。Safe view 只顯示 credential slot 名稱、availability
+boolean 與既有 request／cost／credit／provenance aggregates，不顯示 credential value、private request values、
+provider／local IDs、fingerprints、SerpApi exact plan state 或時間。Module 不讀 env／vault、不取得或綁定 key、
+不展開 URL、不建立 HTTP request、不使用 network、不呼叫 provider，也不授予 send／execution authority；結果
+仍是 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

@@ -31,9 +31,10 @@ exact response，Phase 5.22建立不可送出的typed private request contracts�
 private send review與exact `accept_send`／`request_smaller`／`cancel` response，Phase 5.25再把accepted exact
 contracts綁到allowlisted public transport profile、endpoint／method、field placement與credential slot，Phase 5.26
 再建立該transport-bound bundle的exact private credential-binding review，Phase 5.27再擷取exact
-`accept_credential_binding`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、自然語言response parser、
-credential value access／binding、HTTP request、provider call、schedule、render或mutation；accepted response也仍
-不可執行或送出，只能前進到後續獨立live credential-binding gate。
+`accept_credential_binding`／`request_smaller`／`cancel` response，Phase 5.28再以host提供的slot-level boolean
+availability attestation建立exact live credential-binding review。這條chain仍沒有CLI、自然語言response parser、
+credential value access／binding、HTTP request、provider call、schedule、render或mutation；review也仍不可執行或
+送出，只能前進到後續獨立typed response gate。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1653,6 +1654,41 @@ authority。
   availability attestation fail closed，再產生本次current-user可審閱的單次live binding handoff。該切片不得在
   safe output顯示key value，也不得把一般「繼續」當作live授權；HTTP construction與provider call仍須留在後續
   另一個明確bounded gate。
+
+### 2026-08-08 — Phase 5.28 explicit live credential-binding preparation／review 完成
+
+- 新增獨立`guided_provider_request_live_credential_binding_review.py`、typed
+  `GuidedProviderRequestCredentialAvailabilityAttestation`、token-gated
+  `GuidedProviderRequestLiveCredentialBindingReview`與prepare／assess API。Preparation只接受fresh Phase 5.27
+  exact `accept_credential_binding` response、完整guided context、同一批exact preimages及每個實際required
+  credential slot的一筆boolean-equivalent `available`／`unavailable` host attestation。
+- Attestation只含public credential-slot enum與availability enum，不含credential value、secret identifier、env name、
+  vault path或session token。Slot缺漏、重複、多餘、非exact enum或與Phase 5.25 transport bundle不符一律在上游
+  assessment前fail closed；同一slot可覆蓋多個bindings，但不能省略任何不同slot。
+- 任一slot unavailable只回`blocked`及
+  `refresh_private_provider_request_credential_availability_attestation`，不顯示response options。全部available才回
+  `review_required`及`accept_live_credential_binding`／`request_smaller`／`cancel`；一般進度指令或「繼續」不等於
+  `accept_live_credential_binding`，本階段也尚未提供response capture API。
+- Prepare在trusted UTC重驗Phase 5.27 response；assessment先於原prepared time重建response review、attestations與
+  fingerprint，再於目前trusted UTC重驗完整Phase 5.11–5.27 chain。Review沿用Phase 5.19 expiry且不延長；clock
+  rollback、expiry、preimage／context／response／transport／slot／attestation drift、tamper或replay均fail closed，
+  review不保留raw preimage。
+- Safe view只顯示slot名稱、availability boolean、transport-profile counts與既有request／cost／credit／provenance
+  aggregates；不顯示exact request values、provider／local IDs、source／context fingerprints、credential values、
+  SerpApi exact plan state或private times，結果維持`candidate + unverified`。
+- Module沒有OS／filesystem／HTTP／socket／subprocess import，不讀env／vault、不取得、保存或綁定credential
+  value、不展開Place ID path、不建立headers／query／JSON／URL或HTTP request、不使用network、不呼叫provider，
+  也不做trip／store write、schedule、render、deploy、confirmation或canonical mutation。
+- 新增9個Phase 5.28專項回歸；一條完整Phase 5.27 accept→Phase 5.28 preparation E2E搭配available／unavailable、
+  slot coverage、exact accepted branch、original／current recheck、upstream failure propagation、rollback／expiry／
+  tamper、redaction、token-gating與module isolation測試，9 tests均通過（222.966秒）；Phase 5.27相容9 tests
+  亦全過（220.130秒）。完整927個offline tests（1673.606秒）、Python compile與三個real-trip validators均
+  通過。`trips/*/data`的23個files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.29 exact live credential-binding response-only gate：只擷取同一份仍fresh Phase 5.28
+  review的typed `accept_live_credential_binding`／`request_smaller`／`cancel` enum，並在original／current trusted
+  UTC以同一批preimages與availability attestations重驗完整chain。Acceptance仍只能準備另一個明確ephemeral
+  credential-value binding gate，不得在response capture中讀key、建立HTTP request或呼叫provider。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
