@@ -1789,6 +1789,29 @@ authority。
   `scripts/`、`trips/`或使用者既有`.envrc.example`變更，沒有provider call、credential access、render、
   deploy或canonical mutation。
 
+### 2026-08-08 — Phase 5.30 composed private pre-execution facade 完成
+
+- 新增`guided_provider_pre_execution.py`，以token-gated、sealed且不可序列化的
+  `GuidedProviderPreExecutionContext`／`GuidedProviderPreparedRequest`／ephemeral credential lease／single-use
+  execution claim，把fresh Phase 5.29 exact accept及既有完整guided chain收斂成一個bounded handoff。Raw
+  preimages仍只在prepare／assess時以keyword-only重新提供，不會被context或bundle保留。
+- Prepare先重驗Phase 5.29，再由host-injected resolver為每個distinct public slot取值恰好一次；resolver後以新的
+  trusted UTC重驗Phase 5.29與Phase 5.25 exact transport bundle。Lease自身檢查context、rollback與expiry；所有
+  sealed metadata、request endpoint及claim state都不能由普通assignment延長、重置或變造。Consent與execution
+  claim皆single-use，過期registry entries會清理，任何失敗都以sanitized exception及清空暫存credential fail closed。
+- 四個profile-specific builders物化exact private wire descriptors：Places Text Search固定`pageSize=5`，Details
+  percent-encode Place ID，Routes使用provider mode mapping並固定`computeAlternativeRoutes=false`，SerpAPI Hotels
+  固定engine。兩個provider-visible fixed fields也加入Phase 5.25 reviewed allowlist；不同consent context產生不同
+  request fingerprint。Safe review只保留public slot／profile／request／cost／credit aggregates與immutable
+  assessment-time state，不顯示credential、query、provider／local ID、private time或fingerprint。
+- 兩位獨立agent完成correctness／security／integration重驗，沒有blocking finding。新增10個Phase 5.30專項回歸；
+  Phase 5.25、5.29、5.30共29個focused tests全過。完整947個offline tests（27.862秒）、Python compile與三個
+  real-trip validators均通過；23個trip data files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- 本phase沒有內建transport、network或provider call，也沒有EvidenceStore／TripStore、schedule、render、deploy或
+  canonical mutation；沒有讀取真實credential或修改`trips/`。下一個macro phase是5.31 bounded injected-transport
+  execution與private quarantine；不為非阻斷hardening另增phase。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

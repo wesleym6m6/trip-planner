@@ -139,7 +139,7 @@ _FieldBinding = tuple[
 ]
 _FixedParameter = tuple[
     str,
-    str,
+    str | int | bool,
     GuidedProviderRequestValuePlacement,
 ]
 
@@ -211,6 +211,13 @@ _TRANSPORT_SPECS = {
                 ),
             ),
             provider_identifier_field_bindings=(),
+            fixed_parameters=(
+                (
+                    "pageSize",
+                    5,
+                    GuidedProviderRequestValuePlacement.JSON_BODY,
+                ),
+            ),
         )
     ),
     GuidedProviderRequestMaterializationKind.GOOGLE_PLACE_DETAILS: (
@@ -292,6 +299,13 @@ _TRANSPORT_SPECS = {
                 (
                     "origin_provider_place_id",
                     "origin.placeId",
+                    GuidedProviderRequestValuePlacement.JSON_BODY,
+                ),
+            ),
+            fixed_parameters=(
+                (
+                    "computeAlternativeRoutes",
+                    False,
                     GuidedProviderRequestValuePlacement.JSON_BODY,
                 ),
             ),

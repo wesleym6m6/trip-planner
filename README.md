@@ -442,6 +442,17 @@ credential values、SerpApi exact plan state 或時間。`accept_live_credential
 `request_smaller` 回 execution-target refinement；`cancel` 關閉目前 live binding path。三個分支都不使用 network、
 不呼叫 provider、不寫 trip／store、不 schedule／render／deploy，結果仍是 `candidate + unverified`。
 
+Phase 5.30 以 `GuidedProviderPreExecutionContext` 把同一份 fresh Phase 5.29 exact accept、完整 guided
+context、transport bindings、availability attestations 與 exact preimages 組成單次、五分鐘內有效的 private
+pre-execution facade。只有在上游重驗通過後，host-injected resolver 才會為每個 distinct public credential slot
+取值恰好一次；短效 lease、prepared requests 與 execution claim 都是 sealed、不可序列化且 fail closed。四種
+provider profile 使用各自的固定 builder，包含已審閱的 `pageSize=5`、
+`computeAlternativeRoutes=false`、Routes mode mapping 與 Place ID path encoding；resolver 前後都會以新的 trusted
+UTC 重驗，而且不延長原 expiry。Safe review 只顯示 public profile／slot／count／cost／credit aggregates，不保留
+raw preimages、credential value、private request values、provider／local IDs 或 fingerprints。此 facade 仍沒有
+transport、network、provider call、evidence promotion 或 canonical write；唯一下一步是 Phase 5.31 的 bounded
+injected-transport execution。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

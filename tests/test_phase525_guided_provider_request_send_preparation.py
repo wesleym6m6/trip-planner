@@ -270,6 +270,16 @@ class GuidedProviderRequestSendPreparationTests(unittest.TestCase):
         }
         self.assertEqual(("textQuery", "json_body"), identity_fields["text_query"])
         self.assertEqual(("X-Goog-FieldMask", "header"), identity_fields["field_mask"])
+        self.assertEqual(
+            [
+                {
+                    "provider_field_name": "pageSize",
+                    "value": 5,
+                    "placement": "json_body",
+                }
+            ],
+            identity["fixed_public_parameters"],
+        )
 
         details = safe_items["google_place_details"]
         self.assertEqual("google_place_details_v1", details["transport_profile"])
@@ -310,6 +320,16 @@ class GuidedProviderRequestSendPreparationTests(unittest.TestCase):
         self.assertEqual(
             "destination.placeId",
             route_identifiers["destination_provider_place_id"],
+        )
+        self.assertEqual(
+            [
+                {
+                    "provider_field_name": "computeAlternativeRoutes",
+                    "value": False,
+                    "placement": "json_body",
+                }
+            ],
+            route["fixed_public_parameters"],
         )
 
         hotel = safe_items["serpapi_google_hotels"]

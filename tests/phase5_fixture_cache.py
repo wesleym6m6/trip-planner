@@ -22,6 +22,7 @@ _GUIDED_MODULE_NAMES = (
     "trip_planner.guided_provider_execution_time_recheck",
     "trip_planner.guided_provider_preflight",
     "trip_planner.guided_provider_preflight_response",
+    "trip_planner.guided_provider_pre_execution",
     "trip_planner.guided_provider_request_contract_materialization",
     "trip_planner.guided_provider_request_credential_binding_response",
     "trip_planner.guided_provider_request_credential_binding_review",
