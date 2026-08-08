@@ -30,9 +30,10 @@ pricing／policy／retention／billing／credential state，Phase 5.20–5.21完
 exact response，Phase 5.22建立不可送出的typed private request contracts，Phase 5.23–5.24再完成最後一份
 private send review與exact `accept_send`／`request_smaller`／`cancel` response，Phase 5.25再把accepted exact
 contracts綁到allowlisted public transport profile、endpoint／method、field placement與credential slot，Phase 5.26
-再建立該transport-bound bundle的exact private credential-binding review。這條chain仍沒有CLI、parser、
-credential-binding response、credential value binding、HTTP request、provider call、schedule、render或mutation；
-review也仍不可執行或送出，只能前進到後續獨立typed response gate。
+再建立該transport-bound bundle的exact private credential-binding review，Phase 5.27再擷取exact
+`accept_credential_binding`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、自然語言response parser、
+credential value access／binding、HTTP request、provider call、schedule、render或mutation；accepted response也仍
+不可執行或送出，只能前進到後續獨立live credential-binding gate。
 Phase 6.0 fail-closed public release boundary亦已完成；
 真實provider驗收仍只在明確授權範圍內進行，完整canonical CLI/interface仍待後續切片。
 
@@ -1619,6 +1620,39 @@ authority。
   的typed `accept_credential_binding`／`request_smaller`／`cancel` enum，並在original／current trusted UTC以同一批
   preimages重驗完整chain。Acceptance仍只能準備另一個明確live credential-binding gate，不得讀key value、
   建立HTTP request或呼叫provider。
+
+### 2026-08-08 — Phase 5.27 exact credential-binding response-only gate 完成
+
+- 新增獨立`guided_provider_request_credential_binding_response.py`、token-gated
+  `GuidedProviderRequestCredentialBindingResponse`／`Review`與capture／assess API。Capture只接受exact typed
+  `accept_credential_binding`／`request_smaller`／`cancel` enum；不解析自然語言、不保存free text，也不接受
+  caller digest、target subset、cap mutation或partial response。一般進度指令或「繼續」不等於
+  `accept_credential_binding`。
+- Capture在trusted UTC重驗同一份visible Phase 5.26 review；assessment先於原capture time重建review與response
+  fingerprint，再於目前trusted UTC重驗完整Phase 5.11–5.26 chain。Response沿用Phase 5.19五分鐘expiry且不延長；
+  clock rollback、expiry、preimage／context／review／contract／transport drift、tamper或cross-context replay均
+  fail closed，response與review都不保留raw preimage。
+- `accept_credential_binding`只回
+  `prepare_private_provider_request_live_credential_binding_gate`，代表可準備另一個獨立live gate，不授予目前的
+  credential access／binding、HTTP construction、send或execution authority。`request_smaller`只回
+  execution-target refinement；`cancel`關閉目前credential-binding path。三個分支都不改scope／cap、target／
+  binding、materialized contract或evidence requirements。
+- Safe view只顯示response kind、transport profile與既有request／cost／credit／provenance aggregates；不保留
+  private transport metadata，也不顯示exact request values、provider／local IDs、source／context fingerprints、
+  credential values、SerpApi exact plan state或private times，結果維持`candidate + unverified`。
+- Module沒有OS／filesystem／HTTP／socket／subprocess import，不讀env／vault、不取得、保存或綁定credential
+  value、不展開Place ID path、不建立headers／query／JSON／URL或HTTP request、不使用network、不呼叫provider，
+  也不做trip／store write、schedule、render、deploy、confirmation或canonical mutation。
+- 新增9個Phase 5.27專項回歸；一條完整exact-chain E2E搭配enum／三分支、original／current recheck、上游失效
+  傳遞、rollback／tamper、redaction、token-gating、aggregate preservation與module isolation測試，9 tests均通過
+  （217.595秒）；Phase 5.26相容8 tests亦全過（289.957秒）。完整918個offline tests（1438.298秒）、Python
+  compile與三個real-trip validators均通過。`trips/*/data`的23個files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.28 explicit live credential-binding gate preparation／review：只消費fresh Phase 5.27
+  exact accept response、同一批exact preimages與完整context，先以host提供的boolean credential／session
+  availability attestation fail closed，再產生本次current-user可審閱的單次live binding handoff。該切片不得在
+  safe output顯示key value，也不得把一般「繼續」當作live授權；HTTP construction與provider call仍須留在後續
+  另一個明確bounded gate。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

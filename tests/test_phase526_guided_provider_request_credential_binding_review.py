@@ -468,8 +468,13 @@ class GuidedProviderRequestCredentialBindingReviewTests(unittest.TestCase):
             "guided-provider-request-credential-binding-review/v1",
             GUIDED_PROVIDER_REQUEST_CREDENTIAL_BINDING_REVIEW_VERSION,
         )
+        self.assertFalse(
+            hasattr(
+                review_module,
+                "capture_guided_provider_request_credential_binding_response",
+            )
+        )
         for unsupported_name in (
-            "capture_guided_provider_request_credential_binding_response",
             "bind_guided_provider_credential_value",
             "build_guided_provider_http_request",
             "execute_guided_provider_request",
