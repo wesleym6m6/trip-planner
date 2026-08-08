@@ -291,6 +291,18 @@ refinement，不會自動修改 targets 或 caps，且必須重建新的 exact r
 保留 evidence requirements。三種分支都不建立 provider request contract／HTTP request、不讀 credential、
 不呼叫 provider，也維持 `candidate + unverified`。
 
+Phase 5.19 用 `GuidedProviderExecutionTimeRecheck` 消費 fresh Phase 5.18 `accept`、同一批 exact
+target preimages 與 trusted host 新提供的 current attestations。它固定只有五分鐘有效，且不超過原
+preflight expiry；prepare／assess 會在 capture time 與目前 trusted UTC 重驗完整 chain、preimages 與
+endpoint freshness。Topic、capability、request profile 或 request cap 不能在這一關改變；pricing、policy、
+retention、billing-region classification（台灣使用 non-EEA）或 SerpApi ZeroTrace 狀態若與使用者接受的
+review 不同，必須重走新的 preflight／authorization chain。Credential 不可用、SerpApi plan credit 不足、
+自動續費開啟或短期 attestation 過期則維持 blocked，可在 host state 修正後重新 recheck。Safe output 只保留
+typed profiles、boolean availability 與既有 aggregate request／cost／credit／provenance counts，不顯示 private
+target、provider identifier、fingerprint、credential、exact plan balance 或時間。Ready 結果也只回
+`prepare_private_provider_request_materialization_review`；本階段不建立 provider request contract／HTTP
+request、不啟用 execution authority、不呼叫 provider，仍是 `candidate + unverified`。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

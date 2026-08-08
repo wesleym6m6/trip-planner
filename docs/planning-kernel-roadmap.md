@@ -1355,6 +1355,36 @@ authority。
   boolean credential availability attestations並重驗endpoint freshness。它最多只前進到另一個exact request-
   materialization review，仍不讀取或保存credential、不建立HTTP request、不呼叫provider。
 
+### 2026-08-08 — Phase 5.19 private execution-time recheck 完成
+
+- 新增獨立`guided_provider_execution_time_recheck.py`、token-gated
+  `GuidedProviderExecutionTimeRecheck`／review與prepare／assess API。Preparation只接受fresh Phase 5.18 exact
+  `accept` response、同一批exact target preimages與trusted host新提供的typed attestations；topic、capability、
+  request profile與request cap必須和已接受preflight完全相同。Recheck固定最多五分鐘，且不超過原preflight
+  expiry。
+- Assessment先在原checked time重建response、current preflight與recheck fingerprint，再以目前trusted UTC
+  重驗完整guided／scope／preflight／targets／bindings／authorization chain、preimages與endpoint freshness。
+  Clock rollback、任一context／preimage drift或舊accept不再current都fail closed。
+- Current pricing、policy、retention、billing-region classification或SerpApi ZeroTrace狀態若與已接受review不同，
+  只回`needs_new_private_provider_preflight_review`，必須重走preflight與authorization；台灣使用者的既有
+  non-EEA分類不會被推測改寫。Credential unavailable、同provider credential狀態不一致、SerpApi plan credit
+  不足／未確認、自動續費開啟或短期attestation過期則只回可重試的blocked recheck。
+- Safe handoff保留既有accepted／bound request caps、Google／SerpApi與capability counts、source-state counts、
+  versioned Google bound／accepted-max list-rate estimate、SerpApi bound credit／cap與current typed profile／boolean
+  availability flags。不顯示private target、query、stable local label、provider identifier、target／request
+  fingerprint、credential、billing address、exact SerpApi balance／renewal值、raw preimage、revision或時間。
+- Ready只回`prepare_private_provider_request_materialization_review`；recheck建立的provider request contract、
+  HTTP request與觀察到的provider call counts皆為0，沒有env／vault／credential access、network、trip／store
+  write、scheduler、render、deploy、confirmation、canonical apply或authoritative-use path，維持
+  `candidate + unverified`。
+- Correctness、product-contract與security agents均無actionable finding。新增10個專項回歸；Phase 5.18相容
+  tests與完整845個offline tests、Python compile、三個real-trip validators均通過。`trips/*/data` aggregate
+  hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 下一個最小切片是Phase 5.20 exact private request-materialization review：只消費fresh ready Phase 5.19與同一
+  批exact preimages，產生可讓使用者再次審閱的typed provider-request contract candidate與exact transmitted
+  fields／bound count；本切片仍不得建立HTTP request、讀取credential、授權或呼叫provider，且任一recheck
+  expiry／context drift都必須重做Phase 5.19。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only
