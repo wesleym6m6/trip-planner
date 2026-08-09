@@ -1066,6 +1066,68 @@ def _authorize_result(
     )
 
 
+def authorize_google_place_details_http_response(
+    request: GooglePlaceDetailsRequest,
+    response: GooglePlaceDetailsHttpResponse,
+    *,
+    sent_at: datetime,
+    completed_at: datetime,
+    attempts_used: int,
+) -> AuthorizedProviderResult:
+    """Authorize one already-retrieved response through this exact adapter.
+
+    This is the no-I/O consumption seam for a bounded outer quarantine.  It
+    deliberately reuses the same status mapping, 64 KiB strict decoder,
+    policy checks and dedicated authorization token as normal execution.
+    """
+
+    if (
+        type(request) is not GooglePlaceDetailsRequest
+        or type(response) is not GooglePlaceDetailsHttpResponse
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            "Place Details response authorization requires exact values.",
+        )
+    if (
+        type(attempts_used) is not int
+        or not 1 <= attempts_used <= _MAX_ATTEMPTS_PER_REQUEST
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            "Place Details response attempt count is invalid.",
+        )
+    sent = _aware_utc(sent_at, "sent_at")
+    completed = _aware_utc(completed_at, "completed_at")
+    if (
+        sent < request.snapshot.purge_checked_at
+        or completed < sent
+        or request.endpoint.valid_until <= sent
+    ):
+        raise FactContractError(
+            "EVIDENCE_REVISION_CHANGED",
+            "Place Details response is outside its exact evidence window.",
+        )
+    if len(response.body) > _MAX_RESPONSE_BYTES:
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            "Place Details response exceeds the adapter byte bound.",
+        )
+    outcome = _decode_attempt(
+        request,
+        response,
+        retrieved_at=sent,
+    )
+    raw_result = _provider_result(
+        request,
+        outcome,
+        attempts_used=attempts_used,
+        completed_at=completed,
+        retrieved_at=sent,
+    )
+    return _authorize_result(request, raw_result)
+
+
 def _decode_attempt(
     request: GooglePlaceDetailsRequest,
     response: GooglePlaceDetailsHttpResponse,
@@ -2097,6 +2159,19 @@ def _trusted_clock(clock: Callable[[], datetime]) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _aware_utc(value: datetime, name: str) -> datetime:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            f"{name} must be a timezone-aware datetime.",
+        )
+    return value.astimezone(timezone.utc)
+
+
 def _utc_iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace(
         "+00:00", "Z"
@@ -2118,6 +2193,7 @@ __all__ = [
     "GooglePlaceDetailsTransportErrorKind",
     "PlaceDetailsAttemptBudget",
     "PlaceDetailsKind",
+    "authorize_google_place_details_http_response",
     "build_google_place_details_http_request",
     "build_google_place_details_request",
     "execute_google_place_details",

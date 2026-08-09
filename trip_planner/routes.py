@@ -944,6 +944,92 @@ class GoogleRouteBatchExecution:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class GoogleRouteResponseAuthorization:
+    """Dedicated result of adapting one already-retrieved raw response."""
+
+    result: AuthorizedProviderResult = field(repr=False)
+    warnings: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if type(self.result) is not AuthorizedProviderResult:
+            raise TypeError("Route response result must be exact")
+        if (
+            not isinstance(self.warnings, tuple)
+            or any(type(item) is not str for item in self.warnings)
+            or self.warnings != _unique_warnings(self.warnings)
+        ):
+            raise ValueError("Route response warnings are invalid")
+
+    def to_binding_dict(self) -> dict[str, Any]:
+        return {
+            "result": self.result.to_binding_dict(),
+            "warnings": list(self.warnings),
+        }
+
+
+def authorize_google_route_http_response(
+    request: GoogleRouteRequest,
+    response: GoogleRoutesHttpResponse,
+    *,
+    sent_at: datetime,
+    completed_at: datetime,
+    attempts_used: int,
+) -> GoogleRouteResponseAuthorization:
+    """Authorize one quarantined response through the Routes-only adapter."""
+
+    if (
+        type(request) is not GoogleRouteRequest
+        or type(response) is not GoogleRoutesHttpResponse
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            "Route response authorization requires exact values.",
+        )
+    if (
+        type(attempts_used) is not int
+        or not 1 <= attempts_used <= _MAX_ATTEMPTS_PER_REQUEST
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            "Route response attempt count is invalid.",
+        )
+    sent = _aware_utc(sent_at, "sent_at")
+    completed = _aware_utc(completed_at, "completed_at")
+    if sent < request.snapshot.purge_checked_at or completed < sent:
+        raise FactContractError(
+            "EVIDENCE_REVISION_CHANGED",
+            "Route response is outside its exact evidence window.",
+        )
+    if _execution_precondition(request, sent) is not None:
+        raise FactContractError(
+            "EVIDENCE_REVISION_CHANGED",
+            "Route response was sent outside its exact request window.",
+        )
+    if len(response.body) > _MAX_RESPONSE_BYTES:
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            "Route response exceeds the adapter byte bound.",
+        )
+    outcome = _decode_attempt(request, response)
+    raw_result, warnings = _provider_result(
+        request,
+        outcome,
+        attempts_used=attempts_used,
+        completed_at=completed,
+    )
+    authorized = _authorize_google_route_result(
+        request.provider_request,
+        raw_result,
+        request.snapshot.policies,
+        _token=_GOOGLE_ROUTE_AUTHORIZATION_TOKEN,
+    )
+    return GoogleRouteResponseAuthorization(
+        result=authorized,
+        warnings=warnings,
+    )
+
+
 def execute_google_route_batch(
     requests: tuple[GoogleRouteRequest, ...],
     transport: GoogleRoutesTransport,
@@ -1647,6 +1733,19 @@ def _trusted_clock(clock: Callable[[], datetime]) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _aware_utc(value: datetime, name: str) -> datetime:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise FactContractError(
+            "INVALID_PROVIDER_RESPONSE",
+            f"{name} must be a timezone-aware datetime.",
+        )
+    return value.astimezone(timezone.utc)
+
+
 class _RunClock:
     """Clamp one primary/fallback execution to a non-regressing UTC clock."""
 
@@ -1684,23 +1783,39 @@ def _execution_precondition(
             request,
             ProviderProblemCode.STALE_EVIDENCE,
         )
-    departure_at = _parse_rfc3339(request.departure_at)
-    if request.mode is RouteMode.TRANSIT:
-        if not (
-            executed_at - timedelta(days=7)
-            <= departure_at
-            <= executed_at + timedelta(days=100)
-        ):
-            return _problem_outcome(
-                request,
-                ProviderProblemCode.OUTSIDE_PROVIDER_HORIZON,
-            )
-    elif departure_at < executed_at:
+    if not google_route_request_is_executable_at(request, executed_at):
         return _problem_outcome(
             request,
             ProviderProblemCode.OUTSIDE_PROVIDER_HORIZON,
         )
     return None
+
+
+def google_route_request_is_executable_at(
+    request: GoogleRouteRequest,
+    evaluation_at: datetime,
+) -> bool:
+    """Return whether one exact route request is valid at send time."""
+
+    if type(request) is not GoogleRouteRequest:
+        raise FactContractError(
+            "INVALID_PROVIDER_REQUEST",
+            "request must be an exact GoogleRouteRequest.",
+        )
+    executed_at = _aware_utc(evaluation_at, "evaluation_at")
+    if (
+        request.origin.valid_until <= executed_at
+        or request.destination.valid_until <= executed_at
+    ):
+        return False
+    departure_at = _parse_rfc3339(request.departure_at)
+    if request.mode is RouteMode.TRANSIT:
+        return (
+            executed_at - timedelta(days=7)
+            <= departure_at
+            <= executed_at + timedelta(days=100)
+        )
+    return departure_at >= executed_at
 
 
 def _parse_rfc3339(value: str) -> datetime:

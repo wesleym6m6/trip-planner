@@ -395,6 +395,12 @@ class RepairController:
         return self._state
 
     @property
+    def pending_review(self) -> ProposalReview | None:
+        """Return the exact in-process review awaiting a commit response."""
+
+        return self._pending.review if self._pending is not None else None
+
+    @property
     def remaining_iterations(self) -> int:
         return max(0, self.budget.max_iterations - self._iterations_used)
 

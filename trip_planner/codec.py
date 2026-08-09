@@ -69,16 +69,20 @@ _LODGING_KINDS = frozenset(
         "other",
     }
 )
-_RECEIPT_KINDS = {"patch", "rollback"}
+_RECEIPT_KINDS = {"create", "patch", "rollback"}
 _RECEIPT_STATUSES = {"applied", "rolled_back"}
-_RECEIPT_REQUIRED_FIELDS = {
+_RECEIPT_COMMON_FIELDS = {
     "kind",
     "status",
     "request_digest",
     "transaction_id",
-    "base_revision",
     "applied_revision",
     "applied_generation",
+}
+_RECEIPT_CREATE_FIELDS = {
+    "expected_absent",
+    "candidate_sha256",
+    "source_binding_digest",
 }
 _MAX_IDENTITY_LENGTH = 256
 _MAX_RECEIPT_KEY_LENGTH = 256
@@ -1034,7 +1038,13 @@ def _validate_receipts(value: Any) -> None:
                 path=key_path,
             )
         receipt = receipt_value
-        missing = _RECEIPT_REQUIRED_FIELDS - set(receipt)
+        kind = receipt.get("kind")
+        required = set(_RECEIPT_COMMON_FIELDS)
+        if kind == "create":
+            required.update(_RECEIPT_CREATE_FIELDS)
+        else:
+            required.add("base_revision")
+        missing = required - set(receipt)
         if missing:
             raise PlanCodecError(
                 "MALFORMED_RECEIPT",
@@ -1043,7 +1053,7 @@ def _validate_receipts(value: Any) -> None:
             )
 
         _require_receipt_enum(
-            receipt["kind"],
+            kind,
             f"{key_path}.kind",
             _RECEIPT_KINDS,
         )
@@ -1090,7 +1100,10 @@ def _validate_receipts(value: Any) -> None:
             )
         transaction_owner[transaction_id] = key
 
-        for field in ("base_revision", "applied_revision"):
+        for field in (
+            *(("base_revision",) if kind != "create" else ()),
+            "applied_revision",
+        ):
             revision_value = receipt[field]
             if (
                 not isinstance(revision_value, str)
@@ -1101,6 +1114,30 @@ def _validate_receipts(value: Any) -> None:
                     f"{field} must be a lowercase SHA-256 hex digest",
                     path=f"{key_path}.{field}",
                 )
+        if kind == "create":
+            if receipt["status"] != "applied":
+                raise PlanCodecError(
+                    "MALFORMED_RECEIPT",
+                    "create receipts must remain applied",
+                    path=f"{key_path}.status",
+                )
+            if receipt["expected_absent"] is not True:
+                raise PlanCodecError(
+                    "MALFORMED_RECEIPT",
+                    "create receipts must bind an absent target",
+                    path=f"{key_path}.expected_absent",
+                )
+            for field in ("candidate_sha256", "source_binding_digest"):
+                digest_value = receipt[field]
+                if (
+                    not isinstance(digest_value, str)
+                    or not _REVISION_RE.fullmatch(digest_value)
+                ):
+                    raise PlanCodecError(
+                        "MALFORMED_RECEIPT",
+                        f"{field} must be a lowercase SHA-256 hex digest",
+                        path=f"{key_path}.{field}",
+                    )
         applied_generation = receipt["applied_generation"]
         if (
             isinstance(applied_generation, bool)

@@ -644,6 +644,12 @@ class ScheduleStager:
     def has_pending_review(self) -> bool:
         return self._pending is not None
 
+    @property
+    def pending_review(self) -> ScheduleStageReview | None:
+        """Return the exact in-process schedule review awaiting commit."""
+
+        return self._pending.review if self._pending is not None else None
+
     def cancel_pending(self) -> None:
         self._pending = None
         self._commit_attempts = 0

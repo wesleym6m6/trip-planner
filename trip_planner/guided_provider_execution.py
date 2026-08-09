@@ -34,12 +34,14 @@ from .guided_provider_execution_target_bindings import (
     GuidedProviderExecutionTargetPreimage,
 )
 from .guided_provider_pre_execution import (
+    GUIDED_PROVIDER_PRE_EXECUTION_VERSION,
     GuidedProviderPreExecution,
     GuidedProviderPreExecutionContext,
     GuidedProviderPreparedRequest,
     _CREDENTIAL_ACCESS_TOKEN,
     _EXECUTION_CLAIM_TOKEN,
     _SealedSlots,
+    _assess_context,
     assess_guided_provider_pre_execution,
 )
 from .guided_provider_request_contract_materialization import _request_values
@@ -52,7 +54,11 @@ from .guided_provider_request_send_preparation import (
     GuidedProviderRequestTransportProfile,
     GuidedProviderRequestValuePlacement,
 )
-from .facts import EvidenceSnapshot, GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+from .facts import (
+    EvidenceSnapshot,
+    FactContractError,
+    GOOGLE_MAPS_NON_EEA_POLICY_PROFILE,
+)
 from .guided_provider_preflight import GuidedProviderPolicyProfile
 from .lodging_discovery import LodgingDiscoveryRequest
 from .models import DecisionState, EvidenceState
@@ -62,7 +68,7 @@ from .places_identity import (
     PlaceIdentityRequest,
     build_google_place_identity_request,
 )
-from .routes import GoogleRouteRequest
+from .routes import GoogleRouteRequest, google_route_request_is_executable_at
 
 
 GUIDED_PROVIDER_EXECUTION_VERSION = "guided-provider-execution/v1"
@@ -352,12 +358,14 @@ class GuidedProviderQuarantinedResponse(_SealedSlots):
         "materialization_kind",
         "status_code",
         "attempt_number",
+        "_sent_at",
         "retrieved_at",
         "_body",
         "_headers",
         "_prepared_request",
         "_normalization_target",
         "_prepared_request_runtime_fingerprint",
+        "_response_fingerprint",
         "_target_fingerprint",
         "_source_binding_fingerprint",
         "_bundle_context_fingerprint",
@@ -377,6 +385,7 @@ class GuidedProviderQuarantinedResponse(_SealedSlots):
         target_fingerprint: str,
         bundle_context_fingerprint: str,
         attempt_number: int,
+        sent_at: datetime,
         retrieved_at: datetime,
         _token: object | None = None,
     ) -> None:
@@ -400,7 +409,10 @@ class GuidedProviderQuarantinedResponse(_SealedSlots):
         self.materialization_kind = materialization_kind
         self.status_code = response.status_code
         self.attempt_number = attempt_number
+        self._sent_at = _utc_datetime(sent_at, "sent_at")
         self.retrieved_at = _utc_datetime(retrieved_at, "retrieved_at")
+        if self.retrieved_at < self._sent_at:
+            raise ValueError("Provider response predates its send")
         self._body = response._body
         self._headers = response._headers
         self._prepared_request = prepared_request
@@ -408,6 +420,14 @@ class GuidedProviderQuarantinedResponse(_SealedSlots):
         self._prepared_request_runtime_fingerprint = _digest(
             prepared_request_runtime_fingerprint,
             "prepared_request_runtime_fingerprint",
+        )
+        self._response_fingerprint = _quarantine_response_fingerprint(
+            status_code=self.status_code,
+            body=self._body,
+            headers=self._headers,
+            attempt_number=self.attempt_number,
+            sent_at=self._sent_at,
+            retrieved_at=self.retrieved_at,
         )
         self._target_fingerprint = _digest(
             target_fingerprint,
@@ -438,10 +458,12 @@ class GuidedProviderQuarantinedResponse(_SealedSlots):
             "materialization_kind": self.materialization_kind.value,
             "status_code": self.status_code,
             "attempt_number": self.attempt_number,
+            "send_time_exposed": False,
             "raw_body_exposed": False,
             "raw_headers_exposed": False,
             "normalization_target_exposed": False,
             "prepared_request_runtime_fingerprint_exposed": False,
+            "response_fingerprint_exposed": False,
             "target_fingerprint_exposed": False,
             "source_binding_fingerprint_exposed": False,
             "bundle_context_fingerprint_exposed": False,
@@ -1251,6 +1273,7 @@ def _attempt_request(
             target_fingerprint=expected_target_fingerprint,
             bundle_context_fingerprint=bundle_context_fingerprint,
             attempt_number=state.attempts_used,
+            sent_at=now,
             retrieved_at=completed_at,
             _token=_QUARANTINE_TOKEN,
         )
@@ -1327,10 +1350,10 @@ def _normalization_target_fresh_at(
     if type(target) is GooglePlaceDetailsRequest:
         return target.endpoint.valid_until > now
     if type(target) is GoogleRouteRequest:
-        return (
-            target.origin.valid_until > now
-            and target.destination.valid_until > now
-        )
+        try:
+            return google_route_request_is_executable_at(target, now)
+        except (FactContractError, TypeError, ValueError):
+            return False
     return True
 
 
@@ -1365,6 +1388,184 @@ def _validated_transport_response_snapshot(
         )
     except Exception:
         return None
+
+
+def _quarantine_response_fingerprint(
+    *,
+    status_code: int,
+    body: bytes,
+    headers: tuple[tuple[str, str], ...],
+    attempt_number: int,
+    sent_at: datetime,
+    retrieved_at: datetime,
+) -> str:
+    return _sha256(
+        {
+            "contract_version": GUIDED_PROVIDER_EXECUTION_VERSION,
+            "domain": "guided-provider-quarantined-response",
+            "status_code": status_code,
+            "body": _private_runtime_value(body),
+            "headers": headers,
+            "attempt_number": attempt_number,
+            "sent_at": sent_at,
+            "retrieved_at": retrieved_at,
+        }
+    )
+
+
+def revalidate_guided_provider_quarantined_response(
+    context: GuidedProviderPreExecutionContext,
+    pre_execution: GuidedProviderPreExecution,
+    execution: GuidedProviderExecution,
+    quarantine: GuidedProviderQuarantinedResponse,
+    *,
+    preimages: tuple[GuidedProviderExecutionTargetPreimage, ...],
+    evaluation_at: datetime,
+) -> GuidedProviderQuarantinedResponse:
+    """Recheck one exact raw quarantine before any Phase 5.32 adapter use."""
+
+    if (
+        type(context) is not GuidedProviderPreExecutionContext
+        or type(pre_execution) is not GuidedProviderPreExecution
+        or type(execution) is not GuidedProviderExecution
+        or type(quarantine) is not GuidedProviderQuarantinedResponse
+    ):
+        raise TypeError("Quarantine revalidation sources must be exact")
+    try:
+        evaluated = _utc_datetime(evaluation_at, "evaluation_at")
+        if evaluated < execution._completed_at:
+            raise ValueError
+        _assess_context(
+            context,
+            preimages=preimages,
+            evaluation_at=execution._started_at,
+        )
+        if (
+            _pre_execution_context_runtime_fingerprint(context)
+            != context._context_fingerprint
+            or pre_execution._context_fingerprint
+            != context._context_fingerprint
+            or quarantine._bundle_context_fingerprint
+            != context._context_fingerprint
+            or execution.request_count != pre_execution.request_count
+            or not pre_execution._claim.claimed
+        ):
+            raise ValueError
+        index = quarantine.request_index
+        if not 0 <= index < execution.request_count:
+            raise ValueError
+        outcome = execution._outcomes[index]
+        request = pre_execution._requests[index]
+        lease = pre_execution._credential_lease
+        if (
+            outcome._quarantine is not quarantine
+            or outcome.kind
+            is not GuidedProviderRequestExecutionOutcomeKind
+            .RESPONSE_QUARANTINED
+            or outcome.attempts_used != quarantine.attempt_number
+            or quarantine._prepared_request is not request
+            or quarantine.transport_profile is not request.transport_profile
+            or quarantine.materialization_kind
+            is not request.materialization_kind
+            or request._credential_lease is not lease
+            or any(
+                item._credential_lease is not lease
+                for item in pre_execution._requests
+            )
+            or lease.slots
+            or lease._bound_at != pre_execution._prepared_at
+            or lease._expires_at != pre_execution._expires_at
+            or lease._context_fingerprint != context._context_fingerprint
+        ):
+            raise ValueError
+        current_request_fingerprint = _prepared_request_runtime_fingerprint(
+            request
+        )
+        if (
+            current_request_fingerprint
+            != quarantine._prepared_request_runtime_fingerprint
+            or request._contract._source_binding_fingerprint
+            != quarantine._source_binding_fingerprint
+        ):
+            raise ValueError
+        target = quarantine._normalization_target
+        current_target_fingerprint = _target_fingerprint(
+            request,
+            target,
+            bundle_context_fingerprint=context._context_fingerprint,
+        )
+        if current_target_fingerprint != quarantine._target_fingerprint:
+            raise ValueError
+        source_targets = _match_normalization_targets(
+            pre_execution,
+            preimages=preimages,
+        )
+        source_target = source_targets[index]
+        if type(target) is PlaceIdentityRequest:
+            if (
+                type(source_target) is not PlaceIdentityIntent
+                or target.intent is not source_target
+            ):
+                raise ValueError
+        elif target is not source_target:
+            raise ValueError
+        _validate_normalization_target_policy(
+            request,
+            target,
+            started_at=execution._started_at,
+        )
+        if not _normalization_target_fresh_at(
+            target,
+            now=execution._started_at,
+        ):
+            raise ValueError
+        if not (
+            execution._started_at
+            <= quarantine._sent_at
+            <= quarantine.retrieved_at
+            <= execution._completed_at
+        ):
+            raise ValueError
+        response = GuidedProviderTransportResponse(
+            status_code=quarantine.status_code,
+            body=quarantine._body,
+            headers=tuple(quarantine._headers),
+        )
+        if (
+            _quarantine_response_fingerprint(
+                status_code=response.status_code,
+                body=response._body,
+                headers=response._headers,
+                attempt_number=quarantine.attempt_number,
+                sent_at=quarantine._sent_at,
+                retrieved_at=quarantine.retrieved_at,
+            )
+            != quarantine._response_fingerprint
+        ):
+            raise ValueError
+    except Exception:
+        raise ValueError(
+            "Quarantined provider response no longer matches execution"
+        ) from None
+    return quarantine
+
+
+def _pre_execution_context_runtime_fingerprint(
+    context: GuidedProviderPreExecutionContext,
+) -> str:
+    return _sha256(
+        {
+            "contract_version": GUIDED_PROVIDER_PRE_EXECUTION_VERSION,
+            "domain": "guided-provider-pre-execution-context",
+            "assessment_args": _private_runtime_value(
+                context._assessment_args
+            ),
+            "response": _private_runtime_value(context._response),
+            "limits": _private_runtime_value(context._limits),
+            "composed_at": context._composed_at,
+            "expires_at": context._expires_at,
+        }
+    )
 
 
 def _copy_execution_limits(
@@ -1903,4 +2104,5 @@ __all__ = [
     "GuidedProviderTransportResponse",
     "GuidedProviderWireRequest",
     "execute_guided_provider_requests",
+    "revalidate_guided_provider_quarantined_response",
 ]

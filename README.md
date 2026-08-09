@@ -463,6 +463,17 @@ private quarantine，保留 Places Identity／Details／Routes／SerpAPI Hotels 
 仍是 `candidate + unverified`，不會直接 normalize、寫 evidence、修改 canonical plan 或把 hotel DTO 當 provenance。
 唯一下一步是 Phase 5.32 的 provider-specific assessment。
 
+Phase 5.32 以 `assess_guided_provider_quarantined_responses()` 在不再呼叫provider的前提下重驗每筆
+quarantine的context／request／source／target／response binding，並依Places Identity、Place Details、Routes與
+SerpAPI Hotels各自既有adapter及其response bounds解碼；non-2xx、malformed、過大或send-time語意失效的結果都只會
+拒絕。Identity candidate仍需原本的host review，之後以EvidenceStore revision CAS寫入durable evidence；Details／
+Routes只進process-local EvidenceSession，Hotels維持non-provenance candidate DTO。只有由current EvidenceSnapshot
+重新composition、validate及既有ScheduleStager／RepairController／LodgingConfirmationStager產生的exact domain review
+才可進`GuidedCanonicalApplyReview`；它不接受caller提供的raw `PlanPatch`。Create只從完整、已接受的guided itinerary
+投影candidate + unverified baseline，review會顯示exact candidate；尚未支援的transport boundaries與任何lodging alias
+都fail closed。`accept_apply`不能取代protected `ApprovalGrant`或externally signed lodging confirmation，exact replay
+只確認既有receipt而不宣稱本次又寫入。下一個且最後一個Phase 5 macro phase是5.33 unified product interface。
+
 Phase 4.5B 以獨立 runtime sidecar 將候選投影成 comparison-ready view：位置 identity
 與 route observation 綁 exact `EvidenceSnapshot`；route 另須保留原 request receipt，
 且 receipt 的 endpoint observation/value 仍與目前 snapshot 相同，才可使用

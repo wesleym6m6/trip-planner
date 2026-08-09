@@ -1836,6 +1836,39 @@ authority。
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。全程沒有讀取真實credential、呼叫live
   provider、修改`trips/`或deploy；下一個macro phase是5.32 provider-specific evidence-to-canonical workflow。
 
+### 2026-08-08 — Phase 5.32 provider evidence-to-canonical workflow 完成
+
+- 新增`guided_provider_evidence_workflow.py`，先重驗Phase 5.31 quarantine的exact context／prepared request／source／
+  native target／response bindings，再分派到Places Identity、Place Details、Routes或SerpAPI Hotels既有typed adapter。
+  每個profile都重新套用HTTP status、send-time precondition、strict JSON tree及adapter自己的response byte bounds；沒有
+  generic raw-result normalizer，invalid／oversized／late結果不能進evidence。
+- Identity仍經既有candidate evaluator與host review finalizer，durable merge以review basis store revision在EvidenceStore
+  lock內做CAS；retention purge先於CAS，exact lost-ACK observation replay先於stale拒絕。Details／Routes只路由到
+  process-local EvidenceSession；Hotels維持non-provenance discovery DTO，不能升格為AuthorizedProviderResult。
+  Production-contract E2E證明Routes observation確實改變composition digest及scheduler input，另有直接Identity durable
+  merge regression；所有safe output持續隱藏raw response、query、provider ID與private fingerprints。
+- 新增token-gated`PlanCreateRequest`及TripStore create preview／commit。Initial candidate只能由完整、已接受的Phase 5.9
+  guided source投影，使用internally computed source binding並在review顯示exact canonical candidate；非空transport
+  boundaries及lodging／hotel／Airbnb aliases在尚未有安全投影前fail closed。Create與migration使用atomic no-replace
+  install、exact target binding與receipt-first lost-ACK replay；legacy source或canonical任一已存在時，generic create不會
+  覆寫或繞過migration。
+- 新增`guided_canonical_apply.py`的exact enum response gate。Create／migration使用原preview；repair／schedule／lodging
+  只能包裝既有controller或stager的同一份pending review，沒有raw `PlanPatch`直通路徑。Process-wide bounded registry
+  阻止相同logical review取得衝突decision；`accept_apply`可作同review的人類checkpoint，但不自動mint protected
+  `ApprovalGrant`，也不能取代externally signed lodging grant。Store target、trusted clock、evidence／approval binding、
+  post-commit waiting state及exact replay output都保持truthful；replay不宣稱本次又寫入。
+- 三個Phase 5.32 test modules共38個專項回歸，涵蓋四provider profiles、evidence routing／CAS、composition、create／
+  migration no-replace、informed review、controller/stager authority、conflicting response、clock rollback、wrong-root replay、
+  post-commit evidence drift及domain replay output。獨立integration review在final snapshot無blocking finding；
+  architecture/security review提出的5.32 lost-ACK與domain composition缺口已補回，migrated baseline明確保留給5.33，
+  最終本地架構／安全快驗無剩餘5.32 blocking finding。完整1007個offline tests（29.550秒）、Python compile與三個
+  real-trip validators均通過；23個
+  trip data files aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- 本phase全程使用temporary stores與injected canned responses；沒有讀取真實credential、呼叫live provider、修改
+  `trips/`、render或deploy。下一個且最後一個Phase 5 macro phase是5.33 unified `tripctl`、resume／retry、migrated
+  baseline adoption、skill及Busan／Hokkaido canned product acceptance。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

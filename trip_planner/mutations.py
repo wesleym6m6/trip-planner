@@ -1293,7 +1293,7 @@ def _apply_add_activity(
     affected_days: set[str],
     invalidation_sources: dict[str, set[str]],
 ) -> None:
-    if _is_lodging_activity_type(operation.fields.get("type")):
+    if is_lodging_activity_type(operation.fields.get("type")):
         problems.append(
             _problem(
                 "LODGING_OPERATION_REQUIRED",
@@ -1408,7 +1408,7 @@ def _apply_update_activity(
     affected_days: set[str],
     invalidation_sources: dict[str, set[str]],
 ) -> None:
-    if _is_lodging_activity_type(operation.fields.get("type")):
+    if is_lodging_activity_type(operation.fields.get("type")):
         problems.append(
             _problem(
                 "LODGING_OPERATION_REQUIRED",
@@ -3277,7 +3277,9 @@ def _aware_utc_datetime(value: object, name: str) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def _is_lodging_activity_type(value: object) -> bool:
+def is_lodging_activity_type(value: object) -> bool:
+    """Return whether a legacy activity type denotes canonical lodging."""
+
     if not isinstance(value, str):
         return False
     normalized = value.strip().casefold().replace("-", "_").replace(" ", "_")
@@ -3398,6 +3400,7 @@ __all__ = [
     "approval_scope_digest",
     "build_signed_lodging_confirmation_grant",
     "hard_constraint_protected_changes",
+    "is_lodging_activity_type",
     "lodging_confirmation_grant_payload",
     "lodging_confirmation_scope_digest",
     "patch_digest",

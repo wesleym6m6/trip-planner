@@ -427,6 +427,8 @@ class EvidenceStore:
     def merge(
         self,
         authorized_result: AuthorizedProviderResult,
+        *,
+        expected_revision: str | None = None,
     ) -> EvidenceStoreResult:
         """Merge one disk-authorized result under the current host policy."""
 
@@ -434,6 +436,10 @@ class EvidenceStore:
             raise TypeError(
                 "authorized_result must be AuthorizedProviderResult"
             )
+        if expected_revision is not None and not _DIGEST_RE.fullmatch(
+            expected_revision
+        ):
+            raise ValueError("expected_revision must be a digest or None")
         try:
             policy = self.policies.policy(
                 authorized_result.request.policy_id
@@ -466,11 +472,120 @@ class EvidenceStore:
                 current.previous_revision or current.store_revision
             )
             store_epoch = current.store_epoch
+            retention_changed = False
+            if expected_revision is not None:
+                pruned_current = _prune_durable_evidence(
+                    current.ledger,
+                    purge_now=checked_at,
+                )
+                if pruned_current.changed:
+                    pruned_revision = _store_revision(
+                        self.trip_id,
+                        self.policies,
+                        pruned_current.ledger,
+                        store_epoch,
+                    )
+                    purge_outcome = self._replace_ledger(
+                        pruned_current.ledger,
+                        pruned_revision,
+                        store_epoch,
+                    )
+                    if purge_outcome.problem_code is not None:
+                        return self._write_failure(
+                            action="merge",
+                            checked_at=checked_at,
+                            previous_revision=previous_revision,
+                            expected_revision=pruned_revision,
+                            outcome=purge_outcome,
+                        )
+                    current = _StoredEvidence(
+                        ledger=pruned_current.ledger,
+                        store_revision=pruned_revision,
+                        store_epoch=store_epoch,
+                        existed=True,
+                        previous_revision=current.previous_revision,
+                        load_changed=current.load_changed,
+                        removed_observation_ids=(
+                            current.removed_observation_ids
+                            + pruned_current.purged_observation_ids
+                        ),
+                    )
+                    retention_changed = True
             retained_current_ids = frozenset(
                 observation.observation_id
                 for observation in current.ledger.observations
                 if observation.retained_at(checked_at)
             )
+            if (
+                expected_revision is not None
+                and current.store_revision != expected_revision
+            ):
+                try:
+                    replay_merge = merge_provider_result(
+                        current.ledger,
+                        authorized_result,
+                        purge_now=checked_at,
+                    )
+                except FactContractError:
+                    replay_merge = None
+                replayed = bool(
+                    replay_merge is not None
+                    and authorized_result.result.observations
+                    and not replay_merge.changed
+                    and not replay_merge.problems
+                    and all(
+                        observation.observation_id in retained_current_ids
+                        for observation
+                        in authorized_result.result.observations
+                    )
+                )
+                if replayed:
+                    assert replay_merge is not None
+                    return EvidenceStoreResult(
+                        success=True,
+                        status="no_op",
+                        action="merge",
+                        ledger=current.ledger,
+                        previous_revision=previous_revision,
+                        current_revision=current.store_revision,
+                        expected_revision=expected_revision,
+                        generation=current.ledger.generation,
+                        purge_checked_at=checked_at,
+                        changed=current.load_changed or retention_changed,
+                        replayed=True,
+                        purged_observation_ids=(
+                            current.removed_observation_ids
+                            + replay_merge.purged_observation_ids
+                        ),
+                        promoted_observation_ids=(
+                            replay_merge.promoted_observation_ids
+                        ),
+                        ignored_observation_ids=(
+                            replay_merge.ignored_observation_ids
+                        ),
+                    )
+                return EvidenceStoreResult(
+                    success=False,
+                    status="rejected",
+                    action="merge",
+                    ledger=current.ledger,
+                    previous_revision=previous_revision,
+                    current_revision=current.store_revision,
+                    expected_revision=expected_revision,
+                    generation=current.ledger.generation,
+                    purge_checked_at=checked_at,
+                    changed=current.load_changed or retention_changed,
+                    purged_observation_ids=current.removed_observation_ids,
+                    problems=(
+                        EvidenceStoreProblem(
+                            code="EVIDENCE_REVISION_CHANGED",
+                            message=(
+                                "Durable evidence changed after the reviewed "
+                                "provider result was assessed."
+                            ),
+                        ),
+                    ),
+                )
             try:
                 merged = merge_provider_result(
                     current.ledger,

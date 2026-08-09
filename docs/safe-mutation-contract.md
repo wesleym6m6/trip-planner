@@ -89,6 +89,43 @@ invalidation 與精確 approval scope。
 Dry-run 執行相同 semantic validation，但不鎖定、不建立 receipt/history、不寫檔。
 No-op 不增加 generation，也不建立 transaction。
 
+## Initial creation protocol
+
+`TripStore.preview_create()`／`commit_create()`只接受由完整、已接受的guided itinerary
+source經token-gated projector建立的exact `PlanCreateRequest`。Caller不能提交任意canonical
+mapping或自選source digest。Safe review必須顯示與request fingerprint綁定的exact candidate，
+讓`accept_apply`是 informed decision，而不是只審閱opaque hash。
+
+Initial create遵守下列額外限制：
+
+- candidate中的activity只能是`candidate + unverified`；不得預先seed lodging／hotel／Airbnb
+  aliases或`state.trip.lodgings`，住宿仍只能走`SetLodgingSelection`及外部確認；
+- 尚未有lossless canonical projection的transport boundaries必須拒絕，不能靜默遺失使用者的
+  fixed／tentative抵離或buffer條件；
+- generic create要求legacy `trip.json`、`itinerary.json`與canonical `plan.json`全部不存在；
+  有任何legacy source時只能走migration；
+- preview綁定resolved store target。Commit在lock內先驗exact target，再處理receipt，並以
+  filesystem no-replace install建立`plan.json`，不能覆寫已存在的canonical；
+- create receipt與candidate bytes同時落盤。Lost ACK只以同一target、idempotency key、request
+  digest及exact receipt重播；跨root同slug或不同request一律拒絕。
+
+## Guided product apply gate
+
+Phase 5.32的`GuidedCanonicalApplyReview`／typed response是TripStore與既有domain controllers
+外層的explicit product gate，不是第二套mutation engine：
+
+- create／migration綁原始preview並以receipt-first commit重試；
+- repair／schedule／lodging只接受同一個`RepairController`、`ScheduleStager`或
+  `LodgingConfirmationStager`目前持有的exact pending review；不接受caller-supplied raw
+  `PlanPatch`加action label；
+- 同一logical review在expiry內只能擷取一個process-wide exact decision，避免duplicate instance
+  同時取得`cancel`與`accept_apply` authority；
+- `accept_apply`可滿足同一domain review的`HumanCheckpointGrant`，但不產生或取代protected
+  `ApprovalGrant`，也永遠不取代externally signed `LodgingConfirmationGrant`；
+- post-commit evidence drift／read uncertainty必須回`waiting_external`或要求reconciliation，不能因
+  canonical bytes已落盤就宣稱可直接繼續；exact replay是成功確認，但本次
+  `canonical_write_performed=false`。
+
 ## Approval contract
 
 Approval scope hash 綁定：

@@ -46,6 +46,11 @@ from .migrations import (
     preview_legacy_migration,
 )
 from .models import CheckReport, CheckStatus
+from .plan_creation import (
+    PlanCreatePreview,
+    PlanCreateRequest,
+    _PREVIEW_TOKEN as _PLAN_CREATE_PREVIEW_TOKEN,
+)
 from .mutations import (
     ApprovalGrant,
     ChangeRecord,
@@ -264,6 +269,15 @@ class TripStore:
         assert data is not None
         return decode_plan(data)
 
+    @property
+    def target_binding_digest(self) -> str:
+        """Stable private identity for this exact canonical store target."""
+
+        return hashlib.sha256(
+            b"trip-planner.store-target/v1\0"
+            + os.fsencode(str(self.plan_path))
+        ).hexdigest()
+
     def preview_migration(self) -> MigrationPreview:
         """Return a deterministic migration preview without store writes."""
 
@@ -371,11 +385,7 @@ class TripStore:
                         report=report,
                     )
 
-                outcome = self._atomic_replace_plan(
-                    preview.candidate_bytes,
-                    transaction_id=None,
-                    before_bytes=None,
-                )
+                outcome = self._atomic_create_plan(preview.candidate_bytes)
                 if outcome.problem is not None:
                     return self._write_failure_result(
                         action="migration",
@@ -400,6 +410,136 @@ class TripStore:
                 )
         except (OSError, PlanCodecError, StoreError) as exc:
             return self._exception_result("migration", exc)
+
+    def preview_create(self, request: PlanCreateRequest) -> PlanCreatePreview:
+        """Validate one initial canonical candidate without writing."""
+
+        if type(request) is not PlanCreateRequest:
+            raise TypeError("request must be an exact PlanCreateRequest")
+        request.verify()
+        self._validate_layout(require_legacy=False)
+        if request.trip_id != self.slug:
+            raise StoreError(
+                "CREATE_TARGET_MISMATCH",
+                "Plan create request belongs to a different trip slug.",
+            )
+        if self._read_regular_bytes(self.plan_path, required=False) is not None:
+            raise StoreError(
+                "PLAN_ALREADY_EXISTS",
+                "Canonical plan already exists.",
+            )
+        self._reject_create_legacy_sources()
+        return self._build_create_preview(request)
+
+    def commit_create(self, preview: PlanCreatePreview) -> StoreResult:
+        """CAS-install one reviewed initial plan without replacing a target."""
+
+        if type(preview) is not PlanCreatePreview:
+            raise TypeError("preview must be an exact PlanCreatePreview")
+        try:
+            preview.verify()
+        except (TypeError, ValueError, PlanCodecError) as exc:
+            return self._exception_result("create", exc)
+        request = preview.request
+        if (
+            request.trip_id != self.slug
+            or preview.store_slug != self.slug
+            or preview.store_target_digest != self.target_binding_digest
+        ):
+            return self._rejected(
+                "create",
+                "CREATE_TARGET_MISMATCH",
+                "Plan create preview belongs to a different canonical target.",
+            )
+        try:
+            with self._exclusive_lock():
+                self._validate_layout(require_legacy=False)
+                existing_bytes = self._read_regular_bytes(
+                    self.plan_path,
+                    required=False,
+                )
+                if existing_bytes is not None:
+                    existing = decode_plan(existing_bytes)
+                    replay = self._receipt_result(
+                        existing,
+                        idempotency_key=request.idempotency_key,
+                        request_digest=request.request_digest,
+                        action="create",
+                    )
+                    if replay is not None:
+                        return replay
+                    return self._rejected(
+                        "create",
+                        "PLAN_ALREADY_EXISTS",
+                        "A different canonical plan already exists.",
+                    )
+
+                self._reject_create_legacy_sources()
+                request.verify()
+                current_preview = self._build_create_preview(request)
+                if (
+                    current_preview.preview_digest != preview.preview_digest
+                    or current_preview.candidate_revision
+                    != preview.candidate_revision
+                    or current_preview.candidate_state_digest
+                    != preview.candidate_state_digest
+                    or current_preview.check_report != preview.check_report
+                ):
+                    return self._rejected(
+                        "create",
+                        "STALE_CREATE_PREVIEW",
+                        "Plan create preview no longer matches current validation.",
+                    )
+
+                candidate = request.mutable_candidate_plan()
+                transaction_id = _new_transaction_id()
+                receipt = {
+                    "kind": "create",
+                    "status": "applied",
+                    "request_digest": request.request_digest,
+                    "transaction_id": transaction_id,
+                    "applied_revision": candidate["revision"],
+                    "applied_generation": candidate["generation"],
+                    "expected_absent": True,
+                    "candidate_sha256": request.candidate_sha256,
+                    "source_binding_digest": request.source_binding_digest,
+                    "check_status": preview.check_report.status.value,
+                    "evaluation_at": request.evaluation_at.isoformat(),
+                }
+                receipts = candidate["receipts"]
+                assert isinstance(receipts, dict)
+                receipts[request.idempotency_key] = receipt
+                candidate_bytes = encode_plan(candidate)
+                candidate = decode_plan(candidate_bytes)
+
+                outcome = self._atomic_create_plan(candidate_bytes)
+                if outcome.problem is not None:
+                    return self._write_failure_result(
+                        action="create",
+                        transaction_id=transaction_id,
+                        plan=candidate,
+                        outcome=outcome,
+                        report=preview.check_report,
+                        applied_revision=str(candidate["revision"]),
+                        receipt=receipt,
+                    )
+                return StoreResult(
+                    success=True,
+                    status="created",
+                    action="create",
+                    transaction_id=transaction_id,
+                    trip_id=str(candidate["trip_id"]),
+                    applied_revision=str(candidate["revision"]),
+                    current_revision=str(candidate["revision"]),
+                    generation=int(candidate["generation"]),
+                    changed=True,
+                    check_status=preview.check_report.status.value,
+                    candidate_plan=candidate,
+                    receipt=receipt,
+                    check_report=preview.check_report,
+                )
+        except (OSError, PlanCodecError, StoreError, TypeError, ValueError) as exc:
+            return self._exception_result("create", exc)
 
     def preview_patch(
         self,
@@ -790,6 +930,45 @@ class TripStore:
                 message=str(exc),
             )
 
+    def _build_create_preview(
+        self,
+        request: PlanCreateRequest,
+    ) -> PlanCreatePreview:
+        candidate = request.mutable_candidate_plan()
+        report_or_problem = self._kernel_check(
+            candidate,
+            evaluation_at=request.evaluation_at,
+        )
+        if isinstance(report_or_problem, StoreProblem):
+            raise StoreError(
+                report_or_problem.code,
+                report_or_problem.message,
+            )
+        if report_or_problem.status is CheckStatus.INFEASIBLE:
+            raise StoreError(
+                "PLAN_INFEASIBLE",
+                "Initial canonical candidate violates hard constraints.",
+            )
+        return PlanCreatePreview(
+            request=request,
+            store_slug=self.slug,
+            store_target_digest=self.target_binding_digest,
+            check_report=report_or_problem,
+            _token=_PLAN_CREATE_PREVIEW_TOKEN,
+        )
+
+    def _reject_create_legacy_sources(self) -> None:
+        if (
+            self.trip_json_path.exists()
+            or self.trip_json_path.is_symlink()
+            or self.itinerary_json_path.exists()
+            or self.itinerary_json_path.is_symlink()
+        ):
+            raise StoreError(
+                "LEGACY_SOURCE_PRESENT",
+                "Legacy sources require the explicit migration path.",
+            )
+
     def _receipt_result(
         self,
         plan: Mapping[str, Any],
@@ -950,6 +1129,56 @@ class TripStore:
                 replaced=replaced,
                 problem=StoreProblem(
                     code=code,
+                    message=str(exc) or type(exc).__name__,
+                ),
+            )
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+    def _atomic_create_plan(self, data: bytes) -> _WriteOutcome:
+        """Atomically install plan.json only if the destination is absent."""
+
+        temp_path: Path | None = None
+        installed = False
+        try:
+            self._fault("before_temp_write")
+            fd, temp_name = tempfile.mkstemp(
+                prefix=".plan.",
+                suffix=".tmp",
+                dir=self.data_dir,
+            )
+            temp_path = Path(temp_name)
+            with os.fdopen(fd, "wb", closefd=True) as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(data)
+                output.flush()
+                self._fault("after_temp_write")
+                os.fsync(output.fileno())
+                self._fault("after_temp_fsync")
+
+            self._validate_plan_destination()
+            self._fault("before_replace")
+            os.link(temp_path, self.plan_path, follow_symlinks=False)
+            installed = True
+            temp_path.unlink()
+            temp_path = None
+            self._fault("after_replace")
+            self._fsync_directory(self.data_dir)
+            self._fault("after_directory_fsync")
+            return _WriteOutcome(replaced=True)
+        except Exception as exc:
+            return _WriteOutcome(
+                replaced=installed,
+                problem=StoreProblem(
+                    code=(
+                        "COMMIT_OUTCOME_UNKNOWN"
+                        if installed
+                        else "STORE_WRITE_FAILED"
+                    ),
                     message=str(exc) or type(exc).__name__,
                 ),
             )
