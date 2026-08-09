@@ -379,7 +379,7 @@ Phase 4.5已完成：
 
 範圍：
 
-- 單一 `tripctl` CLI；
+- 單一 `tripctl/v1` product contract：inspect／propose／score／validate使用唯讀CLI，apply只使用process-local host API；
 - consistent JSON envelope；
 - 私有、無副作用的 future-trip guided draft，先讓 agent 以自然語言收集最小必要資訊；
 - 私有、無副作用的 candidate direction cards，保留來源 badge 與一次主觀取捨；
@@ -387,7 +387,7 @@ Phase 4.5已完成：
 - 私有、無副作用的 source-preserving refinement，遺漏來源時不向使用者展示；
 - 私有、無副作用的 relative-day itinerary candidate，只引用 accepted refinement source；
 - 私有、無副作用的 exact itinerary-candidate response，只進 evidence-requirement planning seam；
-- inspect / propose / score / validate / apply；
+- inspect / propose / score / validate / host-only apply；
 - 重寫 trip-planner skill，讓 agent 使用 kernel，而不是把 prompt 當規則引擎；
 - 以統一 envelope 呈現 Phase 4.6 readiness profiles；
 - 統一 `retryable`、`pending_review_retained` 與 `next_action` result envelope；
@@ -418,8 +418,8 @@ runtime gate就增加roadmap phase。
 - **5.32 — evidence-to-canonical workflow**：將隔離結果轉成source-backed evidence，接回
   composition、validate、schedule／repair與使用者審閱後的canonical apply；provider結果本身不能
   直接寫canonical state。
-- **5.33 — unified product interface**：完成單一`tripctl`、consistent JSON envelope、
-  inspect／propose／score／validate／apply、resume／retry語義、skill改寫，以及Busan／Hokkaido canned
+- **5.33 — unified product interface**：完成單一`tripctl/v1` product contract、consistent JSON envelope、
+  inspect／propose／score／validate／process-local host apply、resume／retry語義、skill改寫，以及Busan／Hokkaido canned
   E2E與另行授權的bounded live smoke。通過原Phase 5 exit gate後即凍結Phase 5。
 
 不存在默認的Phase 5.34。若5.33後仍有工作，只能是bug／maintenance、已定義的Phase 6 scope，或經
@@ -2033,6 +2033,32 @@ authority。
   `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
 - Phase 5.33仍未完成；repo skill敘述與本切片offline gate已完成，下一步只剩真正統一host interface、installed skill
   同步與另行授權的bounded live smoke。CLI不得為了字面上的`apply`序列化review、response或authority。
+
+### 2026-08-09 — Phase 5.33 unified host facade 第八切片完成
+
+- 新增獨立`tripctl_baseline.py`，只包裝既有baseline domain與guided canonical gate，未泛化schedule facade或另造
+  workflow engine。四個不可序列化handle依序代表classification review、final apply review、exact response與safe
+  outcome；四個host-only function完成prepare → full ordered typed classify → exact enum capture → same-review/response/store
+  execute。Safe output全使用既有`tripctl/v1`、`command=apply`與`review_required` vocabulary；exact activity資料只能走
+  `private_ephemeral_direct_human_review_only` projection。
+- `trip_planner.tripctl`只export高階facade、typed classifications與既有`GuidedCanonicalApplyResponseKind`；不export raw
+  stager或`ApprovalGrant` builder。Accept不mint external grant；missing／wrong grant保留同一process-local response且
+  `waiting_approval`不假稱一般retry，只有`outcome_unknown`允許同response exact retry。Applied／replay／cancel terminal，
+  request changes與rolled-back receipt均明確要求`prepare_fresh_baseline_classification_review`。
+- Roadmap的「單一CLI apply」歧義正式收斂為單一`tripctl/v1` product contract：inspect／propose／score／validate仍是
+  `scripts/tripctl.py`四個唯讀命令，apply只能走same-process Python host API。`--help`維持`read_only=true`且不列apply；
+  process restart必須fresh review，safe JSON、ID、digest或pickle都不能resume／重建authority。這避免為字面checkbox新增
+  durable session DB、daemon、authority service或可序列化token。
+- 新增6個facade regressions，涵蓋safe/private redaction、四handle non-serialization、full ordered classification、partial／
+  extra／reorder／expiry／clock／identity／wrong-store fail closed、zero-write capture、retained approval response、exact apply、
+  request／cancel、lost ACK exact retry與rollback。獨立稽核抓出的rolled-back replay flag矛盾、新status vocabulary、
+  baseline-specific next action及tuple annotation/export缺口均已修正；未發現新增安全或過度工程blocker。
+- Repo skill與installed skill已同步canonical-aware CLI及host-only apply邊界；installed skill保持114行並通過skill-creator
+  `quick_validate.py`。完整`./scripts/check.sh` exit 0：Python compile、1056個offline tests及Ishigaki／South Island／Tainan
+  三個read-only validators全過；23個`trips/*/data`檔案aggregate hash仍為
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- Phase 5的離線exit gate已ready；剩餘唯一Phase 5 gate是另行明確授權的bounded live smoke。該gate會跨provider／credential／
+  潛在cost邊界，本切片未讀credential、未呼叫provider、未修改真實trip、未render、deploy或push。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

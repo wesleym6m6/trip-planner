@@ -17,9 +17,11 @@ process-local ``EvidenceSnapshot``.  Those functions bind the snapshot-owned
 clock into readiness and scheduling without adding a serializable CLI evidence
 claim or apply authority.
 
-None of these commands contacts providers, opens an :class:`EvidenceStore`
+None of the CLI commands contacts providers, opens an :class:`EvidenceStore`
 (whose retention read can write), migrates, renders, or mutates caller-owned
-trip files.
+trip files.  This module also re-exports process-local schedule and migrated-
+baseline apply facades; those host APIs require exact typed review/response
+objects and are deliberately unavailable from ``scripts/tripctl.py``.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from .canonical_tripctl import (
     validate_canonical_timeline,
 )
 from .facts import EvidenceSnapshot, FactKey
+from .guided_canonical_apply import GuidedCanonicalApplyResponseKind
 from .legacy_evidence import (
     LegacyEvidencePreviewError,
     preview_legacy_evidence,
@@ -48,6 +51,10 @@ from .legacy_timeline import (
 )
 from .lodging import LodgingIntakeAssessment
 from .lodging_confirmation import LodgingConfirmationReview
+from .mutations import (
+    MigratedActivityClassification,
+    MigratedActivityClassificationKind,
+)
 from .tripctl_schedule import (
     TripctlScheduleError,
     propose_canonical_schedule,
@@ -72,10 +79,21 @@ from .tripctl_apply import (
     execute_trip_schedule_apply_response,
     prepare_trip_schedule_apply_review,
 )
+from .tripctl_baseline import (
+    TRIPCTL_BASELINE_APPLY_VERSION,
+    TripctlBaselineApplyOutcome,
+    TripctlBaselineApplyResponse,
+    TripctlBaselineApplyReview,
+    TripctlBaselineClassificationReview,
+    capture_trip_baseline_apply_response,
+    classify_trip_migrated_baseline,
+    execute_trip_baseline_apply_response,
+    prepare_trip_baseline_classification_review,
+)
 
 
 TRIPCTL_VERSION = "tripctl/v1"
-"""Version for the bounded public command envelope."""
+"""Version for the bounded command and host-product envelope."""
 
 _INSPECT_COMMAND = "inspect"
 _PROPOSE_COMMAND = "propose"
@@ -919,24 +937,36 @@ __all__ = [
     "TRIPCTL_APPLY_OUTCOME_VERSION",
     "TRIPCTL_APPLY_REVIEW_VERSION",
     "TRIPCTL_APPLY_RESPONSE_VERSION",
+    "TRIPCTL_BASELINE_APPLY_VERSION",
     "TRIPCTL_VERSION",
+    "MigratedActivityClassification",
+    "MigratedActivityClassificationKind",
+    "GuidedCanonicalApplyResponseKind",
     "TripctlApplyReviewError",
     "TripctlApplyResponseError",
+    "TripctlBaselineApplyOutcome",
+    "TripctlBaselineApplyResponse",
+    "TripctlBaselineApplyReview",
+    "TripctlBaselineClassificationReview",
     "TripctlError",
     "TripctlScheduleApplyOutcome",
     "TripctlScheduleApplyReview",
     "TripctlScheduleApplyResponse",
+    "capture_trip_baseline_apply_response",
     "capture_trip_schedule_apply_response",
+    "classify_trip_migrated_baseline",
     "command_failure",
+    "execute_trip_baseline_apply_response",
+    "execute_trip_schedule_apply_response",
     "inspect_trip",
     "inspection_failure",
+    "prepare_trip_baseline_classification_review",
+    "prepare_trip_schedule_apply_review",
     "propose_trip",
     "propose_trip_with_evidence",
-    "prepare_trip_schedule_apply_review",
     "proposal_failure",
     "score_trip",
     "score_trip_with_evidence",
-    "execute_trip_schedule_apply_response",
     "score_failure",
     "validate_trip",
     "validate_trip_with_evidence",

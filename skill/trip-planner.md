@@ -53,16 +53,21 @@ canonical stores與canned exact authority。它驗證fixed activities、daily/sp
 輸出`waiting_external`／`refresh_external_evidence`。此腳本不是provider/live smoke或真實apply authority。
 
 Migrated baseline只能走一次性的typed review／classify／adopt seam。先用
-`prepare_migrated_baseline_classification_review()`讀取process-local review；exact activity inventory只能透過
+`trip_planner.tripctl.prepare_trip_baseline_classification_review()`讀取process-local product review；exact activity inventory只能透過
 標為`private_ephemeral_direct_human_review_only`的private projection直接給人審閱，不得log、store或當成持久authority。
 目前只接受writer產生的`legacy-v1` migration；candidate／cancelled／excluded activity一律fail closed，不得默默re-activate。再用
-`MigratedBaselineAdoptionStager.classify()`依review順序完整提交`movable`／`fixed_day`／`fixed_time`／`booked`
+`classify_trip_migrated_baseline()`依review順序以exact typed tuple完整提交`movable`／`fixed_day`／`fixed_time`／`booked`
 分類；不得partial、加項、調序或混入其他patch。最後仍須既有canonical exact `accept_apply` response與
-分開取得的matching `ApprovalGrant`，兩者缺一都零write並保留pending。採納只物化decision／flexibility並
+分開取得的matching `ApprovalGrant`：先以`capture_trip_baseline_apply_response()`擷取enum，再用
+`execute_trip_baseline_apply_response()`執行；兩者缺一都零write並保留pending。採納只物化decision／flexibility並
 清空`protected_activity_ids`；不得更動或升級evidence、時間、地點、duration、migration provenance或ignored
 travel。Generic「繼續」與scheduler永遠不能視為baseline adoption authority。
 成功只回`applied`／`continue_planning`且不升級evidence或`travel_ready`；unknown須retry同一exact apply，已rollback
 receipt則要求fresh review。
+Baseline與schedule apply都只存在同一Python host process；safe `tripctl/v1` projection不可resume或反建authority，
+process restart必須fresh review。`scripts/tripctl.py`仍只有inspect／propose／score／validate四個唯讀命令，不新增CLI apply。
+Host從`trip_planner.tripctl`取得facade functions、classification values與exact
+`GuidedCanonicalApplyResponseKind`；不得把raw stager當application interface，也不得由agent自行建`ApprovalGrant`。
 
 ## 核心原則
 
