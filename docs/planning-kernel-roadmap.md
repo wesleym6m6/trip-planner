@@ -2060,6 +2060,49 @@ authority。
 - Phase 5的離線exit gate已ready；剩餘唯一Phase 5 gate是另行明確授權的bounded live smoke。該gate會跨provider／credential／
   潛在cost邊界，本切片未讀credential、未呼叫provider、未修改真實trip、未render、deploy或push。
 
+### 2026-08-09 — Phase 5 bounded live-smoke operational handoff ready
+
+- Phase 5離線產品面已完成至`207f852`；`d486b29`只新增本機24小時provider credential
+  availability。它在使用者每日一次Bitwarden unlock後，只把Google必需／Serp optional的allowlisted key留在
+  `/run/user/$UID` private tmpfs；不保存`BW_SESSION`，也不建立或延長provider、canonical write或deploy authority。
+- Daily-session security regressions涵蓋fixed runtime root、`0600/0700`、atomic generation write、concurrent start、
+  stale timer、新boot、wall／BOOTTIME deadline與rollback、stale inherited Bitwarden session、TTY output refusal及
+  secret-free absolute user timer。實機用無credential假generation驗證timer可啟動後立即移除；commit時gitleaks通過。
+- 最終完整offline gate為Python compile、1072／1072 tests及Ishigaki／South Island／Tainan三個read-only validators；
+  post-cleanup focused dev-session＋Ishigaki gate為31／31。23個`trips/*/data`檔案aggregate hash仍為
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未render、deploy或修改trip data。
+- 先前同一對話中已執行一次bounded Ishigaki normal gate：使用者明選`B`（Kabira Marine Service，Kabira Bay
+  Glass Boat Reception），兩個identity request在memory內完成；唯一route request回安全分類`invalid_request`。
+  總attempts為identity 2／route 1，沒有持久化evidence或trip write。Stable、source-bound
+  `selection_binding_v2`為`f1f950458600437d7d8e788884de88fbed774992da79d667e6716275c3afc19e`。
+- 下一個且唯一未完成的Phase 5 gate是README已定義的minimal Routes diagnostic。對話中的使用者已明確允許目前
+  Ishigaki scope及必要的minimal／undated diagnostic，但本checkpoint不是authorization token；resume時仍須從目前
+  conversation確認scope，並由腳本重新驗source、fresh identity review、choice binding與credential availability。
+- 同一開發主機只需切換client即可續接。若是另一份clone，Git只同步程式碼；`trips/`、`.envrc`、`/run/user/$UID`
+  session與installed skill都是machine-local。不得把private trip推進Git；須另以使用者核准的private channel轉移
+  `trips/ishigaki-2026-10`，並以其data-only aggregate hash
+  `11c6546c5322d632913d295b2418bee46d827cfdc0f8bae625056ededa014b67`核對。
+- Resume的第一組命令固定如下；`status=inactive`時才由使用者在隱藏terminal執行一次`start`，不得在chat貼密碼或key：
+
+  ```bash
+  git fetch origin
+  git switch feat/tainan-2026-revival
+  git pull --ff-only origin feat/tainan-2026-revival
+  python3 scripts/trip_planner_dev_session.py status
+  python3 scripts/trip_planner_dev_session.py start  # only when inactive
+  direnv allow .
+  direnv reload
+  direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 \
+    --live --minimal-route-diagnostic --origin-choice B \
+    --origin-selection-binding-v2 f1f950458600437d7d8e788884de88fbed774992da79d667e6716275c3afc19e
+  ```
+
+- 若fresh review／source／binding漂移，必須在route前停止並重新展示選項；若credential inactive，零provider call；
+  若minimal diagnostic再次`invalid_request`，只有目前conversation仍涵蓋同一scope時才執行README的
+  `--undated-route-diagnostic`。Auth／quota／unknown failure不得blind retry。整個diagnostic只判斷request是否被接受，
+  body丟棄且不是route evidence；不得寫trip、render、deploy或宣稱`travel_ready`。完成並記錄bounded live gate後才凍結
+  Phase 5並正式轉入Phase 6。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only
