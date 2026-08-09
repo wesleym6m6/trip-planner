@@ -26,7 +26,14 @@ Phase 5 目前有 storage-dispatch、唯讀的 `tripctl inspect`（evidence／ca
 review）與 `tripctl validate`（deterministic timeline review）。Canonical-only `tripctl
 propose`／`score`可用明示evaluation instant建立opaque proposal ref並trusted replay aggregate
 score，但固定為無runtime evidence的provisional結果，不接受caller自稱的assignments／score。
-apply與完整 canonical workflow 尚未提供。四者都不會把結果升級成 `travel_ready`，也不會
+Developer host可另用`validate_trip_with_evidence()`、`propose_trip_with_evidence()`與
+`score_trip_with_evidence()`注入exact、process-local `EvidenceSnapshot`；snapshot-owned clock、
+canonical revision與evidence binding會進入readiness，public proposal ref另綁readiness ID、
+exact lodging intake與pending review組成的runtime context ref；任一漂移都須重新propose，
+disk-only ref不可與其互換。
+不得把snapshot序列化成JSON／digest或自行增加CLI evidence flag；`provisional=false`只代表已用
+exact evidence重新compose／score，結果仍固定`apply_authority=false`並要求`review_proposal`。
+apply與完整 canonical workflow 尚未提供。四個CLI入口都不會把結果升級成 `travel_ready`，也不會
 migration真實trip；任何unsafe／malformed canonical marker都不會fallback到legacy。除非使用者
 已明確接受developer workflow，否則不得migration真實trip，並繼續使用下方legacy流程。
 

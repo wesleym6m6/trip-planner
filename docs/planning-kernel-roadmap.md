@@ -1912,6 +1912,29 @@ authority。
   provisional；之後才進入typed apply review。真正canonical mutation仍須沿既有explicit enum response、authority、CAS與
   receipt boundary，不能由本score ref推導。
 
+### 2026-08-09 — Phase 5.33 exact runtime evidence／readiness 第三切片完成
+
+- 新增host-only、process-local的`validate_trip_with_evidence()`、`propose_trip_with_evidence()`與
+  `score_trip_with_evidence()`。三者只接受exact `EvidenceSnapshot`物件，重新讀取bounded no-follow canonical source，經
+  `compose_trip_state()`與Phase 4.6 `assess_trip_readiness()`後才建立`ScheduleProblem`；不接受JSON／digest／CLI flag自稱
+  runtime evidence，也不自行開EvidenceStore或呼叫provider。
+- Snapshot-owned evaluation clock、canonical state digest與`EvidenceBinding`會進入schedule problem／candidate ref。
+  Public evidence-bound proposal ref再綁readiness ID、exact lodging intake與pending review組成的runtime context ref；
+  propose／score每次都重新compose、重跑solver、比對exact ref並trusted replay。Disk-only與evidence-bound refs不可互換，
+  canonical revision、clock、binding或typed runtime context漂移一律要求重新propose。結果只附safe canonical-base readiness
+  profile、opaque refs與aggregate score；不輸出assignments、
+  entity IDs、時間或provider payload。
+- Evidence-bound結果標示`runtime_evidence_loaded=true`／`provisional=false`，只代表本次score已綁exact evidence；score仍固定
+  `review_required`／`next_action=review_proposal`，且明示`apply_authority=false`、
+  `canonical_write_performed=false`。CLI維持原本四個disk-only命令與provisional語義，沒有新增可偽造的evidence入口。
+- 新增6個第三切片regressions，涵蓋unified readiness、insufficient exact snapshot fail-closed、determinism、redaction、read-only、
+  clock／binding／runtime-context drift、disk/runtime ref隔離、non-exact evidence early rejection與in-flight canonical drift
+  no-partial。Internal gate為18個Phase 5.33 tests加63個Phase 4.6 readiness／composition、legacy tripctl與Phase 5.32 evidence
+  workflow直接predecessor tests全過；Python compile與`git diff --check`全過。本切片沒有修改`trips/`、provider、credential、
+  render、deploy或push。
+- Phase 5.33仍未完成。下一個安全切片是把evidence-bound score轉成typed、expiring apply review，並沿既有explicit enum
+  response、current-evidence recheck、TripStore CAS與receipt boundary執行；本切片的score ref本身不得作mutation authority。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

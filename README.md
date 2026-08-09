@@ -592,9 +592,26 @@ source drift則回可重試的`STALE_CANONICAL_PLAN`，沒有partial result。
 
 這兩個結果都固定`provisional=true`、`runtime_evidence_loaded=false`，不開EvidenceStore、不持久化
 candidate或pending review，也不建立apply／approval authority。即使 canonical內的舊欄位標為
-verified，score仍只能用於下一步技術比較；必須在後續exact runtime evidence composition後重新評估，
+verified，score仍只能用於下一步技術比較；必須用下述exact runtime evidence composition重新評估，
 不能據此聲稱`travel_ready`或寫入`plan.json`。Legacy trip會在 scheduler前以
 `CANONICAL_PLAN_REQUIRED`拒絕，不會自動migration。
+
+Developer host已有獨立的process-local evidence seam：
+`validate_trip_with_evidence()`、`propose_trip_with_evidence()`與
+`score_trip_with_evidence()`只接受exact `EvidenceSnapshot`物件，不接受JSON、digest或CLI flag
+自稱已載入evidence。Snapshot自己的evaluation clock會同時綁入composition、Phase 4.6 readiness、
+schedule problem與proposal ref；public proposal ref另綁readiness ID、exact lodging intake與
+pending review組成的runtime context ref，因此canonical revision、clock、evidence binding或typed
+runtime context任一漂移，都必須重新propose。Disk-only與
+evidence-bound proposal refs也不能互換。
+
+這條seam仍沿用bounded no-follow canonical reader並在結果離開前重驗來源；不自行開啟可能因
+retention而寫入的EvidenceStore，也不呼叫provider或寫trip。Evidence-bound結果會附上安全的
+readiness profile與明確`readiness_scope`、`runtime_evidence_loaded=true`、`provisional=false`；
+此處的non-provisional只表示
+分數已綁exact runtime evidence，不代表已獲canonical mutation authority。Score固定進入
+`review_proposal`，並明示`apply_authority=false`、`canonical_write_performed=false`。CLI刻意不新增
+`--evidence-*`入口；typed apply review仍是下一個獨立gate。
 
 已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
 `#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，

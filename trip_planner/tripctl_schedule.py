@@ -6,14 +6,18 @@ activity IDs, times, places, and private plan content remain process-local.  A
 later ``score`` call rebuilds the problem and candidate from the exact source,
 then requires the caller's proposal ref to match trusted replay.
 
-This module deliberately loads no runtime evidence.  Its results are
-provisional, carry no apply authority, and can never establish travel readiness.
+The disk-only entry points deliberately load no runtime evidence.  Separate
+process-local entry points accept an exact ``EvidenceSnapshot`` object, bind the
+snapshot-owned clock into composition and scheduling, and attach the existing
+safe readiness projection.  No entry point opens a store or gains apply
+authority.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NoReturn
@@ -25,7 +29,10 @@ from .canonical_tripctl import (
     _source_is_current,
 )
 from .codec import PlanCodecError, decode_plan
+from .facts import EvidenceSnapshot, FactKey
 from .loaders import LoadError
+from .lodging import LodgingIntakeAssessment
+from .lodging_confirmation import LodgingConfirmationReview
 from .scheduler import solve_schedule
 from .scheduling import (
     ScheduleCandidate,
@@ -34,7 +41,15 @@ from .scheduling import (
     ScheduleResult,
     ScheduleScore,
     replay_schedule_candidate,
+    schedule_problem_from_composed,
     schedule_problem_from_plan,
+)
+from .tripctl_runtime import (
+    CanonicalRuntimeAssessment,
+    CanonicalRuntimeError,
+    _CanonicalRuntimeInputs,
+    _load_canonical_runtime,
+    _verify_runtime_source,
 )
 
 
@@ -88,6 +103,10 @@ class CanonicalScheduleProposal:
     failure_constraint_count: int = 0
     missing_arc_count: int = 0
     kernel_issue_count: int = 0
+    runtime: CanonicalRuntimeAssessment | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         _require_digest(self.source_digest, "source_digest")
@@ -119,9 +138,15 @@ class CanonicalScheduleProposal:
             raise ValueError("failure_code must be a bounded token")
         if not isinstance(self.optimality, str) or not self.optimality:
             raise ValueError("optimality must be non-empty text")
+        _require_runtime_binding(
+            self.runtime,
+            source_digest=self.source_digest,
+            plan_revision=self.plan_revision,
+            evaluation_at=self.evaluation_at,
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "contract_version": TRIPCTL_SCHEDULE_VERSION,
             "source_digest": self.source_digest,
             "plan_revision": self.plan_revision,
@@ -142,6 +167,24 @@ class CanonicalScheduleProposal:
             "runtime_evidence_loaded": False,
             "provisional": True,
         }
+        if self.runtime is not None:
+            result.update(
+                {
+                    "runtime_evidence_loaded": True,
+                    "provisional": False,
+                    "evidence_binding_ref": (
+                        self.runtime.evidence_binding_ref
+                    ),
+                    "runtime_context_ref": (
+                        self.runtime.runtime_context_ref
+                    ),
+                    "readiness_scope": "canonical_base",
+                    "readiness": self.runtime.readiness.to_dict(),
+                    "apply_authority": False,
+                    "canonical_write_performed": False,
+                }
+            )
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +217,10 @@ class CanonicalScheduleScore:
     travel_deci_min: int
     buffer_deci_min: int
     service_deci_min: int
+    runtime: CanonicalRuntimeAssessment | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         _require_digest(self.source_digest, "source_digest")
@@ -214,9 +261,15 @@ class CanonicalScheduleScore:
             _require_count(getattr(self, name), name)
         if type(self.served_priority_points) is not int:
             raise TypeError("served_priority_points must be an exact integer")
+        _require_runtime_binding(
+            self.runtime,
+            source_digest=self.source_digest,
+            plan_revision=self.plan_revision,
+            evaluation_at=self.evaluation_at,
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "contract_version": TRIPCTL_SCHEDULE_VERSION,
             "source_digest": self.source_digest,
             "plan_revision": self.plan_revision,
@@ -255,6 +308,24 @@ class CanonicalScheduleScore:
             "runtime_evidence_loaded": False,
             "provisional": True,
         }
+        if self.runtime is not None:
+            result.update(
+                {
+                    "runtime_evidence_loaded": True,
+                    "provisional": False,
+                    "evidence_binding_ref": (
+                        self.runtime.evidence_binding_ref
+                    ),
+                    "runtime_context_ref": (
+                        self.runtime.runtime_context_ref
+                    ),
+                    "readiness_scope": "canonical_base",
+                    "readiness": self.runtime.readiness.to_dict(),
+                    "apply_authority": False,
+                    "canonical_write_performed": False,
+                }
+            )
+        return result
 
 
 def propose_canonical_schedule(
@@ -269,27 +340,43 @@ def propose_canonical_schedule(
         Path(path),
         evaluation_at=normalized_at,
     )
-    candidate = result.candidate
-    failure = result.failure
-    proposal = CanonicalScheduleProposal(
-        source_digest=snapshot.source_digest,
+    proposal = _proposal_projection(
+        snapshot,
         plan_revision=str(plan["revision"]),
         evaluation_at=normalized_at,
-        schedule_status=result.status.value,
-        problem_ref=problem.problem_id,
-        proposal_ref=candidate.candidate_id if candidate is not None else None,
-        candidate_count=len(result.candidates),
-        evaluations_used=result.evaluations_used,
-        evaluation_limit=result.evaluation_limit,
-        optimality=result.optimality,
-        failure_code=_safe_failure_code(failure.code if failure else None),
-        failure_activity_count=len(failure.activity_ids) if failure else 0,
-        failure_day_count=len(failure.day_ids) if failure else 0,
-        failure_constraint_count=len(failure.constraint_ids) if failure else 0,
-        missing_arc_count=len(failure.missing_arc_keys) if failure else 0,
-        kernel_issue_count=len(failure.kernel_issues) if failure else 0,
+        problem=problem,
+        result=result,
     )
     _verify_source(snapshot)
+    return proposal
+
+
+def propose_canonical_schedule_with_evidence(
+    path: str | Path,
+    *,
+    evidence_snapshot: EvidenceSnapshot,
+    availability_keys: tuple[FactKey, ...] = (),
+    lodging_intake: LodgingIntakeAssessment | None = None,
+    pending_lodging_review: LodgingConfirmationReview | None = None,
+) -> CanonicalScheduleProposal:
+    """Solve one schedule bound to an exact process-local evidence snapshot."""
+
+    inputs, problem, result = _solve_exact_with_evidence(
+        Path(path),
+        evidence_snapshot=evidence_snapshot,
+        availability_keys=availability_keys,
+        lodging_intake=lodging_intake,
+        pending_lodging_review=pending_lodging_review,
+    )
+    proposal = _proposal_projection(
+        inputs.source,
+        plan_revision=str(inputs.plan["revision"]),
+        evaluation_at=inputs.composed.evidence.evaluation_at,
+        problem=problem,
+        result=result,
+        runtime=inputs.assessment,
+    )
+    _verify_evidence_source(inputs)
     return proposal
 
 
@@ -324,6 +411,58 @@ def score_canonical_schedule(
         candidate=candidate,
     )
     _verify_source(snapshot)
+    return score
+
+
+def score_canonical_schedule_with_evidence(
+    path: str | Path,
+    *,
+    proposal_ref: str,
+    evidence_snapshot: EvidenceSnapshot,
+    availability_keys: tuple[FactKey, ...] = (),
+    lodging_intake: LodgingIntakeAssessment | None = None,
+    pending_lodging_review: LodgingConfirmationReview | None = None,
+) -> CanonicalScheduleScore:
+    """Replay an evidence-bound proposal without serialized authority."""
+
+    if not isinstance(proposal_ref, str) or _DIGEST_RE.fullmatch(proposal_ref) is None:
+        raise TripctlScheduleError("INVALID_PROPOSAL_REF")
+    inputs, problem, result = _solve_exact_with_evidence(
+        Path(path),
+        evidence_snapshot=evidence_snapshot,
+        availability_keys=availability_keys,
+        lodging_intake=lodging_intake,
+        pending_lodging_review=pending_lodging_review,
+    )
+    candidate = result.candidate
+    expected_ref = (
+        _runtime_proposal_ref(
+            candidate.candidate_id,
+            inputs.assessment.runtime_context_ref,
+        )
+        if candidate is not None
+        else None
+    )
+    if expected_ref != proposal_ref:
+        _verify_evidence_source(inputs)
+        raise TripctlScheduleError("STALE_PROPOSAL_REF")
+    try:
+        replay_schedule_candidate(problem, candidate)
+    except ScheduleContractError:
+        _raise_after_evidence_source_check(
+            inputs,
+            "PROPOSAL_REPLAY_UNAVAILABLE",
+        )
+    score = _score_projection(
+        inputs.source,
+        plan_revision=str(inputs.plan["revision"]),
+        evaluation_at=inputs.composed.evidence.evaluation_at,
+        problem=problem,
+        candidate=candidate,
+        runtime=inputs.assessment,
+        proposal_ref=proposal_ref,
+    )
+    _verify_evidence_source(inputs)
     return score
 
 
@@ -368,6 +507,92 @@ def _solve_exact(
     return snapshot, plan, problem, result
 
 
+def _solve_exact_with_evidence(
+    data_dir: Path,
+    *,
+    evidence_snapshot: EvidenceSnapshot,
+    availability_keys: tuple[FactKey, ...],
+    lodging_intake: LodgingIntakeAssessment | None,
+    pending_lodging_review: LodgingConfirmationReview | None,
+) -> tuple[_CanonicalRuntimeInputs, ScheduleProblem, ScheduleResult]:
+    try:
+        inputs = _load_canonical_runtime(
+            data_dir,
+            evidence_snapshot=evidence_snapshot,
+            availability_keys=availability_keys,
+            lodging_intake=lodging_intake,
+            pending_lodging_review=pending_lodging_review,
+        )
+    except CanonicalRuntimeError as exc:
+        raise TripctlScheduleError(
+            exc.code,
+            retryable=exc.retryable,
+        ) from exc
+    try:
+        problem = schedule_problem_from_composed(inputs.composed)
+        result = solve_schedule(problem)
+    except (
+        AssertionError,
+        KeyError,
+        LoadError,
+        MemoryError,
+        OverflowError,
+        RecursionError,
+        ScheduleContractError,
+        TypeError,
+        ValueError,
+    ):
+        _raise_after_evidence_source_check(
+            inputs,
+            "SCHEDULE_PROPOSAL_UNAVAILABLE",
+        )
+    except OSError:
+        _raise_after_evidence_source_check(
+            inputs,
+            "SCHEDULE_PROPOSAL_UNAVAILABLE",
+        )
+    _verify_evidence_source(inputs)
+    return inputs, problem, result
+
+
+def _proposal_projection(
+    snapshot: _CanonicalSourceSnapshot,
+    *,
+    plan_revision: str,
+    evaluation_at: datetime,
+    problem: ScheduleProblem,
+    result: ScheduleResult,
+    runtime: CanonicalRuntimeAssessment | None = None,
+) -> CanonicalScheduleProposal:
+    candidate = result.candidate
+    failure = result.failure
+    proposal_ref = candidate.candidate_id if candidate is not None else None
+    if proposal_ref is not None and runtime is not None:
+        proposal_ref = _runtime_proposal_ref(
+            proposal_ref,
+            runtime.runtime_context_ref,
+        )
+    return CanonicalScheduleProposal(
+        source_digest=snapshot.source_digest,
+        plan_revision=plan_revision,
+        evaluation_at=evaluation_at,
+        schedule_status=result.status.value,
+        problem_ref=problem.problem_id,
+        proposal_ref=proposal_ref,
+        candidate_count=len(result.candidates),
+        evaluations_used=result.evaluations_used,
+        evaluation_limit=result.evaluation_limit,
+        optimality=result.optimality,
+        failure_code=_safe_failure_code(failure.code if failure else None),
+        failure_activity_count=len(failure.activity_ids) if failure else 0,
+        failure_day_count=len(failure.day_ids) if failure else 0,
+        failure_constraint_count=len(failure.constraint_ids) if failure else 0,
+        missing_arc_count=len(failure.missing_arc_keys) if failure else 0,
+        kernel_issue_count=len(failure.kernel_issues) if failure else 0,
+        runtime=runtime,
+    )
+
+
 def _score_projection(
     snapshot: _CanonicalSourceSnapshot,
     *,
@@ -375,6 +600,8 @@ def _score_projection(
     evaluation_at: datetime,
     problem: ScheduleProblem,
     candidate: ScheduleCandidate,
+    runtime: CanonicalRuntimeAssessment | None = None,
+    proposal_ref: str | None = None,
 ) -> CanonicalScheduleScore:
     score: ScheduleScore = candidate.score
     return CanonicalScheduleScore(
@@ -382,7 +609,11 @@ def _score_projection(
         plan_revision=plan_revision,
         evaluation_at=evaluation_at,
         problem_ref=problem.problem_id,
-        proposal_ref=candidate.candidate_id,
+        proposal_ref=(
+            proposal_ref
+            if proposal_ref is not None
+            else candidate.candidate_id
+        ),
         timeline_status=candidate.report.status.value,
         objective_key=score.objective_key(),
         hard_violation_count=score.hard_violation_count,
@@ -404,6 +635,7 @@ def _score_projection(
         travel_deci_min=score.travel_deci_min,
         buffer_deci_min=score.buffer_deci_min,
         service_deci_min=score.service_deci_min,
+        runtime=runtime,
     )
 
 
@@ -412,11 +644,29 @@ def _verify_source(snapshot: _CanonicalSourceSnapshot) -> None:
         raise TripctlScheduleError("STALE_CANONICAL_PLAN", retryable=True)
 
 
+def _verify_evidence_source(inputs: _CanonicalRuntimeInputs) -> None:
+    try:
+        _verify_runtime_source(inputs)
+    except CanonicalRuntimeError as exc:
+        raise TripctlScheduleError(
+            exc.code,
+            retryable=exc.retryable,
+        ) from exc
+
+
 def _raise_after_source_check(
     snapshot: _CanonicalSourceSnapshot,
     code: str,
 ) -> NoReturn:
     _verify_source(snapshot)
+    raise TripctlScheduleError(code)
+
+
+def _raise_after_evidence_source_check(
+    inputs: _CanonicalRuntimeInputs,
+    code: str,
+) -> NoReturn:
+    _verify_evidence_source(inputs)
     raise TripctlScheduleError(code)
 
 
@@ -449,6 +699,37 @@ def _require_count(value: object, name: str) -> None:
         raise ValueError(f"{name} must be a non-negative integer")
 
 
+def _require_runtime_binding(
+    runtime: CanonicalRuntimeAssessment | None,
+    *,
+    source_digest: str,
+    plan_revision: str,
+    evaluation_at: datetime,
+) -> None:
+    if runtime is None:
+        return
+    if type(runtime) is not CanonicalRuntimeAssessment:
+        raise TypeError("runtime must be exact CanonicalRuntimeAssessment")
+    if (
+        runtime.source_digest != source_digest
+        or runtime.plan_revision != plan_revision
+        or runtime.readiness.evaluated_at != evaluation_at
+    ):
+        raise ValueError("runtime assessment differs from schedule identity")
+
+
+def _runtime_proposal_ref(candidate_ref: str, runtime_context_ref: str) -> str:
+    _require_digest(candidate_ref, "candidate_ref")
+    _require_plain_digest(runtime_context_ref, "runtime_context_ref")
+    payload = (
+        b"trip-planner.tripctl-runtime-proposal/v1\0"
+        + candidate_ref.encode("ascii")
+        + b"\0"
+        + runtime_context_ref.encode("ascii")
+    )
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
 def _safe_failure_code(value: str | None) -> str | None:
     if value is None:
         return None
@@ -463,5 +744,7 @@ __all__ = [
     "CanonicalScheduleScore",
     "TripctlScheduleError",
     "propose_canonical_schedule",
+    "propose_canonical_schedule_with_evidence",
     "score_canonical_schedule",
+    "score_canonical_schedule_with_evidence",
 ]
