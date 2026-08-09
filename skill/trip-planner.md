@@ -47,6 +47,11 @@ current-evidence recheck、canonical CAS、approval與receipt reconciliation；r
 migration真實trip；任何unsafe／malformed canonical marker都不會fallback到legacy。除非使用者
 已明確接受developer workflow，否則不得migration真實trip，並繼續使用下方legacy流程。
 
+Phase 5.33產品驗收使用`python3 scripts/phase533_acceptance.py`，只建立temporary Busan／Hokkaido
+canonical stores與canned exact authority。它驗證fixed activities、daily/split lodging anchors、冬季
+跨城buffer、proposal resume、retained approval response與lost-ACK receipt reconciliation；成功write後仍須
+輸出`waiting_external`／`refresh_external_evidence`。此腳本不是provider/live smoke或真實apply authority。
+
 ## 核心原則
 
 1. **API 資料一次快取，同一趟旅行不重複查詢。** 每個透過 Places API 解析的地點都寫入 `places_cache.json`。從行程刪除景點不會刪 cache——用戶可能會加回來。

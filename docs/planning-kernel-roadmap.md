@@ -1986,6 +1986,24 @@ authority。
   Busan／Hokkaido product acceptance與明確resume／retry UX，再決定是否需要host CLI；任何真實canonical mutation
   仍須對當下exact review擷取`accept_apply`，一般「繼續」不構成該授權。
 
+### 2026-08-09 — Phase 5.33 canned product acceptance 第六切片完成
+
+- 新增`phase533_acceptance.py`，只以temporary canonical stores與canned exact authority走過
+  `inspect → evidence validate → propose → deterministic score resume → typed review → exact response → execute`；
+  沒有import test helper、generic workflow framework、provider、credential、repository trip write、render或deploy。
+- Busan fixture保留既有golden的10:00 booked抵達、18:00 booked晚餐與三天住宿anchors。Migrated protection令
+  第一次product execution在零write下回`waiting_approval`並保留同一process-local response；補上matching
+  `ApprovalGrant`後才成功commit，證明resume不是重新mint或序列化authority。
+- Hokkaido fixture保留換宿日start A／end B、16:00 booked check-in、180分鐘跨城driving leg與60分鐘冬季
+  buffer，並注入一次`after_replace` lost ACK；同一次product execution由exact receipt確認replay，canonical只留
+  一份receipt。兩案成功write仍誠實回`waiting_external`／`refresh_external_evidence`，post-apply validation保持
+  `review`，沒有宣稱`applied`或`travel_ready`。
+- 新增2個product acceptance regressions，safe transcript只有status、boolean與aggregate；不含activity/day/location/
+  time、provider state、private digest或serialized authority。獨立反過度工程稽核要求以真實semantic goldens取代
+  label-only fixtures，並確認本切片不應混入CLI authority registry、baseline adoption或整份skill重寫。
+- Phase 5.33仍未完成。下一個必要離線切片是一次性migrated baseline review／classify／adopt；目前mutation engine
+  只會在既有protected activity被刪除時被動同步metadata，不能以scheduler變更或generic approval偷清保護。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

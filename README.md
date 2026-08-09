@@ -104,8 +104,10 @@ storage-dispatch、唯讀入口：既有 legacy 行為不變，安全且有效�
 evidence、不能宣稱 `travel_ready`。Canonical-only `tripctl propose`／`score`另提供
 provisional deterministic schedule 與 trusted replay score，但沒有 apply authority；私有
 developer host可用exact process-local evidence把有實際canonical變更的score轉成30分鐘有效的
-typed apply review，但該review本身仍沒有apply authority，也不擷取回覆或寫入trip。私有導引草稿
-不是 `tripctl` CLI，也不建立或修改 trip。完整 canonical workflow 尚未提供。除非
+typed apply review，再以exact enum擷取不可序列化的process-local response。只有同一份仍有效的
+review／response與exact `TripStore`可執行；current evidence、CAS、approval、receipt與lost-ACK
+仍會重驗，generic「繼續」不構成`accept_apply`。這些host APIs尚未成為CLI `apply`，私有導引草稿
+也不是 `tripctl` CLI。完整 canonical product workflow 尚未完成。除非
 已明確接受 developer workflow，否則不要 migration 真實 trip。
 
 Phase 5已在M0重新收斂：Phase 5.13–5.29保留為`Provider Execution Safety Reference v1`，
@@ -632,6 +634,14 @@ clock。執行沿用current-evidence recheck、canonical CAS、必要approval、
 receipt reconciliation；lost ACK若有exact receipt會如實回replay confirmed，無法確認時則回
 `canonical_write_outcome=unknown`及nullable `canonical_write_performed`，不猜測結果。Generic「繼續」
 不能替代exact enum response；目前仍沒有CLI `apply`入口，也未授權任何真實trip mutation。
+
+離線產品驗收可執行`python3 scripts/phase533_acceptance.py`。它只建立temporary canonical stores，
+使用canned exact authority走過`inspect → evidence validate → propose → score replay → typed review →
+exact response → execute`。Busan保留10:00 booked抵達、18:00 booked晚餐與每日住宿anchors，並驗證
+缺store approval時同一process-local response可保留後補；Hokkaido保留換宿日A→B anchors、16:00
+booked check-in、180分鐘跨城leg與至少45分鐘冬季buffer，另以lost ACK驗證exact receipt reconciliation。
+成功write仍固定回`waiting_external`／`refresh_external_evidence`，不會被驗收腳本改標成
+`applied`或`travel_ready`。此walkthrough不呼叫provider、不讀credential、不寫`trips/`、不render或deploy。
 
 已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
 `#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，
