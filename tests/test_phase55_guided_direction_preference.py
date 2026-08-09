@@ -47,8 +47,8 @@ def _brief(
         destination=DestinationDraft(
             location=LocationHint(
                 kind=LocationHintKind.AREA,
-                label="Private Ishigaki " + PRIVATE,
-                input_text="Private Ishigaki " + PRIVATE,
+                label="Synthetic private destination " + PRIVATE,
+                input_text="Synthetic private destination " + PRIVATE,
                 country_code="jp",
             ),
             state=destination_state,

@@ -500,7 +500,7 @@ class Phase5TripctlTests(unittest.TestCase):
                 self.assertEqual("information", payload["status"])
                 self.assertEqual(command, payload["command"])
 
-    def test_real_legacy_trips_are_inspectable_without_changes(self) -> None:
+    def test_local_private_trips_are_inspectable_without_changes(self) -> None:
         before = _tree_bytes(TRIPS_ROOT)
         trip_dirs = sorted(
             path for path in TRIPS_ROOT.iterdir() if (path / "data").is_dir()
@@ -508,7 +508,7 @@ class Phase5TripctlTests(unittest.TestCase):
 
         payloads = [inspect_trip(path) for path in trip_dirs]
 
-        self.assertEqual(3, len(payloads))
+        self.assertTrue(payloads)
         self.assertTrue(all(item["ok"] for item in payloads))
         self.assertTrue(
             all(item["result"]["storage_mode"] == "legacy" for item in payloads)
@@ -518,7 +518,7 @@ class Phase5TripctlTests(unittest.TestCase):
         )
         self.assertEqual(before, _tree_bytes(TRIPS_ROOT))
 
-    def test_real_legacy_trips_have_safe_timeline_reviews_without_changes(self) -> None:
+    def test_local_private_trips_have_safe_timeline_reviews_without_changes(self) -> None:
         before = _tree_bytes(TRIPS_ROOT)
         trip_dirs = sorted(
             path for path in TRIPS_ROOT.iterdir() if (path / "data").is_dir()
@@ -526,25 +526,23 @@ class Phase5TripctlTests(unittest.TestCase):
 
         payloads = [validate_trip(path) for path in trip_dirs]
 
-        self.assertEqual(3, len(payloads))
+        self.assertTrue(payloads)
         self.assertTrue(all(item["ok"] for item in payloads))
         self.assertTrue(all(item["storage_mode"] == "legacy" for item in payloads))
         self.assertTrue(all(item["status"] == "review_required" for item in payloads))
         self.assertTrue(
             all(item["result"]["timeline_status"] == "needs_verification" for item in payloads)
         )
-        tainan = next(
-            item
-            for path, item in zip(trip_dirs, payloads)
-            if path.name == "tainan-2026-04"
-        )
-        self.assertIn(
+        required_problem_codes = {
             "INVALID_TRAVEL_REFERENCE",
-            {problem["code"] for problem in tainan["problems"]},
-        )
-        self.assertIn(
             "POSSIBLE_SCHEDULED_START_CONFLICT",
-            {problem["code"] for problem in tainan["problems"]},
+        }
+        problem_code_sets = (
+            {problem["code"] for problem in item["problems"]}
+            for item in payloads
+        )
+        self.assertTrue(
+            any(required_problem_codes <= codes for codes in problem_code_sets)
         )
         self.assertEqual(before, _tree_bytes(TRIPS_ROOT))
 

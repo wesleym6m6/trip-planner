@@ -1,6 +1,6 @@
 # SerpApi Google Hotels 參數參考
 
-engine: `google_hotels` | 實測基準: Da Nang beach hotels 2026-10-08~12, 2 adults
+engine: `google_hotels` | 歷史行為曾用bounded private fixture驗證；exact query、日期、party與結果快照不進Git
 
 ## 參數表
 
@@ -9,7 +9,7 @@ engine: `google_hotels` | 實測基準: Da Nang beach hotels 2026-10-08~12, 2 ad
 | param | type | default | values / format | notes |
 |-------|------|---------|----------------|-------|
 | `engine` | str | — | `"google_hotels"` | 固定值 |
-| `q` | str | — | 自由文字 `"Da Nang beach hotels"` | 含區域更精準 `"Da Nang My Khe Beach"` |
+| `q` | str | — | 自由文字 `"Example City hotels"` | 可加入synthetic area placeholder縮小範圍 |
 | `check_in_date` | str | — | `YYYY-MM-DD` | |
 | `check_out_date` | str | — | `YYYY-MM-DD` | |
 
@@ -17,7 +17,7 @@ engine: `google_hotels` | 實測基準: Da Nang beach hotels 2026-10-08~12, 2 ad
 
 | param | type | default | values / format | notes |
 |-------|------|---------|----------------|-------|
-| `gl` | str | **無** | `"tw"`, `"vn"`, `"jp"` | **必須設為目的地國碼**。未設或設錯會導致結果偏向錯誤地區（例如搜 "Hoi An" 卻回傳台灣飯店）。腳本無預設值，caller 應根據目的地明確傳入 |
+| `gl` | str | **無** | ISO country code | **必須設為目的地國碼**。未設或設錯可能讓結果偏向其他地區；腳本無預設值，caller應根據目的地明確傳入 |
 
 **高頻使用：**
 
@@ -88,17 +88,10 @@ engine: `google_hotels` | 實測基準: Da Nang beach hotels 2026-10-08~12, 2 ad
 
 Google Hotels 固定回傳 20 筆。當 filter 條件太嚴、目的地城市的符合結果不夠 20 筆時，**SerpApi 會自動擴散搜尋範圍到整個國家甚至跨國**，用遠處的飯店填滿頁面，且不會標記哪些是擴散結果。
 
-實測（`q="Hoi An", gl=vn`）：
-
-| filter 組合 | 命中會安 | 說明 |
-|-------------|---------|------|
-| 無 filter | 17/20 (85%) | 正常 |
-| `rating=8` | 17/20 (85%) | 會安 4.0+ 飯店足夠 |
-| `max_price=3500` | 11/20 (55%) | 開始擴散到富國島、芽莊 |
-| `sort_by=3` | 1/18 (6%) | 崩潰 — 全越南最便宜 hostel |
-| `max_price=3500` + `rating=8` + `sort_by=3` | 1/18 (6%) | 同樣崩潰 |
-
-**最危險的參數是 `sort_by=3`（最低價排序）** — 單獨加就從 85% 掉到 6%。大城市（如 Da Nang）不受影響，二線城市（如 Hoi An、Ninh Binh）極容易觸發。
+Historical bounded research observed that a strict filter can make returned properties drift
+outside the requested city when the local result set is small. Exact query, country, hit ratio,
+price threshold and expanded destinations are private research context and are intentionally
+omitted. `sort_by=3`（最低價排序）是高風險訊號，但不能假設任何城市永遠安全。
 
 **防禦做法：**
 1. 先不帶 filter 搜一次確認地理命中正常
@@ -141,21 +134,9 @@ property_token 額外回傳：address, phone, prices[], featured_prices[],
   typical_price_range, amenities_detailed{groups[]}, reviews_breakdown[30]
 ```
 
-## 實測摘要
+## 歷史 bounded research 結論
 
-| param | value | results | verified |
-|-------|-------|---------|----------|
-| baseline | — | 20 | ✅ |
-| `sort_by` | `3`/`8`/`13` | 18/18/18 | ✅ 價格/評分/評論排序 |
-| `hotel_class` | `"4,5"` | 18 | ✅ 全 4 或 5 星 |
-| `min/max_price` | `1000/5000` | 20 | ✅ 1,368~5,200 |
-| `rating` | `8` | 20 | ✅ 全 ≥4.1 |
-| `amenities` | `"35,9"` | 20 | ✅ 全含早餐+泳池 |
-| `free_cancellation` | `true` | 18 | ✅ |
-| `special_offers` | `true` | 18 | ✅ |
-| `eco_certified` | `true` | 11 | ✅ 約半數 |
-| `brands` | `"28"` | 4 | ✅ 全 Hilton 系列 |
-| `children` | `1`, ages=`"5"` | 20 | ✅ 含兒童價 |
-| `vacation_rentals` | `true` | 18 | ✅ 全 vacation rental |
-| `next_page_token` | `"CBI="` | 20 | ✅ 第 19-38 筆 |
-| `property_token` | token | 1 | ✅ 完整詳細資訊 |
+Exact query、dates、party、result counts、prices、brands與token-derived snapshots不保存於
+public repository。可保留的結論只有：sorting與filters會改變集合、複合filters可能造成
+地理擴散、occupancy會改變price semantics、pagination與property detail各自消耗額度，且
+所有結果都需要caller以目的地範圍重新驗證。這些是歷史觀察，不是current provider保證。

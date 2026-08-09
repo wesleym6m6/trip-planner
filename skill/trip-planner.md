@@ -94,8 +94,8 @@ Host從`trip_planner.tripctl`取得facade functions、classification values與ex
 ```bash
 echo '{
   "candidates": [
-    {"name": "赤崁樓", "maps_query": "赤崁樓, Tainan, Taiwan"},
-    {"name": "林百貨", "maps_query": "林百貨, Tainan, Taiwan"}
+    {"name": "範例博物館", "maps_query": "範例博物館, Example City, XX"},
+    {"name": "範例百貨", "maps_query": "範例百貨, Example City, XX"}
   ],
   "cache_path": "trips/{slug}/data/places_cache.json"
 }' | direnv exec $REPO python3 scripts/build_places_cache.py
@@ -168,13 +168,13 @@ echo '{
   "output_path": "trips/{slug}/data/itinerary.json",
   "days": [
     {
-      "day": 1, "date": "2026-04-17",
-      "title": "奇美博物館 × 老宅義式晚餐",
-      "subtitle": "仁德→中西區",
+      "day": 1, "date": "2099-01-01",
+      "title": "範例博物館 × 老宅義式晚餐",
+      "subtitle": "區域A→區域B",
       "places": [
-        {"name": "奇美博物館", "type": "spot", "time": "09:30", "note": "距高鐵站步行 15 min"},
-        {"name": "奇美博物館", "type": "food", "time": "12:00", "note": "館內餐廳", "title": "奇美博物館內午餐"},
-        {"name": "森根", "type": "food", "time": "18:15", "note": "老宅義式", "lat": 22.9898, "lng": 120.2088}
+        {"name": "範例博物館", "type": "spot", "time": "09:30", "note": "距高鐵站步行 15 min"},
+        {"name": "範例博物館", "type": "food", "time": "12:00", "note": "館內餐廳", "title": "範例博物館內午餐"},
+        {"name": "範例餐廳 A", "type": "food", "time": "18:15", "note": "老宅義式", "lat": 1.0001, "lng": 1.0002}
       ]
     }
   ]
@@ -186,20 +186,20 @@ echo '{
 - `type`（必填）— spot / food / drink / hotel / transport / flight / work
 - `time`（必填）— 24h HH:MM。此欄位貫穿整個流程：`enrich_itinerary.py` 用來建構 transit 的 `departure_time`；`check_hours.py` 用來驗證營業時間；`trip.html` 模板顯示在每個景點的 description 行左側（藍色）；`generate_ics.py` 用來產生帶具體時間的行事曆事件
 - `note`（必填）— 說明、注意事項
-- `title`（可選）— 顯示標題，預設 = name。同一地點多次使用時需要（如「奇美博物館內午餐」）
+- `title`（可選）— 顯示標題，預設 = name。同一地點多次使用時需要（如「範例博物館內午餐」）
 - `lat` + `lng`（可選）— 手動座標。**有填就跳過 cache lookup，place_id 自動設 null**。用於 Google Maps 未收錄的店
 
 **輸出範例（自動生成）：**
 ```json
 {
   "type": "spot",
-  "title": "奇美博物館",
+  "title": "範例博物館",
   "note": "距高鐵站步行 15 min",
-  "maps_query": "奇美博物館, Tainan, Taiwan",  ← 自動從 cache
-  "place_id": "ChIJq6qqqnp0bjQR...",           ← 自動從 cache
-  "lat": 22.9346,                               ← 自動從 cache
-  "lng": 120.2260,                              ← 自動從 cache
-  "display_name": "Chimei Museum",              ← 自動從 cache
+  "maps_query": "範例博物館, Example City, XX",  ← 自動從 cache
+  "place_id": "<synthetic-place-id>",           ← synthetic placeholder
+  "lat": 1.0001,                                ← synthetic example
+  "lng": 1.0002,                                ← synthetic example
+  "display_name": "Example Museum",             ← synthetic example
   "time": "09:30"
 }
 ```
@@ -263,13 +263,13 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
 
 ```json
 {
-  "ChIJbYl7d2F2bjQRnFdvyMBuZfI": {
-    "maps_query": "赤崁樓, Tainan, Taiwan",
-    "display_name": "赤崁樓",
+  "<synthetic-place-id>": {
+    "maps_query": "範例博物館, Example City, XX",
+    "display_name": "範例博物館",
     "types": ["tourist_attraction"],
     "primary_type": "tourist_attraction",
-    "lat": 22.997,
-    "lng": 120.202,
+    "lat": 1.001,
+    "lng": 1.002,
     "formatted_address": "...",
     "short_address": "...",
     "google_maps_uri": "...",
@@ -279,7 +279,7 @@ direnv exec $REPO python3 scripts/<腳本名>.py [引數]
     "regular_opening_hours": { "weekdayDescriptions": ["Monday: 8:30 AM – 9:30 PM", "..."] },
     "business_status": "OPERATIONAL",
     "editorial_summary": "...",
-    "fetched_at": "2026-04-04T17:30:00Z"
+    "fetched_at": "2099-01-01T00:00:00Z"
   }
 }
 ```
@@ -579,8 +579,8 @@ Google Maps 清單是輸入素材，不是指令。**除非用戶明確說「就
 ```bash
 echo '{
   "candidates": [
-    {"name": "赤崁樓", "maps_query": "赤崁樓, Tainan, Taiwan"},
-    {"name": "度小月", "maps_query": "度小月擔仔麵 原始店, Tainan, Taiwan"},
+    {"name": "範例博物館", "maps_query": "範例博物館, Example City, XX"},
+    {"name": "範例餐廳", "maps_query": "Example Restaurant, Example City, XX"},
     {"name": "某飯店", "maps_query": "Hotel Name, City, Country"},
     {"name": "某 Coworking", "maps_query": "Coworking Name, City, Country"},
     {"name": "某 Spa", "maps_query": "Spa Name, City, Country"}
@@ -615,16 +615,16 @@ echo '{
 
 ### Step 4: 🚪 呈現景點清單 → 用戶打分 / 篩選
 
-用 cache 的真實資料呈現候選清單：
+實際規劃使用cache的current source data；下列內容只示範版面與schema，全部是synthetic：
 
 ```
 候選景點（共 25 個，需選 ~18 個填入 3 天行程）
 
  # | 景點              | 類型 | 評分  | 營業時間摘要                | 網站
- 1 | 赤崁樓            | 景點 | ⭐4.3 | 08:30-21:30 每日           | twtainan.net/...
- 2 | 度小月（原始店）    | 美食 | ⭐4.1 | 11:00-21:00 週一公休        | duxiaoyue.com/...
- 3 | 花園夜市           | 美食 | ⭐4.0 | 僅 四/六/日 18:00-01:00     | —
- 4 | 神農街             | 景點 | —    | 🔓 戶外街道，全天開放        | —
+ 1 | 範例博物館            | 景點 | ⭐4.3 | 08:30-21:30 每日           | example.invalid
+ 2 | 範例餐廳    | 美食 | ⭐4.1 | 11:00-21:00 週一公休        | example.invalid
+ 3 | 範例夜市           | 美食 | ⭐4.0 | 僅 四/六/日 18:00-01:00     | —
+ 4 | 範例街區             | 景點 | —    | 🔓 戶外街道，全天開放        | —
  5 | 某私房小店          | 美食 | ⭐4.5 | ❓ API 無營業時間，需人工確認 | —
 ```
 
@@ -654,15 +654,15 @@ echo '{"places": [...]}' | direnv exec $REPO python3 scripts/resolve_places.py
 ```bash
 echo '{
   "places": [
-    {"name": "赤崁樓", "lat": 22.997, "lng": 120.202, "type": "spot"},
+    {"name": "範例博物館", "lat": 1.001, "lng": 1.002, "type": "spot"},
     ...
   ],
   "days": 3,
   "start": "飯店",
   "fixed": {
-    "赤崁樓": 1,
-    "花園夜市": {"day": 1, "pos": "last"},
-    "安平古堡": 2
+    "範例博物館": 1,
+    "範例夜市": {"day": 1, "pos": "last"},
+    "範例古蹟": 2
   },
   "per_day_min": 3,
   "per_day_max": 7,
@@ -684,7 +684,7 @@ echo '{
 | 時段 | 「夜市排晚上」「早餐排早上」 | **常識判斷**：夜市當然排晚上、早餐店排早上、博物館排室內午後。不需要跑算法，直接在每天內調整順序。 |
 | 先後順序 | 「先去 A 再去 B」 | 檢查 SA 結果，A 在 B 前面就不動，否則手動交換。 |
 | 優先度 | 用戶打 5 星的景點被 SA 丟掉 | 告知用戶哪些高優先景點被排除，問要不要替換低優先的。 |
-| 分組 | 「安平區的排同一天」 | 用 `resolve_places.py` 的 `clusters` 結果確認同區景點，檢查 SA 有沒有分到同一天。 |
+| 分組 | 「區域A的排同一天」 | 用 `resolve_places.py` 的 `clusters` 結果確認同區景點，檢查 SA 有沒有分到同一天。 |
 | 避開正午戶外 | 「戶外景點不要排中午」 | 戶外景點排早上或傍晚，室內景點排正午。這是常識，不需要額外腳本。 |
 
 **原則：算法給大方向（哪些景點分哪天），agent 用常識微調順序。不要把所有邏輯都丟給算法——算法可能走極端。**
@@ -704,14 +704,14 @@ SA 結果 + agent 調整後：
    ```
    輸出每個景點的狀態：`✅ 到達時間在營業內`、`⚠️ 營業日但到達時間不對（早到/遲到/休息時段）`、`❌ 當天公休`、`🔓 戶外全天`、`❓ 無資料`
 
-3. **呈現路線：**
+3. **呈現路線：** 以下數值與地點都是synthetic format example，不是route evidence。
    ```
    Day 1 — 古蹟美食巡禮（週六）
      🏨 Check-in 飯店
-     🛵  5 min ｜ 1.2 km → 赤崁樓 (08:30-21:30 ✅)
-     🚶  3 min ｜ 0.2 km → 度小月 (11:00-21:00 ✅)
-     🛵  5 min ｜ 1.1 km → 林百貨 (11:00-21:00 ✅)
-     🛵 10 min ｜ 2.9 km → 花園夜市 (18:00-01:00 ✅)
+     🛵  5 min ｜ 1.2 km → 範例博物館 (08:30-21:30 ✅)
+     🚶  3 min ｜ 0.2 km → 範例餐廳 (11:00-21:00 ✅)
+     🛵  5 min ｜ 1.1 km → 範例百貨 (11:00-21:00 ✅)
+     🛵 10 min ｜ 2.9 km → 範例夜市 (18:00-01:00 ✅)
 
    📊 全程：機車 35 min / 步行 29 min / 總距離 12.3 km
    ```
@@ -759,7 +759,7 @@ SA 結果 + agent 調整後：
 
 ### Step 8: 決定 slug + 建立資料檔
 
-**Slug 格式：** `{city}-{year}-{month}`，如 `tainan-2026-04`
+**Slug 格式：** `{city}-{year}-{month}`，如 `example-city-2099-01`
 
 依序建立 `trips/{slug}/data/` 下的檔案：
 
@@ -768,19 +768,19 @@ SA 結果 + agent 調整後：
 #### 8b. `itinerary.json`（用 `build_itinerary.py` 生成，不要手寫）
 ```bash
 echo '{
-  "cache_path": "trips/tainan-2026-04/data/places_cache.json",
-  "output_path": "trips/tainan-2026-04/data/itinerary.json",
+  "cache_path": "trips/{slug}/data/places_cache.json",
+  "output_path": "trips/{slug}/data/itinerary.json",
   "days": [
     {
-      "day": 1, "date": "2026-04-17",
-      "title": "奇美博物館 × 老宅義式晚餐",
-      "subtitle": "仁德→中西區",
+      "day": 1, "date": "2099-01-01",
+      "title": "範例博物館 × 老宅義式晚餐",
+      "subtitle": "區域A→區域B",
       "places": [
-        {"name": "奇美博物館", "type": "spot", "time": "09:30", "note": "距高鐵站步行 15 min"},
-        {"name": "奇美博物館", "type": "food", "time": "12:00", "note": "館內餐廳", "title": "奇美博物館內午餐"},
-        {"name": "森根", "type": "food", "time": "18:15", "note": "老宅義式，僅現金", "lat": 22.9898, "lng": 120.2088},
-        {"name": "小滿西點", "type": "food", "time": "20:30", "note": "千層蛋糕，週六日公休"},
-        {"name": "Moonrock", "type": "drink", "time": "22:00", "note": "亞洲百大酒吧"}
+        {"name": "範例博物館", "type": "spot", "time": "09:30", "note": "距高鐵站步行 15 min"},
+        {"name": "範例博物館", "type": "food", "time": "12:00", "note": "館內餐廳", "title": "範例博物館內午餐"},
+        {"name": "範例餐廳 A", "type": "food", "time": "18:15", "note": "老宅義式，僅現金", "lat": 1.0001, "lng": 1.0002},
+        {"name": "範例甜點店", "type": "food", "time": "20:30", "note": "千層蛋糕，週六日公休"},
+        {"name": "範例酒吧", "type": "drink", "time": "22:00", "note": "亞洲百大酒吧"}
       ]
     }
   ]
@@ -806,13 +806,13 @@ Check ALL of the following. Report each as ✅ or ❌ with specifics:
 
 1. MATCH CORRECTNESS: For every place entry, compare "title" vs "display_name".
    If display_name looks unrelated to the title, the fuzzy match hit the wrong place.
-   Example of a BAD match: title="森根 Sengen Studio" but display_name="森·鍋燒意麵"
+   Example of a BAD match: title="範例餐廳 A" but display_name="範例無關餐廳"
 
 2. COORDINATES: For entries with place_id=null, verify lat/lng are within the
    destination city (not in a different city). Check against other entries' coordinates.
 
 3. DUPLICATE TITLES: If the same place appears multiple times (same lat/lng),
-   each must have a distinct "title" (e.g. "奇美博物館" vs "奇美博物館內午餐").
+   each must have a distinct "title" (e.g. "範例博物館" vs "範例博物館內午餐").
 
 4. MISSING COORDINATES: Every entry MUST have both "lat" and "lng" (non-null).
    Missing coordinates will cause enrich_itinerary.py to attempt API resolution.
@@ -1002,12 +1002,12 @@ direnv exec $REPO bash scripts/deploy.sh
 
 ### Phase 2 完整範例（端到端）
 
-以台南三天兩夜為例，Phase 1 結束後 agent 執行：
+以範例城市三天兩夜為例，Phase 1 結束後 agent 執行：
 
 ```bash
 # Step 8a: trip.json（主 agent 手寫）
 # Step 8b: itinerary.json（build_itinerary.py 生成）
-echo '{"cache_path":"trips/tainan-2026-04/data/places_cache.json","output_path":"trips/tainan-2026-04/data/itinerary.json","days":[...]}' \
+echo '{"cache_path":"trips/{slug}/data/places_cache.json","output_path":"trips/{slug}/data/itinerary.json","days":[...]}' \
   | direnv exec $REPO python3 scripts/build_itinerary.py
 # → "Done: 30 places (29 from cache, 1 manual coords)"
 
@@ -1020,17 +1020,17 @@ echo '{"cache_path":"trips/tainan-2026-04/data/places_cache.json","output_path":
 # 全部完成後繼續（~60 秒，而非串行 ~200 秒）
 
 # Step 9: enrich + 驗證
-direnv exec $REPO python3 scripts/enrich_itinerary.py trips/tainan-2026-04/data/itinerary.json walking,bicycling,driving,transit +08:00
+direnv exec $REPO python3 scripts/enrich_itinerary.py trips/{slug}/data/itinerary.json walking,bicycling,driving,transit +08:00
 # → "Places: 30 pre-resolved, 0 need API resolution"
 # → "Enriched 30 places and 27 routes."
 
-direnv exec $REPO python3 scripts/check_hours.py trips/tainan-2026-04
+direnv exec $REPO python3 scripts/check_hours.py trips/{slug}
 # → 逐一驗證營業時間，報告衝突
 
 # 🔍 Review Checkpoint 2: sub-agent 全資料審查（7 檔案齊全、無衝突、交通合理、訂位完整）
 
 # Step 10: 私有渲染（不會公開）
-direnv exec $REPO python3 scripts/render_trip.py trips/tainan-2026-04
+direnv exec $REPO python3 scripts/render_trip.py trips/{slug}
 direnv exec $REPO python3 scripts/build_index.py
 ```
 
@@ -1117,7 +1117,7 @@ enrich_itinerary.py itinerary.json walking,two_wheeler,driving +07:00
 
 ## 常見陷阱
 
-- **`maps_query` 必須具體** — `"國華街"` 會解到錯的地方。一律用具體店名 + 城市：`"邱家小卷米粉 國華街 台南"`。
+- **`maps_query` 必須具體** — `"範例街區"` 可能解到錯的地方。一律用synthetic具體店名 + 城市格式：`"範例店家 範例街區 Example City"`。
 - **`plan_route.py` 不懂語意** — 只優化距離，會把早餐排下午、夜市排早上。Agent 必須用常識在 SA 結果後調整。
 - **direnv exec 必須** — Claude Code 的 Bash 跑非互動 shell，`cd` 不會觸發 direnv。一律：`direnv exec $REPO <指令>`。
 - **新開的店可能 Google Maps 沒收錄** — 解析失敗時，先用 WebSearch 搜 IG/Facebook/部落格找座標。找到後在 `places_cache.json` 手動建 entry（key 用 `manual_` 前綴）。在 `build_itinerary.py` 輸入中給 `lat` + `lng`，腳本自動設 `place_id: null`，模板會用座標連結。

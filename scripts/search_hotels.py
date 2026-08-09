@@ -3,10 +3,10 @@ Search hotels via SerpApi Google Hotels engine.
 
 Input (stdin JSON):
 {
-  "q": "Da Nang beach area",
-  "check_in_date": "2026-10-08",
-  "check_out_date": "2026-10-12",
-  "cache_path": "trips/danang-2026-10/data/hotels_cache.json"
+  "q": "Example City hotels",
+  "check_in_date": "2099-01-01",
+  "check_out_date": "2099-01-05",
+  "cache_path": "trips/{slug}/data/hotels_cache.json"
 }
 
 Required: q, check_in_date, check_out_date, cache_path

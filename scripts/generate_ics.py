@@ -1,8 +1,8 @@
 """
 Generate an ICS calendar file from a trip's itinerary.json and trip.json.
 
-Usage: python3 scripts/generate_ics.py trips/vietnam-2026-05
-Output: trips/vietnam-2026-05/calendar.ics
+Usage: python3 scripts/generate_ics.py trips/{slug}
+Output: trips/{slug}/calendar.ics
 """
 import json
 import sys

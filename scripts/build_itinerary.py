@@ -9,18 +9,18 @@ Usage:
 
 Input format (stdin JSON):
 {
-  "cache_path": "trips/tainan-2026-04/data/places_cache.json",
-  "output_path": "trips/tainan-2026-04/data/itinerary.json",
+  "cache_path": "trips/{slug}/data/places_cache.json",
+  "output_path": "trips/{slug}/data/itinerary.json",
   "days": [
     {
       "day": 1,
-      "date": "2026-04-17",
+      "date": "2099-01-01",
       "title": "Day title",
       "subtitle": "Day subtitle",
       "places": [
-        {"name": "奇美博物館", "type": "spot", "time": "09:30", "note": "說明"},
-        {"name": "奇美博物館", "type": "food", "time": "12:00", "note": "午餐", "title": "奇美博物館內午餐"},
-        {"name": "森根", "type": "food", "time": "18:15", "note": "老宅義式", "lat": 22.9898, "lng": 120.2088}
+        {"name": "Example Museum", "type": "spot", "time": "09:30", "note": "synthetic"},
+        {"name": "Example Museum", "type": "food", "time": "12:00", "note": "synthetic", "title": "Museum lunch"},
+        {"name": "Example Restaurant", "type": "food", "time": "18:15", "note": "synthetic", "lat": 1.0001, "lng": 1.0002}
       ]
     }
   ]

@@ -10,7 +10,7 @@ Usage:
     python3 scripts/import_gmaps_list.py "https://maps.app.goo.gl/XXXXX"
 
     # Merge into existing trip itinerary (append to day N or create new day)
-    python3 scripts/import_gmaps_list.py --merge trips/tainan-2026-05 --day 3 "URL"
+    python3 scripts/import_gmaps_list.py --merge trips/{slug} --day 3 "URL"
 
 Reference: TREK placeService.ts importGoogleList (lines 320-405)
 """
@@ -314,7 +314,7 @@ def main():
     parser.add_argument(
         "--merge",
         metavar="TRIP_DIR",
-        help="Trip directory to merge into (e.g. trips/tainan-2026-05)",
+        help="Trip directory to merge into (e.g. trips/{slug})",
     )
     parser.add_argument(
         "--day",

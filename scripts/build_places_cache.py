@@ -5,10 +5,10 @@ quarantined and requires an explicit opt-in; it is never a Phase 4 runtime.
 Input (stdin JSON):
 {
   "candidates": [
-    {"name": "赤崁樓", "maps_query": "赤崁樓, Tainan, Taiwan"},
+    {"name": "Example Museum", "maps_query": "Example Museum, Example City"},
     ...
   ],
-  "cache_path": "trips/tainan-canal-2026-05/data/places_cache.json"
+  "cache_path": "trips/{slug}/data/places_cache.json"
 }
 
 Loads existing cache (if any), skips already-cached place_ids, resolves new ones,

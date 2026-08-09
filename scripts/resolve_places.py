@@ -7,8 +7,8 @@ see actual distances and group nearby places on the same day.
 Input (stdin JSON):
 {
   "places": [
-    {"name": "赤崁樓", "maps_query": "赤崁樓, Tainan, Taiwan"},
-    {"name": "安平古堡", "maps_query": "安平古堡, Tainan, Taiwan"},
+    {"name": "Example Museum", "maps_query": "Example Museum, Example City"},
+    {"name": "Example Park", "maps_query": "Example Park, Example City"},
     ...
   ]
 }
@@ -16,7 +16,7 @@ Input (stdin JSON):
 Output (stdout JSON):
 {
   "places": [
-    {"name": "赤崁樓", "maps_query": "...", "place_id": "ChIJ...", "lat": 23.0, "lng": 120.2},
+    {"name": "Example Museum", "maps_query": "...", "place_id": "ChIJ...", "lat": 1.0, "lng": 1.0},
     ...
   ],
   "distance_matrix": [
@@ -25,7 +25,7 @@ Output (stdout JSON):
     ...
   ],
   "clusters": [
-    {"center": "赤崁樓", "nearby": ["林百貨", "度小月"], "note": "< 1 km apart"},
+    {"center": "Example Museum", "nearby": ["Example Park", "Example Cafe"], "note": "< 1 km apart"},
     ...
   ]
 }

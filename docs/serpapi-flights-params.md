@@ -1,6 +1,6 @@
 # SerpApi Google Flights 參數參考
 
-engine: `google_flights` | 實測基準: TPE→DAD 2026-10-08~12 來回
+engine: `google_flights` | 歷史行為曾用bounded private fixture驗證；exact route、日期與結果快照不進Git
 
 ## 參數表
 
@@ -9,17 +9,17 @@ engine: `google_flights` | 實測基準: TPE→DAD 2026-10-08~12 來回
 | param | type | default | values / format | notes |
 |-------|------|---------|----------------|-------|
 | `engine` | str | — | `"google_flights"` | 固定值 |
-| `departure_id` | str | — | IATA `"TPE"` or kgmid `"/m/0fn2g"` | 逗號分隔多值 `"TPE,TSA"` |
-| `arrival_id` | str | — | 同上 | 逗號分隔多值 `"DAD,HAN"` |
+| `departure_id` | str | — | IATA `"AAA"` or kgmid placeholder | 逗號分隔多值 `"AAA,AAB"` |
+| `arrival_id` | str | — | 同上 | 逗號分隔多值 `"BBB,BBC"` |
 | `outbound_date` | str | — | `YYYY-MM-DD` | |
 | `return_date` | str | — | `YYYY-MM-DD` | type=1 必填，type=2 不填 |
-| `show_hidden` | bool | `false` | **始終設 `true`** | 8→104 筆，同額度不開會漏大量結果 |
+| `show_hidden` | bool | `false` | **始終設 `true`** | 同額度可顯著增加可見結果 |
 
 **高頻使用：**
 
 | param | type | default | values / format | notes |
 |-------|------|---------|----------------|-------|
-| `type` | int | `1` | 1=來回, 2=單程, 3=多城市 | 單程回傳更多(158 vs 104)；多城市需 `multi_city_json` |
+| `type` | int | `1` | 1=來回, 2=單程, 3=多城市 | 單程與來回結果集合不同；多城市需 `multi_city_json` |
 | `adults` | int | `1` | 正整數 | |
 | `currency` | str | `"USD"` | `"TWD"`, `"JPY"` | |
 | `hl` | str | `"en"` | `"zh-TW"`, `"ja"` | 影響航空/機場名稱語言 |
@@ -27,15 +27,15 @@ engine: `google_flights` | 實測基準: TPE→DAD 2026-10-08~12 來回
 | `stops` | int | 不篩 | 0=不篩, 1=直飛, 2=≤1轉, 3=≤2轉 | ⚠️ **1=直飛（不是 0）** |
 | `sort_by` | int | `1` | 1=最佳, 2=價格, 3=出發, 5=時長, 6=到達 | 只影響 other_flights |
 | `max_price` | int | — | 幣別單位整數 | 嚴格遵守上限 |
-| `include_airlines` | str | — | IATA 逗號分隔 `"VJ,IT"` | 不飛該航線回 0 筆；與 exclude 互斥 |
-| `exclude_airlines` | str | — | IATA 逗號分隔 `"CI,BR"` | ⚠️ 不完全可靠，codeshare 仍出現 |
+| `include_airlines` | str | — | IATA 逗號分隔 `"XX,YY"` | 不飛該航線回 0 筆；與 exclude 互斥 |
+| `exclude_airlines` | str | — | IATA 逗號分隔 `"XX,YY"` | ⚠️ 不完全可靠，codeshare 仍可能出現 |
 | `travel_class` | int | `1` | 1=經濟, 2=豪經, 3=商務, 4=頭等 | 高艙等選項少；頭等可能無結果 |
 
 **乘客：**
 
 | param | type | default | values / format | notes |
 |-------|------|---------|----------------|-------|
-| `children` | int | `0` | 正整數 | 2-11 歲；+1 child 價格約 ×2 |
+| `children` | int | `0` | 正整數 | 2-11 歲；總價會依乘客組成改變 |
 | `infants_in_seat` | int | `0` | 正整數 | <2 歲佔位；含嬰兒座位費 |
 | `infants_on_lap` | int | `0` | 正整數 | <2 歲不佔位；實測不加價 |
 
@@ -47,9 +47,9 @@ engine: `google_flights` | 實測基準: TPE→DAD 2026-10-08~12 來回
 | `outbound_times` | str | — | `"start,end"` 24h 整數 `"6,12"` | 含 end 小時（6,12 = 06:00-12:59） |
 | `return_times` | str | — | 同上 | 僅 type=1 有效 |
 | `bags` | int | `0` | 0/1/2 | 託運行李件數 |
-| `emissions` | int | — | `1`=低碳排 | 大幅縮減結果（104→3） |
+| `emissions` | int | — | `1`=低碳排 | 可能大幅縮減結果 |
 | `layover_duration` | str | — | `"min,max"` 分鐘 `"60,300"` | 僅轉機航班生效 |
-| `exclude_conns` | str | — | IATA 逗號分隔 `"HKG"` | 排除轉機機場，完全有效 |
+| `exclude_conns` | str | — | IATA 逗號分隔 `"CCC"` | 排除指定轉機機場 |
 
 **二階查詢（來回票 token）：**
 
@@ -85,11 +85,11 @@ engine: `google_flights` | 實測基準: TPE→DAD 2026-10-08~12 來回
 
 | param | type | default | notes |
 |-------|------|---------|-------|
-| `deep_search` | bool | `false` | 慢 3 倍但結果差異極小 |
+| `deep_search` | bool | `false` | 較慢；收益需按當時provider行為重新驗證 |
 
 ## 注意事項
 
-1. **始終加 `show_hidden=true`** — 同額度從 ~8 筆增到 ~100 筆
+1. **始終加 `show_hidden=true`** — 同額度通常可顯著增加可見結果
 2. **`stops` 語意反直覺** — 1=直飛，不是 0
 3. **`exclude_airlines` 不嚴格** — codeshare 航班仍可能出現在轉機段
 4. **來回票價 = 去程 + Google 自動配的最便宜回程**；選不同回程總價會變
@@ -117,24 +117,16 @@ price_insights               {lowest_price, typical_price_range[], price_level}
 airports[]                   出發/到達機場資訊
 ```
 
-## 實測摘要
+## 歷史 bounded research 結論
 
-| param | value | results | verified |
-|-------|-------|---------|----------|
-| baseline | — | 8 | ✅ |
-| `show_hidden` | `true` | 104 | ✅ 8→104 |
-| `stops` | `1` | 4 | ✅ 全直飛 |
-| `stops` | `2` | 106 | ✅ 直飛+1轉 |
-| `travel_class` | `2`/`3`/`4` | 4/81/0 | ✅ 頭等無結果 |
-| `include_airlines` | `"VJ,IT"` | 1 | ✅ 僅 IT |
-| `exclude_airlines` | `"CI,BR"` | 100 | ⚠️ 仍有 CI codeshare |
-| `max_price` | `25000` | 103 | ✅ 最高 24,146 |
-| `max_duration` | `300` | 4 | ✅ 最長 170min |
-| `outbound_times` | `"6,12"` | 48 | ✅ 07:10~12:15 |
-| `emissions` | `1` | 3 | ✅ 全低碳排 |
-| `layover_duration` | `"60,300"` | 19 | ✅ |
-| `exclude_conns` | `"HKG"` | 83 | ✅ 完全排除 |
-| `children` | `1` | 24 | ✅ 含兒童票 |
-| `infants_on_lap` | `1` | 27 | ✅ 不加價 |
-| `departure_token` | token | 1 | ✅ 取得回程 |
-| `booking_token` | token | 1 | ✅ 取得訂票連結 |
+Exact route、travel dates、party、result counts、prices與token-derived snapshots不保存於
+public repository。可保留的provider-neutral結論只有：
+
+- `show_hidden=true`會改變可見結果集合；
+- `stops=1`代表直飛，而非不篩選；
+- class、price、duration、time、emissions與layover filters都可能縮小結果集合；
+- airline exclusion可能因codeshare而不完全；
+- round-trip selection仍需依序使用departure與booking token，且每一步各自消耗額度。
+
+這些是歷史觀察，不是current provider保證；任何live使用都必須重新驗證當時語意、成本與
+retention policy。

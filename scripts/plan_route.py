@@ -8,21 +8,21 @@ vibe, opening hours) to pick or adjust.
 Input (stdin JSON):
 {
   "places": [
-    {"name": "赤崁樓", "lat": 23.00, "lng": 120.20, "type": "spot"},
-    {"name": "度小月",  "lat": 22.99, "lng": 120.20, "type": "food"},
+    {"name": "Example Museum", "lat": 1.0001, "lng": 1.0002, "type": "spot"},
+    {"name": "Example Cafe", "lat": 1.0003, "lng": 1.0004, "type": "food"},
     ...
   ],
   "days": 3,
-  "start": "飯店",              // optional: name of daily start point
-  "fixed": {"安平古堡": 2},     // optional: place must be on this day (1-indexed)
+  "start": "Example Hotel",     // optional: name of daily start point
+  "fixed": {"Example Park": 2}, // optional: place must be on this day (1-indexed)
   "per_day_min": 2,             // optional, default 2
   "per_day_max": 6,             // optional, default 6
   "top_n": 5,                   // optional, default 5
   "iterations": 5000,           // optional, SA iterations per restart, default 5000
   "restarts": 5,                // optional, default 5
   "ai_solution": {              // optional: AI's own arrangement to score
-    "1": ["飯店","赤崁樓","度小月"],
-    "2": ["飯店","安平古堡","安平老街"],
+    "1": ["Example Hotel","Example Museum","Example Cafe"],
+    "2": ["Example Hotel","Example Park","Example Market"],
     ...
   }
 }
@@ -34,8 +34,8 @@ Output (stdout JSON):
       "rank": 1,
       "score_km": 12.3,
       "days": {
-        "1": ["赤崁樓", "度小月", "林百貨"],
-        "2": ["安平古堡", "安平老街", "神農街"],
+        "1": ["Example Museum", "Example Cafe", "Example Store"],
+        "2": ["Example Park", "Example Market", "Example District"],
         ...
       },
       "day_details": [

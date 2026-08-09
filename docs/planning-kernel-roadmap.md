@@ -2,48 +2,14 @@
 
 狀態：進行中
 啟動日期：2026-07-27
-目前 checkpoint：Phase 3A 排程核心、Phase 3B safe staging、Phase 3C
-solver decision gate、Phase 4.0 facts/policy foundation、Phase 4.1A
-trusted-clock EvidenceStore 與 Phase 4.1B offline composition / evidence
-revision wiring、Phase 4.2 minimal Places identity、Phase 4.3 Routes offline
-exit gate、Phase 4.4 Places profile / hours offline exit gate與Phase 4.5A
-natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
-comparison candidate、Phase 4.5C joint lodging / itinerary recommendation與
-Phase 4.5D host-signed canonical lodging confirmation / apply，以及Phase 4.6A
-read-only readiness projection與Phase 4.6B legacy evidence / cleanup preview已完成；
-Phase 5 現已有 storage-dispatch、read-only 的 `tripctl inspect` aggregate review 與
-`tripctl validate` deterministic timeline review 起始入口；legacy 行為保持不變，canonical
-模式在沒有 runtime evidence 時只會是 `waiting_external`。另有Phase 5.2 static browser
-timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4在其後提供一至
-三張帶來源 badge、需要一次主觀審閱的private direction cards；兩者都只在process memory
-中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
-source-preserving carryover產生一張可再次審閱的整合方向，Phase 5.7再將明確接受／繼續調整
-綁回exact整合方向，Phase 5.8則把accepted refinement的source indexes完整映射到相對day
-candidate，Phase 5.9再綁定使用者對該candidate的明確接受／調整回覆，Phase 5.10則為每條
-refined line建立typed、provider-neutral evidence requirement，Phase 5.11再建立bounded、可審閱的
-provider capability scope，Phase 5.12再將scope的明確接受／縮小／取消綁回exact context；
-Phase 5.13現已加上短效、host-attested、exact-context-bound的offline provider preflight，
-Phase 5.14再將使用者對fresh preflight的接受／縮小／取消綁回exact context，Phase 5.15
-則為已接受preflight衍生每項capability仍需要的private execution-target type，Phase 5.16再將
-每個target與canonical private preimage／trusted evidence request contract及source lines做exact binding；
-Phase 5.17–5.18完成private execution-authorization review與exact response，Phase 5.19在執行當下重核
-pricing／policy／retention／billing／credential state，Phase 5.20–5.21完成request-materialization review與
-exact response，Phase 5.22建立不可送出的typed private request contracts，Phase 5.23–5.24再完成最後一份
-private send review與exact `accept_send`／`request_smaller`／`cancel` response，Phase 5.25再把accepted exact
-contracts綁到allowlisted public transport profile、endpoint／method、field placement與credential slot，Phase 5.26
-再建立該transport-bound bundle的exact private credential-binding review，Phase 5.27再擷取exact
-`accept_credential_binding`／`request_smaller`／`cancel` response，Phase 5.28再以host提供的slot-level boolean
-availability attestation建立exact live credential-binding review，Phase 5.29再擷取exact
-`accept_live_credential_binding`／`request_smaller`／`cancel` response。這條chain仍沒有CLI、自然語言response
-parser、credential value access／binding、HTTP request、provider call、schedule、render或mutation；accepted
-response也仍不可執行或送出，只能前進到後續獨立ephemeral credential-value binding gate。
-M0已把Phase 5.13–5.29凍結為`Provider Execution Safety Reference v1`，並把剩餘產品交付
-收斂為Phase 5.30–5.33；5.30 composed facade、5.31 bounded execution與5.32
-evidence-to-canonical已完成，5.33現進入unified product interface有限切片。runtime gate名稱不再
-各自占用roadmap phase編號。Phase 6.0 fail-closed public release boundary亦已完成；真實provider
-驗收仍只在明確授權範圍內進行；canonical provisional propose／trusted replay score已接入，
-apply、evidence-bound re-score／resume、baseline adoption、skill完整改寫與canned product acceptance
-仍待後續切片。
+目前 checkpoint：Phase 0–4.6B 的 deterministic kernel、evidence、readiness 與
+legacy compatibility 已完成；Phase 5 的 guided product contract、bounded provider
+execution、evidence-to-canonical、same-process apply、baseline adoption、canned product
+acceptance 與一次性 live exit gate皆已完成並凍結。Phase 6.0 fail-closed public-release
+boundary亦已完成。目前工作進入Phase 6 delivery／privacy／operations；第一個bounded
+maintenance slice清理public tracked tree中的private operational metadata，下一個產品
+slice是deterministic private ICS projection。任何future provider call、canonical mutation、
+render或deploy仍各自需要fresh exact gate。
 
 ## 產品目標
 
@@ -57,12 +23,9 @@ apply、evidence-bound re-score／resume、baseline adoption、skill完整改寫
 4. 對未知、過期或互相衝突的資料誠實標示。
 5. 在不破壞已確認項目的前提下，反覆迭代同一趟旅行。
 
-第一批端到端驗收旅行為：
-
-- 2026 年 10 月釜山。
-- 2027 年 1 月北海道。
-
-兩者只在底層能力達到對應 checkpoint 後才開始作為真實驗收，不以手動補資料掩蓋核心缺口。
+第一批端到端驗收使用兩個明確標示為canned的跨日城市情境：一個單一住宿情境與一個
+換宿／冬季跨城情境。它們只在底層能力達到對應checkpoint後執行，不使用private trip
+內容，也不以手動補資料掩蓋核心缺口。
 
 ## 核心架構決策
 
@@ -350,7 +313,7 @@ Exit gate：
   只產生needs-verification。Fixed-time不暗移，slack使用實際交集終點；
 - legacy regular-hours checker永不輸出verified green，locale文字不參與判定；
   broad/full-mask cache builder預設quarantine。Busan／Hokkaido canned E2E、
-  514個offline tests與三個real-trip validators已通過，trip files hash未變；
+  514個offline tests與local private-trip validators已通過；private-data pre/post check matched；
   Phase 4.4 live API驗收仍需明確授權；
 - Phase 4.5A已建立process-local自然語言住宿／交通draft、candidate-only extraction、
   non-authoritative reported decision claim與逐夜coverage assessment。
@@ -428,7 +391,7 @@ runtime gate就增加roadmap phase。
 M0 testing contract：
 
 - internal gate只跑Python compile、changed focused tests與直接predecessor compatibility；
-- 每個5.30–5.33 macro phase、push／PR與release才跑完整offline suite、三個real-trip validators與
+- 每個5.30–5.33 macro phase、push／PR與release才跑完整offline suite、local private-trip validators與
   `trips/*/data` aggregate hash；
 - default exact-chain fixtures可共用frozen、process-local checkpoint；任何帶explicit arguments的
   alternate branch、drift、tamper、expiry或rollback fixture一律繞過cache並獨立建立；
@@ -537,7 +500,7 @@ Exit gate：
   與 structured `CheckReport`。
 - hard constraints、missing evidence、跨午夜、DST、return-to-base 與跨日 overlap
   均有 adversarial regression。
-- kernel 接入 `scripts/check.sh`；現有三趟 local trips 保持可讀且未改寫。
+- kernel 接入`scripts/check.sh`；local private-trip corpus保持可讀且未改寫。
 
 ### 2026-07-27 — Phase 1 完成
 
@@ -552,8 +515,8 @@ Exit gate：
 - 多 agent adversarial review 修正了 protected ordering bypass、partial failed draft、
   false derived invalidation、whitespace/control ID、broken symlink 與 alias-dependent
   migration digest。
-- Exit evidence：107 個離線測試全過；三個 real-trip validators 全過；29 個 local
-  trip files 在 Phase 1 前後 byte-for-byte 相同。
+- Exit evidence：107個離線測試與local private-trip validators全過；
+  private-data pre/post check matched，exact inventory與digest不進Git。
 
 ### 2026-07-27 — Phase 2 完成
 
@@ -575,7 +538,7 @@ Exit gate：
   accounting、volatile/colliding issue identity、operation-field overreach 與
   post-commit read ambiguity。
 - Exit evidence：153 個離線測試全過，其中 38 個為 Phase 2 contract/controller
-  專項；三個 real-trip validators 全過；29 個 local trip files 仍
+  專項；local private-trip validators 全過；local private trip corpus 仍
   byte-for-byte 相同；未呼叫 provider、未 render、未 deploy。
 
 ### 2026-07-28 — Phase 3A 排程核心完成
@@ -606,9 +569,7 @@ Exit gate：
   persisted `needs_verification` 會進 `WAITING_EXTERNAL`，internal mismatch
   進 `OUTCOME_UNKNOWN`。
 - Exit evidence：Phase 3 專項 89 個、staging 專項 28 個、全套 243 個離線
-  tests 全過；三個 real-trip validators 全過；29 個 local trip files hash
-  aggregate 維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  tests 全過；local private-trip validators 全過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - 多 agent contract、race、product 與 final adversarial audit 均未留下
   P0/P1；未呼叫 provider、未 render、未 deploy、未加入 OR-Tools dependency。
 
@@ -636,9 +597,7 @@ Exit gate：
   真實／adversarial fixture 在固定 budget 下出現可重現失敗，才重啟隔離
   CP-SAT spike。
 - Exit evidence：solver-selection 16 個、Phase 3 專項 105 個、全套 259 個
-  離線 tests 全過；三個 real-trip validators 全過；29 個 local trip files
-  hash aggregate 仍為
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  離線 tests 全過；local private-trip validators 全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫 provider、未 render、未 deploy、未改動 trips、未加入 OR-Tools。
 
 ### 2026-07-28 — Phase 4.0 facts/policy foundation 完成
@@ -655,9 +614,7 @@ Exit gate：
   `MEMORY_ONLY`。受限制values、signed URI、dynamic attribution與secret
   sentinel不進safe repr/durable binding。
 - 多agent code、test與policy audit未留下P0/P1；Phase 4專項66個、全套325個
-  離線tests全過，三個real-trip validators全過，29個trip files hash
-  aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  離線tests全過，local private-trip validators全過，private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### 2026-07-28 — Phase 4.1A trusted-clock EvidenceStore 完成
@@ -682,9 +639,7 @@ Exit gate：
   orphan TTL temp、generation overflow、size exception、false replay、rename
   lost-ack與snapshot misbinding均已加入回歸。
 - Exit evidence：facts專項68個、EvidenceStore專項28個、全套355個離線tests
-  全過；三個real-trip validators全過；29個local trip files hash aggregate
-  維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  全過；local private-trip validators全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### 2026-07-28 — Phase 4.1B offline composition / revision wiring 完成
@@ -705,9 +660,8 @@ Exit gate：
   re-exec並重啟Tailscale而中斷；最後一次成功repo write是06:13:42 UTC。
   恢復檢查未發現半寫檔、pending lock、舊process或trip資料變動，從該
   checkpoint續作而非重跑或覆寫。
-- Exit evidence：全套400個離線tests、三個real-trip validators與Python
-  compile全過；29個local trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- Exit evidence：全套400個離線tests、local private-trip validators與Python
+  compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### 2026-07-28 — Phase 4.1B post-review hardening
@@ -727,9 +681,7 @@ Exit gate：
   canonical為developer preview；舊writer不得繞過`TripStore` / typed
   `PlanPatch`直接修改`plan.json`，完整`tripctl`仍留在Phase 5。
 - 兩輪低成本獨立review找出的P1均已加入回歸並複驗關閉。全套413個離線tests、
-  三個real-trip validators與Python compile全過；29個trip files hash
-  aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  local private-trip validators與Python compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 - 已知後續hardening：same-directory temp與`os.replace()`仍以pathname操作；
   對能在不遵守advisory lock下rename data directory的同uid actor，完整防護需
@@ -760,9 +712,7 @@ Exit gate：
   normalization collision、endpoint偽造、policy migration full reset與
   two-stage write-result錯報均已修正並加入regression。Phase 4.2專項19個、
   facts/identity共91個、全套441個offline
-  tests、三個real-trip validators與Python compile全過；29個trip files hash
-  aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  tests、local private-trip validators與Python compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### 2026-07-28 — Phase 4.3 Routes offline exit gate 完成
@@ -784,10 +734,9 @@ Exit gate：
   會rebase並拒絕舊response，retention/clock rollback fail closed，global與
   multi-key provider problem維持原始identity並進`outcome_revision`。
 - 低成本獨立review指出的durable-drift stale response、problem identity改寫、
-  fallback缺typed outcome與E2E disclosure缺口均已補上回歸。最終test與trip
-  hash證據為472個offline tests、三個real-trip validators，以及29個trip
-  files aggregate
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  fallback缺typed outcome與E2E disclosure缺口均已補上回歸。最終test證據為
+  472個offline tests與local private-trip validators；private-data pre/post check
+  matched，exact corpus inventory與digest不進Git。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，Phase 5 CLI/interface不在本slice。
 
@@ -816,9 +765,8 @@ Exit gate：
   `--legacy-full-mask-cache`明確承認quarantine。
 - 獨立review找到的send/completion跨午夜、session digest不一致、等價current
   誤判衝突與provider/manual slack邊界均已修正並加入回歸。Busan／Hokkaido
-  canned E2E與全套514個offline tests、三個real-trip validators、Python
-  compile全過；29個trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  canned E2E與全套514個offline tests、local private-trip validators、Python
+  compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - 未呼叫真實provider、未render、未deploy、未修改`trips/`；live API驗收仍需
   明確授權，下一個 slice 是 Phase 4.5 固定交通邊界、住宿候選與共同最佳化。
 
@@ -848,17 +796,15 @@ Exit gate：
 - 修正canonical plan缺`slug`時，`plan_to_trip_state()`誤用隨機temporary directory
   名稱的既有不確定性；fallback現在固定使用canonical `trip_id`，同一plan可重播成
   相同state digest。
-- 24個4.6A專項、全套624個offline tests、三個real-trip validators與Python compile
-  全過；29個trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。未呼叫
+- 24個4.6A專項、全套624個offline tests、local private-trip validators與Python compile
+  全過；private-data pre/post check matched（exact inventory與digest不進Git）。未呼叫
   provider、未render、未deploy、未修改`trips/`；下一個slice是4.6B legacy evidence
   migration / cleanup preview。
 
-**遠端 closure checkpoint：** 2026-07-30 已將經過低成本架構、安全與產品複審的
-Phase 4.6A implementation commit `4368a64`推送至
-`origin/feat/tainan-2026-revival`。此點視為read-only readiness projection的封版
-邊界；後續工作從4.6B另起，不在4.6A內默默擴張provider、confirmation或mutation
-authority。
+**歷史 closure checkpoint：** Phase 4.6A implementation commit `4368a64`已完成
+架構、安全與產品複審並推送。此點只標示read-only readiness projection封版；branch
+名稱與private operational context不寫入public roadmap，後續工作也不得由此擴張
+provider、confirmation或mutation authority。
 
 ### 2026-08-02 — Phase 4.6B legacy evidence / cleanup preview 完成
 
@@ -881,12 +827,12 @@ authority。
   都仍需要`places_cache.json`；history/current EvidenceStore與未知cache亦只標示
   review／out-of-scope，沒有任何刪除seam。真正cleanup仍必須由使用者先審閱exact
   preview後另開受控操作。
-- 三個local legacy trips的只讀acceptance重現65 API／6 manual travel edges、80
-  place IDs、84 coordinate pairs與81 Places cache entries；trip
-  bytes保持不變。新增11個4.6B專項測試，涵蓋分類、redaction、source drift、
+- Local legacy private-trip corpus的只讀acceptance重現既有API／manual travel edge與
+  Places cache分類；exact inventory與counts不寫入public roadmap，trip bytes保持不變。
+  新增11個4.6B專項測試，涵蓋分類、redaction、source drift、
   symlink／oversize、hostile JSON、presence-only out-of-scope artifacts、canonical
-  compatibility、CLI與real-trip inventory；全套635個offline tests、Python compile與
-  三個real-trip validators全過。
+  compatibility、CLI與local private-trip compatibility；全套635個offline tests、Python compile與
+  local private-trip validators全過。
 - 下一個需要使用者檢查的邊界是：審閱這份legacy evidence preview，決定是否授權
   真實provider exit gate或另行定義cleanup；不能藉此preview自動migration或清理。
 
@@ -907,9 +853,8 @@ authority。
   readiness 需要 exact trusted snapshot／runtime composition，不能由 disk-only CLI
   偽造；目前沒有 real canonical trip 作為驗收目標。
 - 新增八個離線 contract tests，涵蓋 redaction、determinism、source drift、unsafe
-  source repair、JSON-only help/version/error envelope、canonical refusal與三個實際
-  legacy trips 的 byte-for-byte 不變性。
-  完整 compile／offline suite／real-trip validators均通過；未呼叫 provider、未修改
+  source repair、JSON-only help/version/error envelope、canonical refusal與local legacy private-trip corpus 的 byte-for-byte 不變性。
+  完整compile／offline suite／local private-trip validators均通過；未呼叫provider、未修改
   `trips/`。
 - `inspect` 仍只處理 evidence / cleanup review；後續的 canonical interface 仍必須等
   canonical trip 與 trusted runtime snapshot 的明確需求出現後，再另行設計 injected-runtime
@@ -937,8 +882,8 @@ authority。
   或 canonical readiness。
 - 新增八個 Phase 5.1 regression cases，覆蓋 deterministic/redacted output、source drift、
   malformed/unsafe source、redacted loader failure、canonical early/late refusal、JSON-only
-  CLI、三個 real legacy trip acceptance 與 byte-for-byte tree preservation。完整 667 個
-  offline tests、Python compile 與三個 real-trip validators 均通過；未呼叫 provider、
+  CLI、local legacy private-trip acceptance 與 byte-for-byte tree preservation。完整 667 個
+  offline tests、Python compile 與local private-trip validators 均通過；未呼叫 provider、
   未修改 `trips/`。
 - 下一個大段落仍應是有明確 canonical trip / trusted runtime snapshot 需求後的 interface
   design；不在這個 legacy-only validate 內加入 score、proposal、apply 或任何 mutation。
@@ -952,13 +897,12 @@ authority。
   status、下一步及 allowlisted aggregate 類別，並明示離線結果不確認即時交通、營業、空位
   或訂位；沒有寫入按鈕、localStorage、provider call 或新增公開檔案範圍。
 - 新增三個離線 regression cases，覆蓋 hostile input redaction、rejected validation 的固定
-  unavailable state，以及石垣島真實資料在 temporary copy 的 renderer integration；實際
-  Ishigaki render 的 review segment 不含 raw issue token、place ID、coordinates 或 evidence
-  欄位，且三個 `trips/*/data` sources hash 保持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
-- 完整 670 個 offline tests、Python compile 與三個 real-trip validators 均通過。經使用者
-  明確授權後，已只發布 root index、三個 generated trip HTML 與 ICS 到既有 GitHub Pages
-  `gh-pages`；不提交或修改開發分支，未呼叫 provider。
+  unavailable state，以及local private fixture在temporary copy的renderer integration；rendered
+  review segment不含raw issue token、place ID、coordinates或evidence欄位，private-data
+  pre/post check matched。
+- 完整offline tests、Python compile與local private-trip validators均通過。Phase 6.0以前的
+  legacy Pages artifacts不受此slice的privacy boundary保護；其稽核、替換或下架仍須另行
+  明確授權。本切片未修改開發分支trip data，也未呼叫provider。
 
 ### 2026-08-03 — Phase 5.3 private guided future-trip draft 完成
 
@@ -979,8 +923,7 @@ authority。
   邊界，任何未來寫入仍必須走獨立 trusted host gate。新增12個專項回歸，涵蓋最小追問、模糊日期、
   candidate/unverified claim、住宿衝突、redaction、order invariance、duplicate rejection、
   no-I/O import boundary與forged review refusal。完整691個offline tests、Python compile
-  與三個real-trip validators通過；`trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+  與local private-trip validators通過；private-data pre/post check matched（exact inventory與digest不進Git）。
 
 ### 2026-08-03 — Phase 5.4 private guided direction-card review 完成
 
@@ -1000,8 +943,8 @@ authority。
   private token 只防一般誤用，不構成安全邊界，未來寫入仍需獨立 trusted host gate。
 - 只有 `REVIEW_REQUIRED` 可向使用者顯示 raw cards 與固定 disclosure；
   `NEEDS_REFINEMENT` 必須先在私有層補齊 user-stated must-do 的 declared coverage，不能顯示
-  不完整卡片或要求 A／B 取捨。完整701個offline tests、Python compile 與三個real-trip
-  validators通過；`trips/` source working tree 維持未變。
+  不完整卡片或要求 A／B 取捨。完整701個offline tests、Python compile與local private-trip
+  validators通過；`trips/` source working tree維持未變。
 
 ### 2026-08-03 — Phase 5.5 private guided direction-preference handoff 完成
 
@@ -1018,9 +961,8 @@ authority。
   title、rationale、使用者原文、日期或位置。偏好及原方向卡持續是
   `candidate + unverified`，不會建立 trip、選定景點、呼叫 provider、render、CLI、
   `PlanPatch`或任何 canonical write。
-- 完整711個offline tests、Python compile與三個real-trip validators均通過；
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- 完整711個offline tests、Python compile與local private-trip validators均通過；
+  private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`。
 
 ### 2026-08-04 — Phase 5.6 source-preserving private direction refinement 完成
@@ -1039,9 +981,8 @@ authority。
   日期、位置或使用者原文。
 - 整合方向固定仍是`candidate + unverified`且`supports_authoritative_use=false`；沒有CLI、
   parser、provider、schedule、trip creation、render、deploy、confirmation或apply path。
-  新增14個專項回歸；完整725個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  新增14個專項回歸；完整725個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個切片才會處理使用者對整合方向的明確「接受／繼續調整」回覆；在新的exact binding與
   review contract完成前，不把`review_required`當成confirmation或建立行程的授權。
 
@@ -1059,9 +1000,8 @@ authority。
   到current private `TripBriefDraft`，再重新細化；response schema不保存自由文字。
 - handoff固定是`candidate + unverified`且`supports_authoritative_use=false`；沒有trip creation、
   schedule、provider、filesystem/store write、render、deploy、confirmation或apply path。新增7個
-  專項回歸；完整732個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  專項回歸；完整732個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 
 ### 2026-08-04 — Phase 5.8 source-only relative-day itinerary candidate 完成
 
@@ -1081,9 +1021,8 @@ authority。
   不得serialize、log或persist。結果固定為`candidate + unverified`且
   `supports_authoritative_use=false`，沒有provider、scheduler、trip creation、filesystem/store
   write、render、deploy、confirmation或apply path。
-- 新增11個專項回歸；完整743個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增11個專項回歸；完整743個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片才處理使用者對目前private itinerary candidate的明確「接受／繼續調整」回覆；
   在新的exact response binding完成前，`review_required`不是provider、schedule、trip creation或
   canonical mutation授權。
@@ -1105,9 +1044,8 @@ authority。
   boundary ID、日期、位置、route value或使用者原文。handoff固定仍是`candidate + unverified`、
   non-executable且`supports_authoritative_use=false`；沒有scheduler、trip creation、filesystem/store
   write、render、deploy、selection、booking、confirmation或apply path。
-- 新增8個專項回歸；完整751個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增8個專項回歸；完整751個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片才設計純offline、typed的private evidence-requirement plan；在該contract完成前，
   不從自由文字猜provider payload，也不建立request、呼叫API或取得任何外部動作授權。
 
@@ -1126,9 +1064,8 @@ authority。
 - 完整plan只把下一步標成`prepare_private_provider_scope_review`；這只是下一個private planning
   seam，不建立provider request、不呼叫API、不授權scope，也沒有CLI、scheduler、trip creation、
   filesystem/store write、render、deploy、confirmation或apply path。
-- 新增10個專項回歸；完整761個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增10個專項回歸；完整761個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.11 bounded private provider-scope review：先以typed、可審閱的範圍、
   cost與資料使用邊界取得使用者明確決定；在該contract及回覆binding完成前仍不建立request、
   不呼叫provider。
@@ -1151,9 +1088,8 @@ authority。
   `candidate + unverified`且`supports_authoritative_use=false`，不跳成travel-ready或可執行。
 - 本切片沒有response parser/capture、provider request/call、credential access、pricing lookup、CLI、
   scheduler、trip creation、filesystem/store write、render、deploy、confirmation或apply path。
-- 新增11個專項回歸；完整772個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增11個專項回歸；完整772個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.12 exact provider-scope response handoff：只綁定使用者明確的接受、
   縮小或取消回覆；即使接受也只前往另一個private policy/request planning seam，不建立request、
   不讀credential、不呼叫provider或授權外部動作。
@@ -1175,9 +1111,8 @@ authority。
   `candidate + unverified`且`supports_authoritative_use=false`。
 - 本切片沒有pricing／policy check、credential access、provider request/call、CLI、scheduler、trip
   creation、filesystem/store write、render、deploy、confirmation或apply path。
-- 新增8個專項回歸；完整780個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增8個專項回歸；完整780個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - Phase 5.3–5.12純offline guided-scope section至此收束。下一個external provider preflight必須在
   執行當下重新核對current pricing、provider policy／terms／retention、credential/session與exact
   request scope，並取得使用者明確參與；任何本段label或response都不能替代該邊界。
@@ -1224,9 +1159,8 @@ authority。
   `review_private_provider_execution_authorization`；`provider_calls_permitted=false`、
   `explicit_execution_authorization_required=true`，仍是`candidate + unverified`，不建立request、
   不讀credential、不呼叫provider、不寫trip、不render或deploy。
-- 新增10個專項回歸；完整790個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增10個專項回歸；完整790個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 同日secret-safe的live readiness檢查只得到Bitwarden locked、Google Maps／SerpApi key在當前
   process不可用，且Google billing region尚未由host證實；因此provider calls為0，也沒有
   建立fixture、讀取secret或改動trip data。
@@ -1263,9 +1197,8 @@ authority。
 - Phase 5.13 review另新增typed read-only cost properties，供response原樣繼承Google first-paid-tier
   planning estimate、SerpApi plan-credit cap與「所有provider是否都有currency list-rate estimate」；仍明示
   monthly free usage未查且試算不是hard cap。
-- 新增9個專項回歸；完整799個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增9個專項回歸；完整799個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 本切片沒有environment／vault access、provider request／call、CLI、scheduler、trip creation、
   filesystem／store write、render、deploy、confirmation或canonical apply path。
 - 下一個最小切片是Phase 5.15 private provider-execution target requirement plan：先分開
@@ -1298,9 +1231,8 @@ authority。
   `provider_scope_authorized=false`、`provider_requests_created=false`、`provider_calls_permitted=false`、
   `candidate + unverified`與`supports_authoritative_use=false`。沒有target binding、HTTP request、credential／
   env／vault access、provider call、store／trip write、scheduler、render、deploy或canonical apply path。
-- 新增8個專項回歸；完整807個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+- 新增8個專項回歸；完整807個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.16 exact private execution-target binding：只接受canonical
   private preimage或現有trusted evidence／request contracts，由contract自行計算digest並綁policy／snapshot／
   evidence revision；不接受caller單獨提供的digest。直到後續exact authorization response與
@@ -1334,8 +1266,7 @@ authority。
   已傳入的request contract、不讀credential、不呼叫provider，且固定`provider_scope_authorized=false`、
   禁止partial authorization／provider-result自動授權follow-up，維持`candidate + unverified`。
 - Correctness、product-contract與security agents均無剩餘actionable finding。新增9個專項回歸；完整
-  816個offline tests、Python compile與三個real-trip validators均通過。`trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  816個offline tests、Python compile與local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.17 private execution-authorization review：以本binding與重新提供的exact
   preimages產生可讓使用者理解的bounded target／資料傳送／exact-bound request-count review，並綁目前
   仍fresh的pricing／policy／retention／credential attestations；本階段仍不擷取authorization response、
@@ -1369,9 +1300,8 @@ authority。
   contract、HTTP request與觀察到的provider call counts都為0，沒有env／vault／credential access、trip write、
   scheduler、render、deploy或canonical apply path，維持`candidate + unverified`。
 - Correctness、product-contract與security agents的初審findings已修正，複核均無剩餘actionable finding。
-  新增10個專項回歸；完整826個offline tests、Python compile與三個real-trip validators均通過。
-  `trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  新增10個專項回歸；完整826個offline tests、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.18 exact execution-authorization response gate：只接受綁定同一份仍fresh私人
   review的`accept`／`request_smaller`／`cancel`；accept也只前進到獨立execution-time recheck／request-
   materialization gate，不能在capture或assessment內建立HTTP request、讀credential或呼叫provider。
@@ -1403,8 +1333,7 @@ authority。
   vault／credential access、network、trip／store write、scheduler、render、deploy、confirmation、canonical
   apply或authoritative-use path，維持`candidate + unverified`。
 - Correctness、product-contract與security agents均無actionable finding。新增9個專項回歸；Phase 5.17相容
-  tests與完整835個offline tests、Python compile、三個real-trip validators均通過。`trips/*/data` aggregate
-  hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  tests與完整835個offline tests、Python compile、local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.19 private execution-time recheck：只消費fresh Phase 5.18 accept response與同一
   批exact preimages，接受trusted host重新提供的current pricing／policy／retention／billing classification／
   boolean credential availability attestations並重驗endpoint freshness。它最多只前進到另一個exact request-
@@ -1433,8 +1362,7 @@ authority。
   write、scheduler、render、deploy、confirmation、canonical apply或authoritative-use path，維持
   `candidate + unverified`。
 - Correctness、product-contract與security agents均無actionable finding。新增10個專項回歸；Phase 5.18相容
-  tests與完整845個offline tests、Python compile、三個real-trip validators均通過。`trips/*/data` aggregate
-  hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  tests與完整845個offline tests、Python compile、local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.20 exact private request-materialization review：只消費fresh ready Phase 5.19與同一
   批exact preimages，產生可讓使用者再次審閱的typed provider-request contract candidate與exact transmitted
   fields／bound count；本切片仍不得建立HTTP request、讀取credential、授權或呼叫provider，且任一recheck
@@ -1465,8 +1393,7 @@ authority。
   apply或authoritative-use path，維持`candidate + unverified`。
 - Correctness、product-contract與security agents的初審與delta複核均無剩餘actionable finding；產品命名建議
   已採納。新增10個專項回歸，含四種materialization surfaces與1 topic／2 requests edge；完整855個offline
-  tests、Python compile、三個real-trip validators均通過。`trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  tests、Python compile、local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.21 exact request-materialization response gate：只擷取同一份仍fresh私人review的
   typed `prepare_materialization`／`request_smaller`／`cancel`。Prepare也只前進到另一個exact provider-request
   contract materialization gate；capture／assessment內仍不得建立executable request／HTTP request、讀取
@@ -1498,9 +1425,7 @@ authority。
   counts皆為0；沒有env／vault／credential access、network、trip／store write、scheduler、render、deploy、
   confirmation、canonical apply或authoritative-use path，維持`candidate + unverified`。
 - Correctness、product-contract與security agents均無actionable finding。新增9個專項回歸，含三分支、
-  1 topic／2 requests與SerpApi credit；Phase 5.20相容tests與完整864個offline tests、Python compile、三個
-  real-trip validators均通過。`trips/*/data` aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  1 topic／2 requests與SerpApi credit；Phase 5.20相容tests與完整864個offline tests、Python compile、local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.22 exact private provider-request contract materialization：只消費fresh
   `prepare_materialization` response與同一批exact preimages，再準備token-gated、不可送出的provider request
   contracts；仍不建立HTTP transport、注入／讀取credential或呼叫provider，且必須保留另一個explicit send
@@ -1531,9 +1456,8 @@ authority。
   `prepare_private_provider_request_send_authorization_review`。
 - Correctness、product-contract與security agents均無actionable finding。新增10個Phase 5.22專項回歸，含四種
   typed request surfaces、1 topic／2 requests、SerpApi credit、expiry／drift／redaction／token-gating；Phase 5.21
-  相容tests與完整874個offline tests、Python compile、三個real-trip validators均通過。`trips/*/data`的23個
-  files aggregate hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改
-  `trips/`。
+  相容tests與完整874個offline tests、Python compile、local private-trip validators均通過；private-data
+  pre/post check matched，未修改`trips/`。
 - 下一個最小切片是Phase 5.23 exact private provider-request send-authorization review：只消費fresh Phase 5.22
   materialization與同一批exact preimages，讓使用者在任何transport／credential binding前再次審閱將送出的
   exact contracts。此review本身仍不得選endpoint／HTTP method、建立HTTP request、讀取credential、授權或
@@ -1563,9 +1487,7 @@ authority。
   authoritative-use path，維持`candidate + unverified`。
 - Correctness與security agents無actionable finding；product-contract agent提出的P2 metadata命名一致性已修正並
   複核clean。新增9個Phase 5.23專項回歸，含四種typed private surfaces、1 topic／2 requests、SerpApi credit、
-  expiry／drift／redaction／token-gating；Phase 5.22相容tests與完整883個offline tests、Python compile、三個
-  real-trip validators均通過。`trips/*/data`的23個files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  expiry／drift／redaction／token-gating；Phase 5.22相容tests與完整883個offline tests、Python compile、local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.24 exact provider-request send-authorization response gate：只擷取同一份仍fresh
   private review的typed `accept_send`／`request_smaller`／`cancel`，不解析free text、不接受caller digest或
   target／cap mutation。Response capture與assessment本身仍不得選transport、綁credential、建立HTTP request或
@@ -1597,9 +1519,8 @@ authority。
   canonical apply或authoritative-use path，維持`candidate + unverified`。
 - 新增9個Phase 5.24專項回歸，含三分支、exact enum、1 topic／2 requests、SerpApi credit、expiry／drift／
   redaction／token-gating與module isolation；Phase 5.23相容test已窄化為允許intentional typed response API但仍
-  禁止review module直接capture、send或network。完整892個offline tests、Python compile、三個real-trip
-  validators均通過。`trips/*/data`的23個files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  禁止review module直接capture、send或network。完整892個offline tests、Python compile、local private-trip
+  validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是獨立private provider-request send-preparation contract：只消費fresh Phase 5.24
   `accept_send` response、同一批exact preimages與materialized contracts，將它們綁到allowlisted transport
   profile、endpoint／HTTP method與credential slot。該切片仍不得讀取credential value、建立credential-bearing
@@ -1632,9 +1553,8 @@ authority。
   `prepare_private_provider_request_credential_binding_review`，不是credential binding或live send。
 - 新增9個Phase 5.25專項回歸，涵蓋四種official transport profile、exact `accept_send`、1 topic／2 requests、
   SerpApi plan credit、expiry／drift／redaction／token-gating與module isolation；Phase 5.24相容9 tests亦全過。
-  完整901個offline tests（934.691秒）、Python compile與三個real-trip validators均通過。
-  `trips/*/data`的23個files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  完整901個offline tests（934.691秒）、Python compile與local private-trip validators均通過。
+  private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.26 exact private provider-request credential-binding review：只消費fresh Phase 5.25
   transport-bound bundle、同一批exact preimages與完整context，產生本次current-user可審閱的transport／credential
   slot handoff及typed response options。該review仍不得讀取credential value或env／vault、建立HTTP request或
@@ -1662,8 +1582,7 @@ authority。
   schedule、render、deploy、confirmation或canonical mutation，結果維持`candidate + unverified`。
 - 新增8個Phase 5.26專項回歸，涵蓋四transport profiles、ephemeral exact non-identifier payload、1 topic／2
   requests、expiry／drift／redaction／token-gating與module isolation；Phase 5.25相容9 tests亦全過。完整909個
-  offline tests（1226.797秒）、Python compile與三個real-trip validators均通過。`trips/*/data`的23個files
-  aggregate hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  offline tests（1226.797秒）、Python compile與local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.27 exact credential-binding response-only gate：只擷取同一份仍fresh Phase 5.26 review
   的typed `accept_credential_binding`／`request_smaller`／`cancel` enum，並在original／current trusted UTC以同一批
   preimages重驗完整chain。Acceptance仍只能準備另一個明確live credential-binding gate，不得讀key value、
@@ -1694,8 +1613,7 @@ authority。
 - 新增9個Phase 5.27專項回歸；一條完整exact-chain E2E搭配enum／三分支、original／current recheck、上游失效
   傳遞、rollback／tamper、redaction、token-gating、aggregate preservation與module isolation測試，9 tests均通過
   （217.595秒）；Phase 5.26相容8 tests亦全過（289.957秒）。完整918個offline tests（1438.298秒）、Python
-  compile與三個real-trip validators均通過。`trips/*/data`的23個files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  compile與local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.28 explicit live credential-binding gate preparation／review：只消費fresh Phase 5.27
   exact accept response、同一批exact preimages與完整context，先以host提供的boolean credential／session
   availability attestation fail closed，再產生本次current-user可審閱的單次live binding handoff。該切片不得在
@@ -1729,9 +1647,8 @@ authority。
 - 新增9個Phase 5.28專項回歸；一條完整Phase 5.27 accept→Phase 5.28 preparation E2E搭配available／unavailable、
   slot coverage、exact accepted branch、original／current recheck、upstream failure propagation、rollback／expiry／
   tamper、redaction、token-gating與module isolation測試，9 tests均通過（222.966秒）；Phase 5.27相容9 tests
-  亦全過（220.130秒）。完整927個offline tests（1673.606秒）、Python compile與三個real-trip validators均
-  通過。`trips/*/data`的23個files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  亦全過（220.130秒）。完整927個offline tests（1673.606秒）、Python compile與local private-trip validators均
+  通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 下一個最小切片是Phase 5.29 exact live credential-binding response-only gate：只擷取同一份仍fresh Phase 5.28
   review的typed `accept_live_credential_binding`／`request_smaller`／`cancel` enum，並在original／current trusted
   UTC以同一批preimages與availability attestations重驗完整chain。Acceptance仍只能準備另一個明確ephemeral
@@ -1765,8 +1682,7 @@ authority。
 - 新增10個Phase 5.29專項回歸；一條完整Phase 5.28 review→Phase 5.29 capture E2E搭配三分支、exact enum、
   blocked review、original／current recheck、rollback／expiry／tamper、redaction、aggregate preservation、token-gating與
   module isolation，10 tests均通過（461.605秒）；Phase 5.28相容9 tests亦全過（225.245秒）。完整937個offline
-  tests（2162.881秒）、Python compile與三個real-trip validators均通過。`trips/*/data`的23個files aggregate hash
-  維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未修改`trips/`。
+  tests（2162.881秒）、Python compile與local private-trip validators均通過。private-data pre/post check matched（exact inventory與digest不進Git），未修改`trips/`。
 - 此checkpoint後先執行M0 rebaseline與測試收斂，不再逐一新增runtime-gate phase。下一個產品切片是上方
   有限計畫中的Phase 5.30 composed pre-execution facade；Phase 5.13–5.29則凍結為
   `Provider Execution Safety Reference v1`，不得刪除、弱化或以新抽象重寫。
@@ -1785,11 +1701,9 @@ authority。
   live credential review／response graph。沒有刪除或改寫任一既有test method、assertion、production module或
   Safety Reference contract。
 - Phase 5 focused 277 tests全過（6.735秒）；最深的Phase 5.28–5.29 compatibility 19 tests全過
-  （0.314秒）。完整937個offline tests全過（27.656秒），完整`bash scripts/check.sh`含Python compile與三個
-  real-trip validators共30.07秒，低於M0約15分鐘目標；相較Phase 5.29 checkpoint的2162.881秒test baseline，
+  （0.314秒）。完整937個offline tests全過（27.656秒），完整`bash scripts/check.sh`含Python compile與local private-trip validators共30.07秒，低於M0約15分鐘目標；相較Phase 5.29 checkpoint的2162.881秒test baseline，
   test runtime約縮短78倍。
-- `trips/*/data`仍為23個files，aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。本M0沒有修改`trip_planner/`、
+- private-data pre/post check matched（exact inventory與digest不進Git）。本M0沒有修改`trip_planner/`、
   `scripts/`、`trips/`或使用者既有`.envrc.example`變更，沒有provider call、credential access、render、
   deploy或canonical mutation。
 
@@ -1809,9 +1723,7 @@ authority。
   request fingerprint。Safe review只保留public slot／profile／request／cost／credit aggregates與immutable
   assessment-time state，不顯示credential、query、provider／local ID、private time或fingerprint。
 - 兩位獨立agent完成correctness／security／integration重驗，沒有blocking finding。新增10個Phase 5.30專項回歸；
-  Phase 5.25、5.29、5.30共29個focused tests全過。完整947個offline tests（27.862秒）、Python compile與三個
-  real-trip validators均通過；23個trip data files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+  Phase 5.25、5.29、5.30共29個focused tests全過。完整947個offline tests（27.862秒）、Python compile與local private-trip validators均通過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - 本phase沒有內建transport、network或provider call，也沒有EvidenceStore／TripStore、schedule、render、deploy或
   canonical mutation；沒有讀取真實credential或修改`trips/`。下一個macro phase是5.31 bounded injected-transport
   execution與private quarantine；不為非阻斷hardening另增phase。
@@ -1835,9 +1747,8 @@ authority。
   `candidate + unverified`；本phase沒有generic normalizer、AuthorizedProviderResult、EvidenceStore／EvidenceSession、
   TripStore／PlanPatch、schedule、render、deploy或canonical write。
 - 兩位獨立agent完成architecture/security與Phase 5.32 integration重驗。新增22個Phase 5.31專項回歸；Phase 5.25、
-  5.29、5.30、5.31共51個focused tests全過。完整969個offline tests（29.365秒）、Python compile與三個real-trip
-  validators均通過；23個trip data files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。全程沒有讀取真實credential、呼叫live
+  5.29、5.30、5.31共51個focused tests全過。完整969個offline tests（29.365秒）、Python compile與local private-trip
+  validators均通過；private-data pre/post check matched（exact inventory與digest不進Git）。全程沒有讀取真實credential、呼叫live
   provider、修改`trips/`或deploy；下一個macro phase是5.32 provider-specific evidence-to-canonical workflow。
 
 ### 2026-08-08 — Phase 5.32 provider evidence-to-canonical workflow 完成
@@ -1865,10 +1776,7 @@ authority。
   migration no-replace、informed review、controller/stager authority、conflicting response、clock rollback、wrong-root replay、
   post-commit evidence drift及domain replay output。獨立integration review在final snapshot無blocking finding；
   architecture/security review提出的5.32 lost-ACK與domain composition缺口已補回，migrated baseline明確保留給5.33，
-  最終本地架構／安全快驗無剩餘5.32 blocking finding。完整1007個offline tests（29.550秒）、Python compile與三個
-  real-trip validators均通過；23個
-  trip data files aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+  最終本地架構／安全快驗無剩餘5.32 blocking finding。完整1007個offline tests（29.550秒）、Python compile與local private-trip validators均通過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - 本phase全程使用temporary stores與injected canned responses；沒有讀取真實credential、呼叫live provider、修改
   `trips/`、render或deploy。下一個且最後一個Phase 5 macro phase是5.33 unified `tripctl`、resume／retry、migrated
   baseline adoption、skill及Busan／Hokkaido canned product acceptance。
@@ -1906,8 +1814,7 @@ authority。
   review、apply或canonical write authority，也不能宣稱`travel_ready`。
 - 新增6個第二切片regressions，涵蓋deterministic propose→score、safe score projection、missing evidence no-partial、ref／
   clock／revision drift、in-flight source drift、legacy early refusal、CLI跨invocation replay、redaction與read-only。第二切片
-  internal gate為12個Phase 5.33 tests加16個直接predecessor tests全過；Python compile、`git diff --check`與23個trip data
-  files aggregate hash另於checkpoint重驗。本切片沒有修改`trips/`、render、deploy或push。
+  internal gate為12個Phase 5.33 tests加16個直接predecessor tests全過；Python compile、`git diff --check`與private-data pre/post check另於checkpoint重驗。本切片沒有修改`trips/`、render、deploy或push。
 - Phase 5.33仍未完成。下一個安全切片應先接入exact runtime evidence composition與readiness／re-score，使proposal不再只是
   provisional；之後才進入typed apply review。真正canonical mutation仍須沿既有explicit enum response、authority、CAS與
   receipt boundary，不能由本score ref推導。
@@ -1954,8 +1861,7 @@ authority。
 - 新增5個第四切片regressions，涵蓋changed/no-op分流、typed expiry與non-serialization、private-review
   disclosure boundary、wrong ref／lodging context／clock rejection、staging-time evidence drift與零write；
   23個Phase 5.33 tests、13個Phase 5.32 canonical apply tests、36個schedule-staging tests及14個Phase 5.32
-  evidence-workflow tests全過。Python compile與`git diff --check`全過；23個trip data files aggregate
-  hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。本切片沒有修改`trips/`、呼叫
+  evidence-workflow tests全過。Python compile與`git diff --check`全過；private-data pre/post check matched（exact inventory與digest不進Git）。本切片沒有修改`trips/`、呼叫
   provider、讀取credential、render、deploy或push。
 - Phase 5.33仍未完成。本切片刻意不capture response、不執行commit，也不新增CLI `apply`；下一個安全
   邊界是以product-level typed response facade續接既有expiry／replay protection，並在temporary store
@@ -2028,9 +1934,7 @@ authority。
   canonical-gate及product predecessor tests全過。獨立反過度工程稽核確認此為最小必要one-time seam，未新增partial
   adoption、generic metadata editor、database/sidecar、新approval hierarchy、legacy reread、provider、真實trip write、
   render或deploy。
-- Commit前完整`./scripts/check.sh` exit 0：Python compile、1050個offline tests及Ishigaki／South Island／Tainan
-  三個read-only real-trip validators全過；未讀credential、未呼叫provider，23個`trips/*/data`檔案aggregate hash維持
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- Commit前完整`./scripts/check.sh` exit 0：Python compile、1050個offline tests及local private-trip validators全過；未讀credential、未呼叫provider，private-data pre/post check matched（exact inventory與digest不進Git）。
 - Phase 5.33仍未完成；repo skill敘述與本切片offline gate已完成，下一步只剩真正統一host interface、installed skill
   同步與另行授權的bounded live smoke。CLI不得為了字面上的`apply`序列化review、response或authority。
 
@@ -2054,58 +1958,23 @@ authority。
   request／cancel、lost ACK exact retry與rollback。獨立稽核抓出的rolled-back replay flag矛盾、新status vocabulary、
   baseline-specific next action及tuple annotation/export缺口均已修正；未發現新增安全或過度工程blocker。
 - Repo skill與installed skill已同步canonical-aware CLI及host-only apply邊界；installed skill保持114行並通過skill-creator
-  `quick_validate.py`。完整`./scripts/check.sh` exit 0：Python compile、1056個offline tests及Ishigaki／South Island／Tainan
-  三個read-only validators全過；23個`trips/*/data`檔案aggregate hash仍為
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+  `quick_validate.py`。完整`./scripts/check.sh` exit 0：Python compile、1056個offline tests及local private-trip validators全過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - Phase 5的離線exit gate已ready；剩餘唯一Phase 5 gate是另行明確授權的bounded live smoke。該gate會跨provider／credential／
   潛在cost邊界，本切片未讀credential、未呼叫provider、未修改真實trip、未render、deploy或push。
 
-### 2026-08-09 — Phase 5 bounded live-smoke operational handoff ready
+### 2026-08-09 — Phase 5 bounded live-smoke operational handoff（已取代）
 
-- Phase 5離線產品面已完成至`207f852`；`d486b29`只新增本機24小時provider credential
-  availability。它在使用者每日一次Bitwarden unlock後，只把Google必需／Serp optional的allowlisted key留在
-  `/run/user/$UID` private tmpfs；不保存`BW_SESSION`，也不建立或延長provider、canonical write或deploy authority。
-- Daily-session security regressions涵蓋fixed runtime root、`0600/0700`、atomic generation write、concurrent start、
-  stale timer、新boot、wall／BOOTTIME deadline與rollback、stale inherited Bitwarden session、TTY output refusal及
-  secret-free absolute user timer。實機用無credential假generation驗證timer可啟動後立即移除；commit時gitleaks通過。
-- 最終完整offline gate為Python compile、1072／1072 tests及Ishigaki／South Island／Tainan三個read-only validators；
-  post-cleanup focused dev-session＋Ishigaki gate為31／31。23個`trips/*/data`檔案aggregate hash仍為
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`，未render、deploy或修改trip data。
-- 先前同一對話中已執行一次bounded Ishigaki normal gate：使用者明選`B`（Kabira Marine Service，Kabira Bay
-  Glass Boat Reception），兩個identity request在memory內完成；唯一route request回安全分類`invalid_request`。
-  總attempts為identity 2／route 1，沒有持久化evidence或trip write。Stable、source-bound
-  `selection_binding_v2`為`f1f950458600437d7d8e788884de88fbed774992da79d667e6716275c3afc19e`。
-- 下一個且唯一未完成的Phase 5 gate是README已定義的minimal Routes diagnostic。對話中的使用者已明確允許目前
-  Ishigaki scope及必要的minimal／undated diagnostic，但本checkpoint不是authorization token；resume時仍須從目前
-  conversation確認scope，並由腳本重新驗source、fresh identity review、choice binding與credential availability。
-- 同一開發主機只需切換client即可續接。若是另一份clone，Git只同步程式碼；`trips/`、`.envrc`、`/run/user/$UID`
-  session與installed skill都是machine-local。不得把private trip推進Git；須另以使用者核准的private channel轉移
-  `trips/ishigaki-2026-10`，並以其data-only aggregate hash
-  `11c6546c5322d632913d295b2418bee46d827cfdc0f8bae625056ededa014b67`核對。
-- Resume的第一組命令固定如下；`status=inactive`時才由使用者在隱藏terminal執行一次`start`，不得在chat貼密碼或key：
-
-  ```bash
-  git fetch origin
-  git switch feat/tainan-2026-revival
-  git pull --ff-only origin feat/tainan-2026-revival
-  python3 scripts/trip_planner_dev_session.py status
-  python3 scripts/trip_planner_dev_session.py start  # only when inactive
-  direnv allow .
-  direnv reload
-  direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 \
-    --live --minimal-route-diagnostic --origin-choice B \
-    --origin-selection-binding-v2 f1f950458600437d7d8e788884de88fbed774992da79d667e6716275c3afc19e
-  ```
-
-- 若fresh review／source／binding漂移，必須在route前停止並重新展示選項；若credential inactive，零provider call；
-  若minimal diagnostic再次`invalid_request`，只有目前conversation仍涵蓋同一scope時才執行README的
-  `--undated-route-diagnostic`。Auth／quota／unknown failure不得blind retry。整個diagnostic只判斷request是否被接受，
-  body丟棄且不是route evidence；不得寫trip、render、deploy或宣稱`travel_ready`。完成並記錄bounded live gate後才凍結
-  Phase 5並正式轉入Phase 6。
+- 當時的離線產品面與daily credential-availability機制已ready；credential availability從未
+  建立provider、canonical write或deploy authority。
+- 這份handoff已由下方exit checkpoint取代。Private trip identifiers、venue choice、binding、
+  data fingerprint與replay command刻意不保存於public roadmap；歷史checkpoint不是authorization
+  token，不能用來重播任何provider call。
+- 該handoff期間的offline validation與private-data pre/post check matched；沒有trip write、
+  render或deploy。Exact local operational context僅能留在受保護的untracked private channel。
 
 ### 2026-08-09 — Phase 5 bounded live-smoke exit gate 完成
 
-- 使用者在目前conversation分別精確授權minimal與undated Routes diagnostics；兩次diagnostic都重驗既有
+- 該次bounded run分別取得minimal與undated Routes diagnostics的一次性精確授權；兩次diagnostic都重驗既有
   source-bound origin selection及必要preconditions。每次attempts固定為identity 2／route 1，沒有
   pagination、blind retry或scope擴張。
 - Minimal response-mask request保留原定`departureTime`時，Routes安全分類為`invalid_request`且
@@ -2114,11 +1983,31 @@ authority。
   的request shape一致，將診斷縮小到dated-request handling，但未證明第一次400 response的根因；它不建立任何
   行程路線的距離、時間或可行性證據。
 - 兩次diagnostic的provider response body皆在memory內丟棄，沒有建立EvidenceStore／legacy cache／canonical receipt，
-  `trip_files_modified=false`，也未render、deploy或push；private trip data與aggregate pre／post hashes都維持既有baseline。
-- Phase 5唯一剩餘的bounded live gate至此完成，macro phase凍結。結果只證明provider接受undated minimal request；所有
+  `trip_files_modified=false`，也未render、deploy或push；private-data pre/post check matched。
+- Phase 5唯一剩餘的bounded live gate至此完成，macro phase凍結。結果只證明provider在執行當時接受undated minimal request；所有
   route facts仍為unknown + unverified，不能宣稱`travel_ready`。兩次live授權均已一次性消耗；checkpoint、daily
   credential session、origin choice或selection binding都不是authority。後續產品工作進入Phase 6；任何未來provider
   call（即使相同scope）、canonical mutation、render或deploy，仍須通過各自fresh exact gate。
+
+### 2026-08-09 — Phase 6 tracked-repository privacy boundary 完成
+
+- 新增`docs/repository-privacy.md`，把README、docs、tracked skills、source、templates與tests明定為
+  public surfaces。只允許architecture contract、generic placeholder、明確標示的synthetic／canned
+  fixture與無值狀態；private path、venue／choice、exact command、provider context及由private data
+  衍生的digest／binding不得進Git。One-way hash不視為匿名化。
+- Public roadmap與provider contract已移除exact local corpus fingerprints、inventory與destination-bound
+  operational handoff；README不再發布private pilot的replay commands。已完成的一次性destination-bound
+  runner、專用regressions及legacy credential-bearing manual provider smoke從current tracked tree退役，沒有建立
+  generic live-provider CLI；其他private-flow tests改用synthetic labels或generic local-corpus discovery，且不再
+  固化private corpus inventory。
+- 新增structural tracked-Markdown lint，禁止raw 64-hex、concrete local trip path、runnable private live command
+  與exact choice argument，另拒絕tracked private trip tree與destination-bound gate paths；Markdown violation
+  只輸出`path:line:rule`，prohibited path只輸出count／category，兩者都不回顯matched content。Regex只是一層
+  guardrail，free text、source、tests與proper noun仍需人工semantic review。
+- 本slice只建立forward commit；沒有rewrite Git history、remote cache或既有published artifacts，也未呼叫
+  provider、讀credential、寫trip、render private trip、deploy或push；renderer regression只使用temporary
+  synthetic fixture。舊Git objects仍可能包含先前內容，任何history rewrite／remote takedown都需另外明確
+  授權。下一個產品slice是Phase 6.1A deterministic private ICS projection。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
@@ -2136,9 +2025,8 @@ authority。
 - 新增九個 offline regression cases，覆蓋 deterministic exact artifacts、private sentinel
   exclusion、HTML escaping、strict JSON、source／trip-template／index-template／ordering drift、
   source/template symlink、source hard link、兩個 directory-swap race 與 deploy early refusal。
-  完整 679 個 offline tests、Python compile 與三個 real-trip validators 均通過；
-  `trips/*/data` aggregate hash 仍是
-  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+  完整 679 個 offline tests、Python compile 與local private-trip validators 均通過；
+  private-data pre/post check matched（exact inventory與digest不進Git）。
 - 此變更沒有建立任何真實公開 trip 或 manifest、沒有呼叫 provider、沒有 deploy、沒有修改
   `trips/`。它不會回溯替換或移除既有 `gh-pages`；第一次安全發布仍需使用者審閱公開內容
   並另行要求外部動作。
@@ -2154,9 +2042,7 @@ authority。
   booked ryokan check-in。既有對抗性tests繼續覆蓋同分不自選、evidence缺口、
   expired review、forged grant與lost ACK。
 - 2個walkthrough tests加入離線suite；74個Phase 4.5專項、全套600個offline tests、
-  三個real-trip validators及Python compile全過。29個trip files hash aggregate
-  維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+  local private-trip validators及Python compile全過。private-data pre/post check matched（exact inventory與digest不進Git）。
 
 ### 2026-07-30 — Phase 4.5D canonical lodging confirmation / apply 完成
 
@@ -2182,9 +2068,8 @@ authority。
 - Busan驗收保留10:00 booked抵達與18:00 booked晚餐；Hokkaido驗收保留split stay及
   16:00 booked ryokan check-in。同分可由使用者明選但仍需grant；非confirmation
   evidence缺口會阻止4.5C projection。
-- 9個4.5D專項、72個Phase 4.5專項與全套598個offline tests、三個real-trip
-  validators及Python compile全過；29個trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 9個4.5D專項、72個Phase 4.5專項與全套598個offline tests、local private-trip
+  validators及Python compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.6
   readiness / compliance preview。
 
@@ -2205,9 +2090,8 @@ authority。
 - Busan canned acceptance包含固定10:00抵達邊界、每日住宿錨點與18:00 booked晚餐；
   Hokkaido包含A→B split stay、180分鐘冬季跨城leg、45分鐘明示buffer與16:00 booked
   ryokan check-in。同分不選winner，reported booking claim仍等待4.5D。
-- 8個4.5C專項、63個Phase 4.5 A/B/C專項與全套589個offline tests、三個real-trip
-  validators及Python compile全過；29個trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 8個4.5C專項、63個Phase 4.5 A/B/C專項與全套589個offline tests、local private-trip
+  validators及Python compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
   未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5D
   canonical lodging confirmation / apply。
 
@@ -2232,9 +2116,8 @@ authority。
   candidate + unverified。Result明確是non-provenance DTO；status與diagnostic ref不能
   進authorization、cache、evidence、receipt或decision；沒有`HOTEL_OFFER`
   promotion、availability或booking語意。
-- 55個Phase 4.5專項與全套569個offline tests、三個real-trip validators、Python
-  compile全過；29個trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 55個Phase 4.5專項與全套569個offline tests、local private-trip validators、Python
+  compile全過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - 未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5C joint
   lodging / itinerary scoring與Busan／Hokkaido canned acceptance。
 
@@ -2257,9 +2140,8 @@ authority。
 - README、facts contract、repo skill與已安裝Codex skill已移除正常航班搜尋流程；
   hotel search只屬candidate discovery，住宿decision與evidence分軸，legacy Build
   不得把AI/provider candidate寫成booking。
-- 22個4.5A專項與全套536個offline tests、三個real-trip validators、Python compile
-  全過；29個trip files hash aggregate維持
-  `8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+- 22個4.5A專項與全套536個offline tests、local private-trip validators、Python compile
+  全過；private-data pre/post check matched（exact inventory與digest不進Git）。
 - 未呼叫provider、未render、未deploy、未修改`trips/`；下一個slice是4.5B
   snapshot-bound lodging evidence與comparison-ready candidate。
 
@@ -2269,10 +2151,10 @@ authority。
   timezone-aware timeline simulator 與 structured `CheckReport`。
 - 43 個 adversarial offline tests 通過，涵蓋跨午夜、DST、完整 time
   window、travel / buffer / return、跨日重疊、mode 與 evidence uncertainty。
-- `scripts/check.sh` 已納入 kernel compile 與 tests；三個既有 local trip
+- `scripts/check.sh` 已納入 kernel compile 與 tests；既有local private-trip corpus
   仍通過原 validator。
-- 三個既有 trip 均可唯讀載入並誠實回報 `needs_verification`、0 errors；
-  驗證前後 29 個 trip files 內容 hash 完全相同。
+- 既有local private-trip corpus均可唯讀載入並誠實回報`needs_verification`；
+  private-data pre/post check matched，exact inventory與digest不進Git。
 - 獨立 adversarial review 的最終結論為無剩餘 P0 / P1；本階段未呼叫
   provider API、未部署，也未修改 `trips/`。
 - 下一個 implementation slice 是 Phase 1 的 stable ID、schema version、

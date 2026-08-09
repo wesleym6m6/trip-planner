@@ -1,8 +1,8 @@
 """
 Render a trip's HTML page from template + JSON data.
 
-Usage: python3 scripts/render_trip.py trips/vietnam-2026-05
-Output: trips/vietnam-2026-05/index.html
+Usage: python3 scripts/render_trip.py trips/{slug}
+Output: trips/{slug}/index.html
 """
 import json
 import sys

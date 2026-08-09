@@ -19,19 +19,17 @@ APIs used:
   - Places API (New):  places.googleapis.com — searchText endpoint
   - Routes API:        routes.googleapis.com — computeRoutes endpoint
 
-API Quota (project: maps-directions-202604):
-  - Places API (searchText):   600 QPM = 10 QPS  | 75,000/day
-  - Routes API (computeRoutes): check GCP console for current quotas
-  Quotas are per-project. Check current values:
-    gcloud auth print-access-token | xargs -I{} curl -s \
-      "https://serviceusage.googleapis.com/v1beta1/projects/maps-directions-202604/services/routes.googleapis.com/consumerQuotaMetrics" \
-      -H "Authorization: Bearer {}"
+Operational limits:
+  Quotas are project-specific and may change. Re-check the current Places and
+  Routes limits in the active GCP project before every authorized live use.
+  The batch defaults below are conservative historical tuning, not current
+  quota evidence.
 
 Parallelism strategy:
-  - Places:  batch 8 concurrent, 1.0s gap between batches (target ~8 QPS, under 10 QPS limit)
+  - Places:  batch 8 concurrent, 1.0s gap between batches
   - Routes:  batch 15 concurrent, 1.0s gap between batches
-  Each individual request within a batch fires simultaneously; the batch gap ensures
-  we stay under the per-minute quota. Do NOT raise batch sizes without verifying quota.
+  Each individual request within a batch fires simultaneously. Do not raise
+  batch sizes without verifying the current project quota and cost boundary.
 """
 import json
 import os
@@ -73,8 +71,8 @@ MODE_TO_API = {
     "two_wheeler": "TWO_WHEELER",
 }
 
-# --- Quota-derived constants (see docstring for source) ---
-PLACES_BATCH_SIZE = 8       # 10 QPS limit, leave 20% headroom
+# --- Conservative legacy defaults; not current quota evidence ---
+PLACES_BATCH_SIZE = 8
 PLACES_BATCH_DELAY = 1.0    # seconds between batches
 ROUTES_BATCH_SIZE = 15
 ROUTES_BATCH_DELAY = 1.0

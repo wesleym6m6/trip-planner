@@ -698,8 +698,7 @@ preview本身不提供delete、apply、migration或provider seam。
   不沿用舊score，也不把已確認的canonical write誤稱unknown；
 - safe `repr()` / `to_dict()`只保留redacted identity / digest；provider-derived
   route values、source URI與live attribution不進review、receipt或history。
-- Phase 4 facts/store/composition專項116個、全套400個離線tests與三個
-  real-trip validators全過；未呼叫真實provider或修改`trips/`。
+- Phase 4 facts/store/composition專項116個、全套400個離線tests與local private-trip validators全過；未呼叫真實provider或修改`trips/`。
 
 ### Phase 4.2 — Minimal Places identity（完成）
 
@@ -723,7 +722,7 @@ preview本身不提供delete、apply、migration或provider seam。
   identity，factory-only endpoint再綁provider ID/value digest；safe binding
   只公開observation/value/endpoint digests。
 - 本slice不含HTTP transport；19個identity專項、91個facts/identity tests與
-  全套441個offline tests通過，三個real-trip validators通過，未呼叫provider
+  全套441個offline tests通過，local private-trip validators通過，未呼叫provider
   或修改`trips/`。
 
 ### Phase 4.3 — Routes end-to-end（offline exit gate完成）
@@ -747,7 +746,7 @@ preview本身不提供delete、apply、migration或provider seam。
   composition → timeline disclosure；
 - offline gate通過後才可在明確授權下做真實API驗收；本checkpoint未呼叫
   provider、未render、未deploy，也未修改`trips/`。472個offline tests與
-  三個real-trip validators通過。
+  local private-trip validators通過。
 
 ### Phase 4.4 — Places profile / hours（offline exit gate完成）
 
@@ -775,7 +774,7 @@ preview本身不提供delete、apply、migration或provider seam。
   `weekdayDescriptions`不作判定。Broad/full-mask cache builder預設拒絕，
   必須以`--legacy-full-mask-cache`明確承認quarantine才可執行。
 - canned Busan/Hokkaido E2E涵蓋identity → adapter → batch budget →
-  memory session → composition → timeline；514個offline tests、三個real-trip
+  memory session → composition → timeline；514個offline tests、local private-trip
   validators與Python compile通過。未呼叫真實provider、未render、未deploy，
   `trips/`保持byte-for-byte不變。
 
@@ -846,14 +845,13 @@ preview本身不提供delete、apply、migration或provider seam。
   selected/fixed/booked decision與固定`evidence_state=unverified`。Raw地址、座標、
   label、價格、booking link、provider token與candidate ID不得進plan、receipt、
   history、safe serialization或error；
-- 全套須離線、deterministic且real-trip files byte-for-byte不變。Provider refresh
+- 全套須離線、deterministic且local private-trip sources byte-for-byte不變。Provider refresh
   可在caller明確授權後另行執行，但4.5C scorer本身沒有HTTP、cache或provider fan-out。
 
 目前Phase 4.5已完成A/B/C/D runtime intake、evidence、joint recommendation與
 host-confirmed canonical apply，並通過可讀的Busan／Hokkaido離線walkthrough。
-Phase 4.6A read-only readiness projection也已完成；全套624個offline tests、三個
-real-trip validators與Python compile通過，29個trip files hash aggregate維持
-`8a3773ba04c97c199a522378341835fd1b775093700e48f55f66b4ce8213b514`。
+Phase 4.6A read-only readiness projection也已完成；全套624個offline tests、local private-trip
+validators與Python compile通過；private-data pre/post check matched，exact inventory與digest不進Git。
 未呼叫provider、未render、未deploy、未修改`trips/`；4.6B現已先提供
 legacy evidence / cleanup preview，仍不會自動migration或刪除cache。
 
@@ -897,7 +895,7 @@ legacy evidence / cleanup preview，仍不會自動migration或刪除cache。
 - travel-ready列出出發前需要重驗的 exact facts與deadline；
 - restricted sentinel不會出現在 `plan.json`、history、receipts或 durable logs；
 - 全套測試離線、deterministic，不需 API key；
-- real-trip files保持 byte-for-byte不變。
+- local private-trip sources保持byte-for-byte不變。
 
 ## 刻意不做
 

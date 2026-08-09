@@ -708,48 +708,14 @@ booked check-in、180分鐘跨城leg與至少45分鐘冬季buffer，另以lost A
 也不代表 `travel_ready`。頁面是產生當下的離線結果，更新資料後必須重新產生，且不會
 確認即時交通、營業、空位或訂位。
 
-Ishigaki 的使用者已授權 live exit gate 時，才可使用下列**固定範圍**命令：
-
-```bash
-direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 --live
-```
-
-它最多作兩次 Places identity search 與一次 driving Routes request；每一階段前後
-都重查固定的`trip.json`、`itinerary.json`與`place_candidates.json`來源；pagination、
-ambiguity 或 source drift 一律停止。所有 identity
-與 route evidence 僅在 process memory 做 typed contract check 後丟棄，不會寫入
-legacy cache、EvidenceStore、`plan.json`、renderer 或 deployment。這是單一 pilot，
-不是一般的 live provider CLI；遠期營業時間仍必須在接近行程日期時重新確認。
-
-若 gate 回報 identity review required，只有使用者要求查看候選時才可額外執行一次
-read-only origin review：
-
-```bash
-direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 --live --review-origin
-```
-
-它只做一個 Places request、零 promotion／merge／route call；候選的名稱、公開地址與
-類型僅作本次人工選擇並附 Google Maps attribution，provider ID、query、座標、token
-與原始回應不會輸出或保存。選擇本身不是 grant；後續仍需新的 exact、source-bound
-review 才可繼續。
-
-若正常 Ishigaki gate 已明確回報`invalid_request`，且使用者另行明確允許最小診斷，才可
-使用：
-
-```bash
-direnv exec . python3 scripts/ishigaki_provider_exit_gate.py trips/ishigaki-2026-10 \
-  --live --minimal-route-diagnostic --origin-choice B \
-  --origin-selection-binding-v2 {matching-review-binding}
-```
-
-它仍會重新驗證兩個 identity，並只發出一次同一個 driving request、但回應 field mask
-縮減為`routes.distanceMeters,routes.duration`。這是 provider-acceptance 診斷，不是
-route evidence：只回報 HTTP 是否接受請求，絕不解碼、merge、保存或顯示路線值；任何
-source drift 或選擇綁定變動一律停止。
-
-若最小 mask 仍被拒絕，下一個且同樣需要明確授權的 baseline 診斷會改用
-`--undated-route-diagnostic`；它只移除`departureTime`，以區分遠期時刻與端點／專案
-存取問題。它仍不是十月行程的 route evidence。
+Phase 5 的 destination-bound live pilot 已完成並從目前 tracked tree 退役。它從來不是
+一般用途的 provider CLI；公開文件不保存 private trip path、場地選擇、binding、exact
+command 或 response。該次 bounded diagnostics 的 body 已丟棄，結果只證明 provider
+在當時接受一種最小 request shape，並不建立 route evidence。舊 checkpoint、Git history、
+credential session 或先前選擇都不能授權重播。任何未來 provider call 必須重新建立目前
+scope 的 typed review，取得 fresh one-shot authorization，並重新驗證 source、credential、
+成本與資料保留邊界。Tracked repository 的完整規則見
+[`docs/repository-privacy.md`](docs/repository-privacy.md)。
 
 這個 readiness seam 不讀寫 store、plan 或 provider，也沒有 mutation／confirmation
 authority；公開行程識別只提供不可逆的`trip_ref`。Canonical 住宿即使已是

@@ -391,28 +391,14 @@ class Phase46LegacyEvidenceTests(unittest.TestCase):
             self.assertEqual("DATA_DIRECTORY_MISSING", json.loads(missing.stderr)["error"]["code"])
             self.assertNotIn("missing", missing.stderr)
 
-    def test_real_local_trips_match_documented_inventory_without_changes(self) -> None:
+    def test_local_private_trip_previews_are_read_only_without_changes(self) -> None:
         before = _tree_bytes(TRIPS_ROOT)
         previews = [
             preview_legacy_evidence(path)
             for path in sorted(TRIPS_ROOT.iterdir())
             if (path / "data").is_dir()
         ]
-        self.assertEqual(3, len(previews))
-        self.assertEqual(65, sum(item.route_summary.api_edge_count for item in previews))
-        self.assertEqual(6, sum(item.route_summary.manual_edge_count for item in previews))
-        self.assertEqual(0, sum(item.route_summary.unclassified_edge_count for item in previews))
-        self.assertEqual(80, sum(item.route_summary.place_id_count for item in previews))
-        self.assertEqual(84, sum(item.route_summary.coordinate_pair_count for item in previews))
-        self.assertEqual(
-            81,
-            sum(
-                artifact.item_count or 0
-                for preview in previews
-                for artifact in preview.artifacts
-                if artifact.relative_path == "places_cache.json"
-            ),
-        )
+        self.assertTrue(previews)
         self.assertTrue(all(item.source_is_current() for item in previews))
         self.assertTrue(all(item.import_count == 0 for item in previews))
         self.assertTrue(all(item.cleanup_targets == () for item in previews))

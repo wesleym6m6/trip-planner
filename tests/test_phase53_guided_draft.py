@@ -41,7 +41,7 @@ PRIVATE = "private-address-url-price-token-place-id-never-serialize"
 
 
 def _destination(
-    value: str = "Ishigaki private destination sentinel",
+    value: str = "Synthetic private destination sentinel",
     *,
     state: BriefKnownState = BriefKnownState.USER_STATED,
 ) -> DestinationDraft:

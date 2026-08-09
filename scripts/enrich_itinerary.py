@@ -13,14 +13,14 @@ Usage:
             Without timezone, transit queries use no departure_time (less accurate).
 
 Examples:
-  # Japan (no transit available, so no timezone needed):
-  direnv exec $REPO python3 scripts/enrich_itinerary.py trips/japan-2026-05/data/itinerary.json walking,driving
+  # Synthetic trip without transit:
+  direnv exec $REPO python3 scripts/enrich_itinerary.py trips/{slug}/data/itinerary.json walking,driving
 
-  # Taiwan (transit available, pass timezone for accurate schedules):
-  direnv exec $REPO python3 scripts/enrich_itinerary.py trips/tainan-2026-04/data/itinerary.json walking,transit,driving +08:00
+  # Synthetic trip with transit and an explicit timezone:
+  direnv exec $REPO python3 scripts/enrich_itinerary.py trips/{slug}/data/itinerary.json walking,transit,driving +08:00
 
-  # Vietnam (transit + two_wheeler):
-  direnv exec $REPO python3 scripts/enrich_itinerary.py trips/vietnam-2026-05/data/itinerary.json walking,transit,two_wheeler +07:00
+  # Synthetic trip with two-wheeler support:
+  direnv exec $REPO python3 scripts/enrich_itinerary.py trips/{slug}/data/itinerary.json walking,transit,two_wheeler +07:00
 """
 import json
 import subprocess

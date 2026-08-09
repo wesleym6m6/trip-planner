@@ -266,13 +266,13 @@ def _semantic_signature(state: TripState) -> tuple[Any, ...]:
 class Phase1CodecMigrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls._real_trip_hashes = _tree_hashes(TRIPS_ROOT)
+        cls._private_trip_hashes = _tree_hashes(TRIPS_ROOT)
 
     @classmethod
     def tearDownClass(cls) -> None:
         if TRIPS_ROOT.exists():
             current = _tree_hashes(TRIPS_ROOT)
-            if current != cls._real_trip_hashes:
+            if current != cls._private_trip_hashes:
                 raise AssertionError("Phase 1 migration tests modified local trips/")
 
     def test_preview_is_deterministic_and_zero_write(self) -> None:
@@ -836,11 +836,18 @@ class Phase1CodecMigrationTests(unittest.TestCase):
             self.assertEqual(preview.candidate_revision, canonical.revision)
             self.assertEqual("trip-planner.plan/v1", canonical.schema_version)
 
-    def test_tainan_dangling_edge_is_compatibility_only(self) -> None:
-        source = TRIPS_ROOT / "tainan-2026-04" / "data"
-        self.assertTrue(source.is_dir(), f"missing real-trip fixture: {source}")
+    def test_local_dangling_edge_is_compatibility_only(self) -> None:
+        source = None
+        for candidate in sorted(TRIPS_ROOT.glob("*/data")):
+            candidate_preview = preview_legacy_migration(candidate)
+            if "INVALID_TRAVEL_REFERENCE" in {
+                issue.code for issue in candidate_preview.issues
+            }:
+                source = candidate
+                break
+        self.assertIsNotNone(source, "missing local dangling-edge fixture")
         with tempfile.TemporaryDirectory() as temporary:
-            copied = Path(temporary) / "tainan-2026-04" / "data"
+            copied = Path(temporary) / "private-trip" / "data"
             shutil.copytree(source, copied)
             original_itinerary = json.loads(
                 (copied / "itinerary.json").read_text(encoding="utf-8")
@@ -891,16 +898,16 @@ class Phase1CodecMigrationTests(unittest.TestCase):
             )
             plan_to_trip_state(plan)
 
-    def test_real_trip_previews_are_deterministic_read_only_and_preserve_aux(
+    def test_local_private_trip_previews_are_deterministic_read_only_and_preserve_aux(
         self,
     ) -> None:
-        real_data_dirs = sorted(TRIPS_ROOT.glob("*/data"))
-        self.assertGreaterEqual(len(real_data_dirs), 3)
+        private_data_dirs = sorted(TRIPS_ROOT.glob("*/data"))
+        self.assertTrue(private_data_dirs)
 
-        for source in real_data_dirs:
-            with self.subTest(trip=source.parent.name):
+        for fixture_index, source in enumerate(private_data_dirs):
+            with self.subTest(fixture=fixture_index):
                 with tempfile.TemporaryDirectory() as temporary:
-                    copied = Path(temporary) / source.parent.name / "data"
+                    copied = Path(temporary) / "private-trip" / "data"
                     shutil.copytree(source, copied)
                     before = _tree_snapshot(copied)
                     aux_before = {

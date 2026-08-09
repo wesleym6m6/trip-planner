@@ -8,11 +8,11 @@ Round-trip (type=1) requires three separate searches:
 
 Input (stdin JSON):
 {
-  "departure_id": "TPE",
-  "arrival_id": "DAD",
-  "outbound_date": "2026-10-08",
-  "return_date": "2026-10-12",
-  "cache_path": "trips/danang-2026-10/data/flights_cache.json"
+  "departure_id": "AAA",
+  "arrival_id": "BBB",
+  "outbound_date": "2099-01-01",
+  "return_date": "2099-01-05",
+  "cache_path": "trips/{slug}/data/flights_cache.json"
 }
 
 Stage 2 adds: "departure_token": "<from stage 1 result>"

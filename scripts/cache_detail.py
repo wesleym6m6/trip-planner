@@ -12,14 +12,14 @@ Usage:
 
 Examples:
     # By index (from the summary's "index" field)
-    python3 scripts/cache_detail.py trips/danang-2026-05/data/hotels_danang_cache.json 3
+    python3 scripts/cache_detail.py trips/{slug}/data/hotels_cache.json 3
 
     # By name substring (case-insensitive)
-    python3 scripts/cache_detail.py trips/danang-2026-05/data/hotels_danang_cache.json "Nesta"
+    python3 scripts/cache_detail.py trips/{slug}/data/hotels_cache.json "Example Hotel"
 
     # Flights — by index or airline name
-    python3 scripts/cache_detail.py trips/danang-2026-05/data/flights_cache.json 0
-    python3 scripts/cache_detail.py trips/danang-2026-05/data/flights_cache.json "虎航"
+    python3 scripts/cache_detail.py trips/{slug}/data/flights_cache.json 0
+    python3 scripts/cache_detail.py trips/{slug}/data/flights_cache.json "Example Airline"
 """
 import json
 import sys

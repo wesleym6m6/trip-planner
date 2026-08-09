@@ -4,12 +4,14 @@ Score a given route — calculate total time and distance without optimization.
 Use when the user or AI has a specific route in mind and just wants to know
 how long it takes. No optimization, no rearranging — just measurement.
 
+All values below are synthetic schema examples, not route evidence.
+
 Input (stdin JSON):
 {
-  "route": ["赤崁樓", "度小月", "林百貨", "花園夜市"],
+  "route": ["Example Museum", "Example Cafe", "Example Park"],
   "maps_queries": {
-    "赤崁樓": "赤崁樓, Tainan, Taiwan",
-    "度小月": "度小月擔仔麵 原始店, Tainan, Taiwan",
+    "Example Museum": "Example Museum, Example City",
+    "Example Cafe": "Example Cafe, Example City",
     ...
   },
   "modes": ["walking", "driving", "bicycling"]  // optional, default all 4
@@ -18,8 +20,8 @@ Input (stdin JSON):
 Or use coordinates directly:
 {
   "route": [
-    {"name": "赤崁樓", "lat": 22.9975, "lng": 120.2025},
-    {"name": "度小月", "lat": 22.9922, "lng": 120.2005},
+    {"name": "Example Museum", "lat": 1.0001, "lng": 1.0002},
+    {"name": "Example Cafe", "lat": 1.0003, "lng": 1.0004},
     ...
   ]
 }
@@ -28,8 +30,8 @@ Output (stdout JSON):
 {
   "segments": [
     {
-      "from": "赤崁樓",
-      "to": "度小月",
+      "from": "Example Museum",
+      "to": "Example Cafe",
       "distance_km": {"walking": 0.8, "driving": 1.1, "bicycling": 0.9},
       "duration_min": {"walking": 12, "driving": 5, "bicycling": 4},
       "recommended": "walking"
