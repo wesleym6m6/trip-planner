@@ -1962,6 +1962,30 @@ authority。
   驗證current-evidence recheck、TripStore CAS與receipt／lost-ACK語義。任何真實canonical mutation仍須
   當下exact `accept_apply`，generic「繼續」不得被推導成授權。
 
+### 2026-08-09 — Phase 5.33 typed apply response／execution 第五切片完成
+
+- 新增host-only `capture_trip_schedule_apply_response()`與process-local、不可序列化的
+  `TripctlScheduleApplyResponse`。Capture只接受exact `GuidedCanonicalApplyResponseKind`，綁同一份review、
+  proposal/runtime context與trusted UTC；generic文字、重複decision、expired／stale review與clock rollback均
+  fail closed。Expired capture會清除pending review，較早的caller clock不能把它復活；safe transcript不暴露
+  apply authority或private binding。
+- 新增`execute_trip_schedule_apply_response()`與safe aggregate `TripctlScheduleApplyOutcome`。Execution只接受
+  同一process-local review／response與exact target-bound `TripStore`，並沿用Phase 5.32 guided gate及
+  `ScheduleStager`的current-evidence reload、canonical CAS、human checkpoint、protected approval、兩次bounded
+  write attempt與receipt reconciliation。`request_changes`／`cancel`只清除pending且零write；exact
+  `accept_apply`也不能取代獨立`ApprovalGrant`。
+- Lost ACK若canonical exact receipt已存在會在同一次product execution回replay confirmed；evidence或canonical
+  drift會在write前拒絕。兩次寫入後仍無法由canonical state／receipt確認時，結果固定
+  `canonical_write_outcome=unknown`、`canonical_write_performed=null`、不可重試已耗盡的review，避免把未知結果
+  誤報為成功或失敗。Safe outcome只保留狀態與aggregate counts，不含activity/day/location/time、provider state或
+  private digest。
+- 新增8個第五切片regressions；31個Phase 5.33 direct tests、13個Phase 5.32 canonical-apply tests、36個
+  schedule-staging tests及14個Phase 5.32 evidence-workflow tests全過。所有write path只使用temporary stores；
+  本切片沒有讀取credential、呼叫provider、修改`trips/`、render、deploy或push。
+- Phase 5.33仍未完成，且沒有新增CLI `apply`。下一個安全切片是把這個process-local facade接到canned
+  Busan／Hokkaido product acceptance與明確resume／retry UX，再決定是否需要host CLI；任何真實canonical mutation
+  仍須對當下exact review擷取`accept_apply`，一般「繼續」不構成該授權。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

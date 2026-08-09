@@ -60,9 +60,16 @@ from .tripctl_runtime import (
     assess_canonical_runtime,
 )
 from .tripctl_apply import (
+    TRIPCTL_APPLY_OUTCOME_VERSION,
     TRIPCTL_APPLY_REVIEW_VERSION,
+    TRIPCTL_APPLY_RESPONSE_VERSION,
     TripctlApplyReviewError,
+    TripctlApplyResponseError,
+    TripctlScheduleApplyOutcome,
     TripctlScheduleApplyReview,
+    TripctlScheduleApplyResponse,
+    capture_trip_schedule_apply_response,
+    execute_trip_schedule_apply_response,
     prepare_trip_schedule_apply_review,
 )
 
@@ -909,11 +916,17 @@ def _timeline_next_action(timeline_status: str) -> tuple[str, bool]:
 
 
 __all__ = [
+    "TRIPCTL_APPLY_OUTCOME_VERSION",
     "TRIPCTL_APPLY_REVIEW_VERSION",
+    "TRIPCTL_APPLY_RESPONSE_VERSION",
     "TRIPCTL_VERSION",
     "TripctlApplyReviewError",
+    "TripctlApplyResponseError",
     "TripctlError",
+    "TripctlScheduleApplyOutcome",
     "TripctlScheduleApplyReview",
+    "TripctlScheduleApplyResponse",
+    "capture_trip_schedule_apply_response",
     "command_failure",
     "inspect_trip",
     "inspection_failure",
@@ -923,6 +936,7 @@ __all__ = [
     "proposal_failure",
     "score_trip",
     "score_trip_with_evidence",
+    "execute_trip_schedule_apply_response",
     "score_failure",
     "validate_trip",
     "validate_trip_with_evidence",

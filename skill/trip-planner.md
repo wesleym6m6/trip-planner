@@ -38,8 +38,12 @@ Developer host可用`prepare_trip_schedule_apply_review()`把同一exact score�
 process-local且不可序列化的typed review。它必須使用同一snapshot、availability keys、lodging
 context、opaque ref、exact `TripStore`與reloadable evidence source，並通過strict-improvement
 stage／canonical preview；私有review可顯示exact diff，但不得輸出provider runtime state或binding
-digest。此bridge不capture response、不commit，且generic「繼續」永遠不是`accept_apply`。
-apply execution與完整 canonical workflow 尚未提供。四個CLI入口都不會把結果升級成 `travel_ready`，也不會
+digest。Host只能以`capture_trip_schedule_apply_response()`擷取exact typed enum；response維持
+process-local、不可序列化，expiry、single-decision與trusted-clock rollback一律fail closed。
+`execute_trip_schedule_apply_response()`只接受同一review／response／exact `TripStore`，並沿用
+current-evidence recheck、canonical CAS、approval與receipt reconciliation；request changes／cancel
+清除pending且不寫入，lost ACK與unresolved outcome必須truthful。Generic「繼續」永遠不是
+`accept_apply`，目前也沒有CLI `apply`或任何真實trip mutation authority。四個CLI入口都不會把結果升級成 `travel_ready`，也不會
 migration真實trip；任何unsafe／malformed canonical marker都不會fallback到legacy。除非使用者
 已明確接受developer workflow，否則不得migration真實trip，並繼續使用下方legacy流程。
 

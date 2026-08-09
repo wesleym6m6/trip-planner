@@ -618,15 +618,20 @@ readiness profile與明確`readiness_scope`、`runtime_evidence_loaded=true`、`
 `--evidence-*`入口。
 
 Developer host可再呼叫`prepare_trip_schedule_apply_review()`，傳入同一exact snapshot、runtime
-context、opaque proposal ref、exact `TripStore`與可重載的evidence source。此review-only bridge會
+context、opaque proposal ref、exact `TripStore`與可重載的evidence source。此product bridge會
 重新compose／solve／trusted replay，重驗proposal ref與clock，經`ScheduleStager`重載current
 evidence、確認strict improvement並只做canonical preview，最後包成30分鐘有效、不可序列化的
 `accept_apply`／`request_changes`／`cancel` review。私有人工審閱面會顯示exact canonical diff，
 但不輸出provider runtime state或evidence／product-context digest；結果固定
 `apply_authority=false`、`canonical_write_performed=false`、`pending_review_retained=true`。
-這個bridge不擷取response、不呼叫commit，也沒有CLI `apply`入口；generic「繼續」不能替代exact
-enum response。真正執行仍須在下一個獨立gate重驗review expiry、current evidence、canonical CAS、
-必要approval與receipt語義。
+Host只能用`capture_trip_schedule_apply_response()`擷取exact enum；response同樣process-local、
+不可序列化，safe transcript不暴露authority。`request_changes`／`cancel`會在execute時釋放pending
+review且不寫入；只有同一份仍有效的`accept_apply` response可交給
+`execute_trip_schedule_apply_response()`，並須匹配原review、exact `TripStore`與不可回退的trusted
+clock。執行沿用current-evidence recheck、canonical CAS、必要approval、兩次bounded write attempt及
+receipt reconciliation；lost ACK若有exact receipt會如實回replay confirmed，無法確認時則回
+`canonical_write_outcome=unknown`及nullable `canonical_write_performed`，不猜測結果。Generic「繼續」
+不能替代exact enum response；目前仍沒有CLI `apply`入口，也未授權任何真實trip mutation。
 
 已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
 `#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，
