@@ -2103,6 +2103,23 @@ authority。
   body丟棄且不是route evidence；不得寫trip、render、deploy或宣稱`travel_ready`。完成並記錄bounded live gate後才凍結
   Phase 5並正式轉入Phase 6。
 
+### 2026-08-09 — Phase 5 bounded live-smoke exit gate 完成
+
+- 使用者在目前conversation分別精確授權minimal與undated Routes diagnostics；兩次diagnostic都重驗既有
+  source-bound origin selection及必要preconditions。每次attempts固定為identity 2／route 1，沒有
+  pagination、blind retry或scope擴張。
+- Minimal response-mask request保留原定`departureTime`時，Routes安全分類為`invalid_request`且
+  `request_accepted=false`。另行授權的undated request只移除`departureTime`，同一minimal field mask被接受並回
+  `minimal_route_diagnostic_completed`／`request_accepted=true`。兩次bounded observations與是否包含`departureTime`
+  的request shape一致，將診斷縮小到dated-request handling，但未證明第一次400 response的根因；它不建立任何
+  行程路線的距離、時間或可行性證據。
+- 兩次diagnostic的provider response body皆在memory內丟棄，沒有建立EvidenceStore／legacy cache／canonical receipt，
+  `trip_files_modified=false`，也未render、deploy或push；private trip data與aggregate pre／post hashes都維持既有baseline。
+- Phase 5唯一剩餘的bounded live gate至此完成，macro phase凍結。結果只證明provider接受undated minimal request；所有
+  route facts仍為unknown + unverified，不能宣稱`travel_ready`。兩次live授權均已一次性消耗；checkpoint、daily
+  credential session、origin choice或selection binding都不是authority。後續產品工作進入Phase 6；任何未來provider
+  call（即使相同scope）、canonical mutation、render或deploy，仍須通過各自fresh exact gate。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

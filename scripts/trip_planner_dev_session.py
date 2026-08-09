@@ -32,6 +32,7 @@ _RUNTIME_DIRECTORY_NAME = "trip-planner"
 _SESSION_FILE_NAME = "provider-dev-session-v1.json"
 _SESSION_LOCK_FILE_NAME = "provider-dev-session-v1.lock"
 _MAX_SESSION_FILE_BYTES = 16 * 1024
+_MAX_BITWARDEN_ITEM_LIST_BYTES = 1024 * 1024
 _BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 _EXPECTED_RUNTIME_ROOT = Path(f"/run/user/{os.getuid()}")
 _SYSTEMD_RUN_PATH = "/usr/bin/systemd-run"
@@ -53,6 +54,10 @@ class DevSessionError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+class _BitwardenListResponseError(RuntimeError):
+    """Private bounded-output failure with no response material."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -522,31 +527,173 @@ def _acquire_bitwarden_session(
     return _unlock_bitwarden_session(run=run)
 
 
+def _run_bounded_bitwarden_item_list(
+    command: list[str],
+    child_environment: Mapping[str, str],
+    *,
+    max_stdout_bytes: int = _MAX_BITWARDEN_ITEM_LIST_BYTES,
+) -> subprocess.CompletedProcess[str]:
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        process = subprocess.Popen(
+            command,
+            env=dict(child_environment),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        if process.stdout is None:
+            raise DevSessionError("bitwarden_cli_unavailable")
+        serialized = process.stdout.read(max_stdout_bytes + 1)
+        if len(serialized) > max_stdout_bytes:
+            raise _BitwardenListResponseError()
+        returncode = process.wait()
+    except OSError as error:
+        raise DevSessionError("bitwarden_cli_unavailable") from error
+    finally:
+        if process is not None:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                try:
+                    process.wait()
+                except OSError:
+                    pass
+    try:
+        stdout = serialized.decode("utf-8")
+    except UnicodeError as error:
+        raise _BitwardenListResponseError() from error
+    return subprocess.CompletedProcess(command, returncode, stdout=stdout)
+
+
 def _read_bitwarden_credential(
     session: str,
     slot: str,
     *,
-    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    run: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> str | None:
+    if slot not in _ALLOWED_CREDENTIAL_SLOTS:
+        raise DevSessionError("credential_slot_invalid")
+
+    def fail(reason: str) -> None:
+        if slot == "GOOGLE_MAPS_API_KEY":
+            raise DevSessionError(f"google_maps_credential_{reason}")
+
     child_environment = dict(os.environ)
     child_environment["BW_SESSION"] = session
-    for object_type in ("notes", "password"):
-        try:
+    for option in (
+        "BW_CLIENTID",
+        "BW_CLIENTSECRET",
+        "BW_CLEANEXIT",
+        "BW_NOINTERACTION",
+        "BW_PASSWORD",
+        "BW_PRETTY",
+        "BW_QUIET",
+        "BW_RAW",
+        "BW_RESPONSE",
+        "GOOGLE_MAPS_API_KEY",
+        "SERPAPI_API_KEY",
+        "TRIP_PLANNER_DIRENV_BRIDGE",
+    ):
+        child_environment.pop(option, None)
+
+    # Bitwarden treats a non-UUID `bw get` argument as a fuzzy search and
+    # rejects multiple results.  Resolve the one exact canonical item name
+    # ourselves so a similarly named vault item cannot select or block a
+    # provider credential.  The private list response is never logged or
+    # returned from this helper.
+    try:
+        command = [
+            "bw",
+            "list",
+            "items",
+            "--search",
+            slot,
+            "--nointeraction",
+        ]
+        if run is None:
+            completed = _run_bounded_bitwarden_item_list(
+                command,
+                child_environment,
+            )
+        else:
             completed = run(
-                ["bw", "get", object_type, slot, "--nointeraction"],
+                command,
                 env=child_environment,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
                 check=False,
             )
-        except OSError as error:
+    except OSError as error:
+        if slot == "GOOGLE_MAPS_API_KEY":
             raise DevSessionError("bitwarden_cli_unavailable") from error
-        if completed.returncode == 0:
-            normalized = _validated_secret(slot, completed.stdout)
-            if normalized is not None:
-                return normalized
-    return None
+        return None
+    except DevSessionError as error:
+        if slot != "GOOGLE_MAPS_API_KEY" and error.code == "bitwarden_cli_unavailable":
+            return None
+        raise
+    except (_BitwardenListResponseError, UnicodeError):
+        fail("response_invalid")
+        return None
+    if completed.returncode != 0:
+        fail("lookup_failed")
+        return None
+    if not isinstance(completed.stdout, str):
+        fail("response_invalid")
+        return None
+    try:
+        serialized_size = len(completed.stdout.encode("utf-8"))
+    except UnicodeError:
+        fail("response_invalid")
+        return None
+    if serialized_size > _MAX_BITWARDEN_ITEM_LIST_BYTES:
+        fail("response_invalid")
+        return None
+    try:
+        payload = json.loads(completed.stdout)
+    except (json.JSONDecodeError, UnicodeError):
+        fail("response_invalid")
+        return None
+    if not isinstance(payload, list) or any(
+        not isinstance(item, dict) for item in payload
+    ):
+        fail("response_invalid")
+        return None
+
+    exact_items = [item for item in payload if item.get("name") == slot]
+    if not exact_items:
+        fail("item_not_found")
+        return None
+    if len(exact_items) != 1:
+        fail("item_ambiguous")
+        return None
+
+    item = exact_items[0]
+    raw_candidates: list[str] = []
+    notes = item.get("notes")
+    if isinstance(notes, str) and notes.strip():
+        raw_candidates.append(notes)
+    login = item.get("login")
+    if isinstance(login, dict):
+        password = login.get("password")
+        if isinstance(password, str) and password.strip():
+            raw_candidates.append(password)
+
+    normalized_candidates = {
+        normalized
+        for raw_value in raw_candidates
+        if (normalized := _validated_secret(slot, raw_value)) is not None
+    }
+    if len(normalized_candidates) != 1:
+        fail("format_invalid")
+        return None
+    return normalized_candidates.pop()
 
 
 def _schedule_expiry(
@@ -648,7 +795,16 @@ def start_daily_session(
         )
         session = session_loader(environ)
         try:
-            credentials = load_credentials(session)
+            try:
+                credentials = load_credentials(session)
+            except DevSessionError as error:
+                if not (
+                    error.code == "google_maps_credential_lookup_failed"
+                    and acquire_session is None
+                    and inherited_is_candidate
+                ):
+                    raise
+                credentials = {}
             if (
                 "GOOGLE_MAPS_API_KEY" not in credentials
                 and acquire_session is None

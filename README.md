@@ -58,7 +58,10 @@ direnv allow .
 API Key 的「API restrictions」需包含這兩個 service。舊版 Directions API 自 2025/3 起已無法新啟用。
 
 建議把 key 放在 Bitwarden 中名為 `GOOGLE_MAPS_API_KEY` 的 Secure Note 或 password，先完成一次
-`bw login`。之後每天開發開始時執行：
+`bw login`。Daily session 需要 [Bitwarden CLI 2026.7.0](https://github.com/bitwarden/clients/releases/tag/cli-v2026.7.0)
+以上；2026.3.0／2026.4.1 有
+[已知的跨程序 session regression](https://github.com/bitwarden/clients/issues/20703)，會讓
+`bw unlock --raw` 看似成功但下一個 `bw list` 仍回報 locked。之後每天開發開始時執行：
 
 ```bash
 python3 scripts/trip_planner_dev_session.py start

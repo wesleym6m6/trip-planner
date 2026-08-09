@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -282,19 +283,45 @@ class TripPlannerDevSessionTests(unittest.TestCase):
             child_environment = kwargs.get("env")
             assert isinstance(child_environment, dict)
             calls.append((command, child_environment))
-            return subprocess.CompletedProcess(command, 0, stdout=_GOOGLE_KEY)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "id": "private-item-id",
+                            "name": "GOOGLE_MAPS_API_KEY",
+                            "notes": _GOOGLE_KEY,
+                            "login": None,
+                        }
+                    ]
+                ),
+            )
 
-        value = dev_session._read_bitwarden_credential(
-            _BW_SESSION_SENTINEL,
-            "GOOGLE_MAPS_API_KEY",
-            run=fake_run,
-        )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "BW_PASSWORD": "private-master-password",
+                "BW_CLEANEXIT": "true",
+                "BW_QUIET": "true",
+                "BW_RESPONSE": "true",
+                "GOOGLE_MAPS_API_KEY": "private-ambient-google-key",
+                "SERPAPI_API_KEY": "private-ambient-serp-key",
+                "TRIP_PLANNER_DIRENV_BRIDGE": "1",
+            },
+        ):
+            value = dev_session._read_bitwarden_credential(
+                _BW_SESSION_SENTINEL,
+                "GOOGLE_MAPS_API_KEY",
+                run=fake_run,
+            )
         self.assertEqual(_GOOGLE_KEY, value)
         self.assertEqual(
             [
                 "bw",
-                "get",
-                "notes",
+                "list",
+                "items",
+                "--search",
                 "GOOGLE_MAPS_API_KEY",
                 "--nointeraction",
             ],
@@ -302,6 +329,230 @@ class TripPlannerDevSessionTests(unittest.TestCase):
         )
         self.assertNotIn(_BW_SESSION_SENTINEL, calls[0][0])
         self.assertEqual(_BW_SESSION_SENTINEL, calls[0][1]["BW_SESSION"])
+        for option in (
+            "BW_PASSWORD",
+            "BW_CLEANEXIT",
+            "BW_QUIET",
+            "BW_RESPONSE",
+            "GOOGLE_MAPS_API_KEY",
+            "SERPAPI_API_KEY",
+            "TRIP_PLANNER_DIRENV_BRIDGE",
+        ):
+            self.assertNotIn(option, calls[0][1])
+
+    def test_bitwarden_reader_uses_one_exact_name_not_fuzzy_search_order(
+        self,
+    ) -> None:
+        other_key = "AIza" + "Z" * 35
+
+        def fake_run(
+            command: list[str],
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "id": "fuzzy-private-id",
+                            "name": "OLD_GOOGLE_MAPS_API_KEY",
+                            "notes": other_key,
+                        },
+                        {
+                            "id": "exact-private-id",
+                            "name": "GOOGLE_MAPS_API_KEY",
+                            "notes": _GOOGLE_KEY,
+                        },
+                    ]
+                ),
+            )
+
+        self.assertEqual(
+            _GOOGLE_KEY,
+            dev_session._read_bitwarden_credential(
+                _BW_SESSION_SENTINEL,
+                "GOOGLE_MAPS_API_KEY",
+                run=fake_run,
+            ),
+        )
+
+    def test_bitwarden_reader_accepts_login_password_fallback(self) -> None:
+        def fake_run(
+            command: list[str],
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "id": "private-item-id",
+                            "name": "GOOGLE_MAPS_API_KEY",
+                            "notes": None,
+                            "login": {"password": _GOOGLE_KEY},
+                        }
+                    ]
+                ),
+            )
+
+        self.assertEqual(
+            _GOOGLE_KEY,
+            dev_session._read_bitwarden_credential(
+                _BW_SESSION_SENTINEL,
+                "GOOGLE_MAPS_API_KEY",
+                run=fake_run,
+            ),
+        )
+
+    def test_bitwarden_reader_deduplicates_same_key_across_supported_fields(
+        self,
+    ) -> None:
+        self.assertEqual(
+            _GOOGLE_KEY,
+            dev_session._read_bitwarden_credential(
+                _BW_SESSION_SENTINEL,
+                "GOOGLE_MAPS_API_KEY",
+                run=lambda command, **_kwargs: subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps(
+                        [
+                            {
+                                "name": "GOOGLE_MAPS_API_KEY",
+                                "notes": _GOOGLE_KEY,
+                                "login": {"password": _GOOGLE_KEY},
+                            }
+                        ]
+                    ),
+                ),
+            ),
+        )
+
+    def test_bitwarden_reader_reports_safe_exact_item_failures(self) -> None:
+        private_id = "private-item-id-must-not-leak"
+        cases = (
+            ([], "google_maps_credential_item_not_found"),
+            (
+                [
+                    {"id": private_id, "name": "GOOGLE_MAPS_API_KEY"},
+                    {"id": "second-private-id", "name": "GOOGLE_MAPS_API_KEY"},
+                ],
+                "google_maps_credential_item_ambiguous",
+            ),
+            (
+                [
+                    {
+                        "id": private_id,
+                        "name": "GOOGLE_MAPS_API_KEY",
+                        "notes": "not-a-google-key",
+                    }
+                ],
+                "google_maps_credential_format_invalid",
+            ),
+            (
+                [
+                    {
+                        "id": private_id,
+                        "name": "GOOGLE_MAPS_API_KEY",
+                        "notes": _GOOGLE_KEY,
+                        "login": {"password": "AIza" + "Z" * 35},
+                    }
+                ],
+                "google_maps_credential_format_invalid",
+            ),
+        )
+        for payload, expected in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaises(dev_session.DevSessionError) as raised:
+                    dev_session._read_bitwarden_credential(
+                        _BW_SESSION_SENTINEL,
+                        "GOOGLE_MAPS_API_KEY",
+                        run=lambda command, **_kwargs: subprocess.CompletedProcess(
+                            command,
+                            0,
+                            stdout=json.dumps(payload),
+                        ),
+                    )
+                self.assertEqual(expected, raised.exception.code)
+                self.assertNotIn(private_id, str(raised.exception))
+                self.assertNotIn(_GOOGLE_KEY, str(raised.exception))
+
+    def test_bitwarden_reader_reports_lookup_failure_without_raw_output(
+        self,
+    ) -> None:
+        private_error = "private-bitwarden-error-must-not-leak"
+        outcomes = (
+            subprocess.CompletedProcess(
+                ["bw"],
+                1,
+                stdout=private_error,
+                stderr=private_error,
+            ),
+            subprocess.CompletedProcess(
+                ["bw"],
+                0,
+                stdout="{malformed-private-json",
+            ),
+        )
+        for outcome in outcomes:
+            with self.subTest(returncode=outcome.returncode):
+                with self.assertRaises(dev_session.DevSessionError) as raised:
+                    dev_session._read_bitwarden_credential(
+                        _BW_SESSION_SENTINEL,
+                        "GOOGLE_MAPS_API_KEY",
+                        run=lambda _command, **_kwargs: outcome,
+                    )
+                self.assertEqual(
+                    (
+                        "google_maps_credential_lookup_failed"
+                        if outcome.returncode != 0
+                        else "google_maps_credential_response_invalid"
+                    ),
+                    raised.exception.code,
+                )
+                self.assertNotIn(private_error, str(raised.exception))
+
+    def test_optional_serpapi_item_failures_remain_nonblocking(self) -> None:
+        def missing_item(
+            command: list[str],
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="[]",
+            )
+
+        def unavailable_cli(
+            _command: list[str],
+            **_kwargs: object,
+        ) -> subprocess.CompletedProcess[str]:
+            raise OSError("private-os-error")
+
+        for run in (missing_item, unavailable_cli):
+            self.assertIsNone(
+                dev_session._read_bitwarden_credential(
+                    _BW_SESSION_SENTINEL,
+                    "SERPAPI_API_KEY",
+                    run=run,
+                )
+            )
+
+    def test_bounded_bitwarden_list_rejects_output_before_full_buffering(
+        self,
+    ) -> None:
+        with self.assertRaises(dev_session._BitwardenListResponseError):
+            dev_session._run_bounded_bitwarden_item_list(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stdout.buffer.write(b'x' * 65)",
+                ],
+                os.environ,
+                max_stdout_bytes=64,
+            )
 
     def test_stale_inherited_bitwarden_session_gets_one_fresh_unlock(self) -> None:
         environment = {
@@ -311,7 +562,9 @@ class TripPlannerDevSessionTests(unittest.TestCase):
 
         def read(session: str, slot: str) -> str | None:
             if session == _BW_SESSION_SENTINEL:
-                return None
+                raise dev_session.DevSessionError(
+                    "google_maps_credential_lookup_failed"
+                )
             return self._credential_loader(session, slot)
 
         with mock.patch.object(
@@ -333,6 +586,43 @@ class TripPlannerDevSessionTests(unittest.TestCase):
         serialized = dev_session.session_path(environment).read_text(encoding="utf-8")
         self.assertNotIn(_BW_SESSION_SENTINEL, serialized)
         self.assertNotIn("fresh-private-session-sentinel", serialized)
+
+    def test_nonretryable_credential_failure_does_not_prompt_fresh_unlock(
+        self,
+    ) -> None:
+        environment = {
+            **self.environment,
+            "BW_SESSION": _BW_SESSION_SENTINEL,
+        }
+        for error_code in (
+            "google_maps_credential_item_ambiguous",
+            "google_maps_credential_response_invalid",
+        ):
+            with self.subTest(error_code=error_code):
+                def read_failure(
+                    _session: str,
+                    _slot: str,
+                    code: str = error_code,
+                ) -> str | None:
+                    raise dev_session.DevSessionError(code)
+
+                with mock.patch.object(
+                    dev_session,
+                    "_unlock_bitwarden_session",
+                ) as unlock:
+                    with self.assertRaisesRegex(
+                        dev_session.DevSessionError,
+                        error_code,
+                    ):
+                        dev_session.start_daily_session(
+                            environment,
+                            now_epoch=1_000,
+                            boottime_ns=_BOOTTIME_NS,
+                            boot_id=_BOOT_ID,
+                            read_credential=read_failure,
+                            schedule_expiry=lambda _generation, _expires: None,
+                        )
+                unlock.assert_not_called()
 
     def test_google_key_is_required_while_serp_key_remains_optional(self) -> None:
         with self.assertRaisesRegex(
