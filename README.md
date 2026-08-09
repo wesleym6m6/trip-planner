@@ -101,9 +101,10 @@ renderer、validator 與部分讀取工具可相容讀取，但 legacy writer �
 `PlanPatch` 路徑操作。目前 Phase 5 的 `tripctl inspect` 與 `tripctl validate` 是
 storage-dispatch、唯讀入口：既有 legacy 行為不變，安全且有效的 canonical `plan.json`
 可輸出 aggregate inspection 與 deterministic timeline review。它們不載入 runtime
-evidence、不能宣稱 `travel_ready`，也沒有 propose／score／apply authority；私有導引草稿
-不是 `tripctl` CLI，也不建立或修改 trip。完整 canonical workflow 尚未提供。除非已明確
-接受 developer workflow，否則不要 migration 真實 trip。
+evidence、不能宣稱 `travel_ready`。Canonical-only `tripctl propose`／`score`另提供
+provisional deterministic schedule 與 trusted replay score，但沒有 apply authority；私有
+導引草稿不是 `tripctl` CLI，也不建立或修改 trip。完整 canonical workflow 尚未提供。除非
+已明確接受 developer workflow，否則不要 migration 真實 trip。
 
 Phase 5已在M0重新收斂：Phase 5.13–5.29保留為`Provider Execution Safety Reference v1`，
 不再讓每個internal runtime gate各占一個roadmap phase；剩餘產品交付固定為5.30 composed
@@ -545,11 +546,16 @@ route待使用者分類、Places／flight／hotel cache一律quarantine。輸出
 相容層仍需要`places_cache.json`，所以即使preview存在也不可自行清理cache。任何真實
 provider驗收或破壞性cleanup都必須在你審閱exact preview後另行明確授權。
 
-Phase 5 目前有兩個具 storage-mode dispatch 的唯讀統一入口：
+Phase 5 目前有四個共用同一 JSON envelope 的唯讀入口：
 
 ```bash
 .venv/bin/python scripts/tripctl.py inspect trips/{slug}
 .venv/bin/python scripts/tripctl.py validate trips/{slug}
+.venv/bin/python scripts/tripctl.py propose trips/{slug} \
+  --evaluation-at 2026-08-09T12:00:00+00:00
+.venv/bin/python scripts/tripctl.py score trips/{slug} \
+  --proposal-ref sha256:{propose 回傳的 64 位 digest} \
+  --evaluation-at 2026-08-09T12:00:00+00:00
 ```
 
 `inspect` 輸出固定、去敏感化的 JSON envelope。legacy 模式包住同一份 evidence preview；
@@ -575,6 +581,20 @@ FIFO、oversized 或 malformed canonical marker 仍以既有 `CANONICAL_INSPECT_
 `CANONICAL_VALIDATE_UNAVAILABLE` 安全拒絕；讀取或評估期間的 exact source drift 會回可重試的
 `STALE_CANONICAL_PLAN`，不附 partial result。provider、EvidenceStore、migration、render 與
 canonical write 全部仍在這兩個命令之外。
+
+`propose`／`score`目前只接受 canonical trip。`propose`在 caller 明示、timezone-aware 的
+evaluation instant下建立既有`ScheduleProblem`並執行 bounded deterministic solver；輸出只含
+opaque `problem_ref`／`proposal_ref`、solver status與counts，不含 assignments、activity/day/location
+ID或時間。`score`不信任 caller 提供的 candidate或分數，而是以同一 instant重新讀取 canonical
+state、重跑 solver、比對 exact proposal ref並執行 trusted replay，之後才輸出 aggregate
+lexicographic score breakdown。錯誤 instant、ref或 canonical revision會要求重新 propose；執行中的
+source drift則回可重試的`STALE_CANONICAL_PLAN`，沒有partial result。
+
+這兩個結果都固定`provisional=true`、`runtime_evidence_loaded=false`，不開EvidenceStore、不持久化
+candidate或pending review，也不建立apply／approval authority。即使 canonical內的舊欄位標為
+verified，score仍只能用於下一步技術比較；必須在後續exact runtime evidence composition後重新評估，
+不能據此聲稱`travel_ready`或寫入`plan.json`。Legacy trip會在 scheduler前以
+`CANONICAL_PLAN_REQUIRED`拒絕，不會自動migration。
 
 已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
 `#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，

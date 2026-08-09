@@ -23,11 +23,12 @@ preview；它以 `plan.json` 加 `reservations.json`、`todo.json`、`info.json`
 
 不要直接編輯 canonical JSON。只能使用已支援的 `TripStore` / `PlanPatch` 路徑；
 Phase 5 目前有 storage-dispatch、唯讀的 `tripctl inspect`（evidence／canonical aggregate
-review）與 `tripctl validate`（deterministic timeline review）。安全且有效的 `plan.json`
-可讀取，但 runtime evidence、propose／score／apply 與完整 canonical workflow 尚未提供。
-兩者都不會把結果升級成 `travel_ready`，也不會 migration 真實 trip。任何 unsafe／malformed
-canonical marker 都不會 fallback 到 legacy。除非使用者已明確接受 developer workflow，
-否則不得 migration 真實 trip，並繼續使用下方 legacy 流程。
+review）與 `tripctl validate`（deterministic timeline review）。Canonical-only `tripctl
+propose`／`score`可用明示evaluation instant建立opaque proposal ref並trusted replay aggregate
+score，但固定為無runtime evidence的provisional結果，不接受caller自稱的assignments／score。
+apply與完整 canonical workflow 尚未提供。四者都不會把結果升級成 `travel_ready`，也不會
+migration真實trip；任何unsafe／malformed canonical marker都不會fallback到legacy。除非使用者
+已明確接受developer workflow，否則不得migration真實trip，並繼續使用下方legacy流程。
 
 ## 核心原則
 

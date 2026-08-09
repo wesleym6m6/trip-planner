@@ -41,8 +41,9 @@ M0已把Phase 5.13–5.29凍結為`Provider Execution Safety Reference v1`，並
 收斂為Phase 5.30–5.33；5.30 composed facade、5.31 bounded execution與5.32
 evidence-to-canonical已完成，5.33現進入unified product interface有限切片。runtime gate名稱不再
 各自占用roadmap phase編號。Phase 6.0 fail-closed public release boundary亦已完成；真實provider
-驗收仍只在明確授權範圍內進行，完整propose／score／apply、resume／retry、baseline adoption、
-skill與canned product acceptance仍待後續切片。
+驗收仍只在明確授權範圍內進行；canonical provisional propose／trusted replay score已接入，
+apply、evidence-bound re-score／resume、baseline adoption、skill完整改寫與canned product acceptance
+仍待後續切片。
 
 ## 產品目標
 
@@ -1886,9 +1887,30 @@ authority。
 - 新增6個Phase 5.33專項regressions，涵蓋canonical優先、determinism、redaction、read-only、drift、FIFO、duplicate
   key、低階read failure與CLI純JSON；16個直接predecessor `tripctl` tests維持不改且全過。本切片沒有provider、
   credential、migration、canonical write、`trips/`修改、render、deploy或push。
-- Phase 5.33 macro phase仍未完成；下一切片是typed propose／score facade與process-local resume checkpoint。apply、
+- Phase 5.33 macro phase仍未完成；下一切片是typed propose／score facade與可由CLI實際續接的resume語義。apply、
   migrated baseline adoption、skill完整改寫、Busan／Hokkaido canned E2E及另行授權的bounded live smoke仍保留在後續
   gates，不由本read-only切片暗示完成。
+
+### 2026-08-09 — Phase 5.33 canonical propose／score 第二切片完成
+
+- 單一`tripctl/v1` envelope新增canonical-only `propose`／`score`。`propose`要求caller明示timezone-aware
+  evaluation instant，以既有`ScheduleProblem`、safe default scope與bounded deterministic solver產生最多一個candidate；
+  public結果只輸出opaque problem/proposal refs、status與aggregate counts，不輸出assignments、entity IDs或時間。
+- `score`不接受caller-owned assignment、candidate或score，只接受`propose`的opaque ref與同一evaluation instant；每次都
+  重新讀取canonical snapshot、重建problem、重跑solver、比對exact candidate ref並呼叫既有trusted replay，再輸出
+  transparent aggregate lexicographic breakdown。CLI process不共享registry，因此使用既有content-bound refs作可跨invocation
+  的無權限resume；wrong ref、clock或semantic revision一律`STALE_PROPOSAL_REF`並要求重新propose。
+- Propose／score沿用16 MiB no-follow reader與source recheck；執行中source drift回可重試的
+  `STALE_CANONICAL_PLAN`且不附partial result。Legacy source在scheduler前以`CANONICAL_PLAN_REQUIRED`拒絕，不自動
+  migration。任何結果都固定`provisional=true`／`runtime_evidence_loaded=false`，沒有EvidenceStore、provider、pending
+  review、apply或canonical write authority，也不能宣稱`travel_ready`。
+- 新增6個第二切片regressions，涵蓋deterministic propose→score、safe score projection、missing evidence no-partial、ref／
+  clock／revision drift、in-flight source drift、legacy early refusal、CLI跨invocation replay、redaction與read-only。第二切片
+  internal gate為12個Phase 5.33 tests加16個直接predecessor tests全過；Python compile、`git diff --check`與23個trip data
+  files aggregate hash另於checkpoint重驗。本切片沒有修改`trips/`、render、deploy或push。
+- Phase 5.33仍未完成。下一個安全切片應先接入exact runtime evidence composition與readiness／re-score，使proposal不再只是
+  provisional；之後才進入typed apply review。真正canonical mutation仍須沿既有explicit enum response、authority、CAS與
+  receipt boundary，不能由本score ref推導。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

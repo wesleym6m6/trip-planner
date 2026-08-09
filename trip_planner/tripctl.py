@@ -7,14 +7,21 @@ safe aggregate metadata and deterministic kernel output; without an exact
 runtime evidence snapshot they remain ``waiting_external`` and can never claim
 ``travel_ready``.
 
-Neither command contacts providers, opens an :class:`EvidenceStore` (whose
-retention read can write), migrates, renders, or mutates caller-owned trip files.
+Canonical-only ``tripctl propose`` and ``tripctl score`` reuse the bounded
+scheduler through opaque content-bound refs.  ``score`` rebuilds and trusted-
+replays the candidate; neither command accepts caller-owned assignments or
+score values, and both remain provisional until runtime evidence is composed.
+
+None of these commands contacts providers, opens an :class:`EvidenceStore`
+(whose retention read can write), migrates, renders, or mutates caller-owned
+trip files.
 """
 
 from __future__ import annotations
 
 import re
 import stat
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,21 +40,38 @@ from .legacy_timeline import (
     validate_legacy_timeline,
     verify_legacy_timeline_source,
 )
+from .tripctl_schedule import (
+    TripctlScheduleError,
+    propose_canonical_schedule,
+    score_canonical_schedule,
+)
 
 
 TRIPCTL_VERSION = "tripctl/v1"
 """Version for the bounded public command envelope."""
 
 _INSPECT_COMMAND = "inspect"
+_PROPOSE_COMMAND = "propose"
+_SCORE_COMMAND = "score"
 _VALIDATE_COMMAND = "validate"
 _CANONICAL_INSPECT_UNAVAILABLE = "CANONICAL_INSPECT_UNAVAILABLE"
+_CANONICAL_PROPOSE_UNAVAILABLE = "CANONICAL_PROPOSE_UNAVAILABLE"
+_CANONICAL_SCORE_UNAVAILABLE = "CANONICAL_SCORE_UNAVAILABLE"
 _CANONICAL_VALIDATE_UNAVAILABLE = "CANONICAL_VALIDATE_UNAVAILABLE"
+_CANONICAL_PLAN_REQUIRED = "CANONICAL_PLAN_REQUIRED"
 _DATA_DIRECTORY_MISSING = "DATA_DIRECTORY_MISSING"
 _DATA_DIRECTORY_UNSAFE = "DATA_DIRECTORY_UNSAFE"
 _INSPECTION_UNAVAILABLE = "LEGACY_INSPECTION_UNAVAILABLE"
 _VALIDATION_UNAVAILABLE = "LEGACY_TIMELINE_VALIDATION_UNAVAILABLE"
 _CANONICAL_SOURCE_STALE = "STALE_CANONICAL_PLAN"
 _CANONICAL_EVIDENCE_MISSING = "CANONICAL_RUNTIME_EVIDENCE_NOT_LOADED"
+_SCHEDULE_INPUT_CODES = frozenset(
+    {
+        "INVALID_EVALUATION_AT",
+        "INVALID_PROPOSAL_REF",
+        "STALE_PROPOSAL_REF",
+    }
+)
 _PROBLEM_CODE_RE = re.compile(r"[A-Z][A-Z0-9_]{0,127}")
 _TIMELINE_REPAIR_CODES = frozenset(
     {
@@ -206,6 +230,112 @@ def validate_trip(path: str | Path) -> dict[str, Any]:
     }
 
 
+def propose_trip(
+    path: str | Path,
+    *,
+    evaluation_at: datetime,
+) -> dict[str, Any]:
+    """Return one opaque, replayable schedule proposal for a canonical trip.
+
+    The solver sees an exact private canonical snapshot, but assignments,
+    entity IDs, times, and plan content never enter the public envelope.  No
+    runtime evidence is loaded, so the result is provisional and has no apply
+    authority.
+    """
+
+    data_dir = _data_dir(path)
+    if not _canonical_marker_present(data_dir):
+        raise TripctlError(_CANONICAL_PLAN_REQUIRED)
+    try:
+        proposal = propose_canonical_schedule(
+            data_dir,
+            evaluation_at=evaluation_at,
+        )
+    except TripctlScheduleError as exc:
+        raise _schedule_command_error(_PROPOSE_COMMAND, exc) from exc
+
+    payload = proposal.to_dict()
+    schedule_status = payload["schedule_status"]
+    assert isinstance(schedule_status, str)
+    problems = _schedule_problems(payload)
+    if schedule_status == "solved":
+        status = "ready"
+        next_action = "score_proposal"
+        requires_user_review = False
+    elif schedule_status == "needs_evidence":
+        status = "waiting_external"
+        next_action = "refresh_evidence"
+        requires_user_review = False
+    elif schedule_status in {"proven_infeasible", "search_exhausted"}:
+        status = "review_required"
+        next_action = "repair_timeline"
+        requires_user_review = True
+    else:
+        status = "repair_required"
+        next_action = "repair_source"
+        requires_user_review = False
+    result = dict(payload)
+    result["storage_mode"] = "canonical"
+    return {
+        "contract_version": TRIPCTL_VERSION,
+        "command": _PROPOSE_COMMAND,
+        "ok": True,
+        "status": status,
+        "storage_mode": "canonical",
+        "result": result,
+        "problems": problems,
+        "retryable": False,
+        # The opaque ref is replayable, but no mutable review is retained.
+        "pending_review_retained": False,
+        "next_action": next_action,
+        "requires_user_review": requires_user_review,
+    }
+
+
+def score_trip(
+    path: str | Path,
+    *,
+    proposal_ref: str,
+    evaluation_at: datetime,
+) -> dict[str, Any]:
+    """Recompute, match, and trusted-replay one opaque schedule proposal ref."""
+
+    data_dir = _data_dir(path)
+    if not _canonical_marker_present(data_dir):
+        raise TripctlError(_CANONICAL_PLAN_REQUIRED)
+    try:
+        score = score_canonical_schedule(
+            data_dir,
+            proposal_ref=proposal_ref,
+            evaluation_at=evaluation_at,
+        )
+    except TripctlScheduleError as exc:
+        raise _schedule_command_error(_SCORE_COMMAND, exc) from exc
+
+    result = score.to_dict()
+    result["storage_mode"] = "canonical"
+    return {
+        "contract_version": TRIPCTL_VERSION,
+        "command": _SCORE_COMMAND,
+        "ok": True,
+        # The score is exact for canonical bytes but lacks runtime evidence.
+        "status": "waiting_external",
+        "storage_mode": "canonical",
+        "result": result,
+        "problems": [
+            {
+                "code": _CANONICAL_EVIDENCE_MISSING,
+                "severity": "warning",
+                "affected_count": 1,
+            }
+        ],
+        "retryable": False,
+        "pending_review_retained": False,
+        "next_action": "refresh_evidence",
+        "requires_user_review": False,
+    }
+
+
 def _inspect_canonical_trip(data_dir: Path) -> dict[str, Any]:
     try:
         inspection = inspect_canonical_plan(data_dir)
@@ -311,10 +441,68 @@ def _canonical_command_error(
     return TripctlError(code)
 
 
+def _schedule_command_error(
+    command: str,
+    error: TripctlScheduleError,
+) -> TripctlError:
+    if error.code == _CANONICAL_SOURCE_STALE or error.code in _SCHEDULE_INPUT_CODES:
+        return TripctlError(error.code, retryable=error.retryable)
+    code = (
+        _CANONICAL_PROPOSE_UNAVAILABLE
+        if command == _PROPOSE_COMMAND
+        else _CANONICAL_SCORE_UNAVAILABLE
+    )
+    return TripctlError(code)
+
+
+def _schedule_problems(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    problems: list[dict[str, Any]] = [
+        {
+            "code": _CANONICAL_EVIDENCE_MISSING,
+            "severity": "warning",
+            "affected_count": 1,
+        }
+    ]
+    failure_code = payload.get("failure_code")
+    if isinstance(failure_code, str):
+        affected_counts = tuple(
+            value
+            for name in (
+                "failure_activity_count",
+                "failure_day_count",
+                "failure_constraint_count",
+                "missing_arc_count",
+                "kernel_issue_count",
+            )
+            if type(value := payload.get(name)) is int
+        )
+        problems.append(
+            {
+                "code": failure_code,
+                "severity": "warning",
+                "affected_count": max((1, *affected_counts)),
+            }
+        )
+    problems.sort(key=lambda item: (str(item["code"]), str(item["severity"])))
+    return problems
+
+
 def inspection_failure(error: TripctlError) -> dict[str, Any]:
     """Return the backward-compatible safe ``inspect`` failure envelope."""
 
     return command_failure(_INSPECT_COMMAND, error)
+
+
+def proposal_failure(error: TripctlError) -> dict[str, Any]:
+    """Return the safe ``propose`` failure envelope used by the CLI."""
+
+    return command_failure(_PROPOSE_COMMAND, error)
+
+
+def score_failure(error: TripctlError) -> dict[str, Any]:
+    """Return the safe ``score`` failure envelope used by the CLI."""
+
+    return command_failure(_SCORE_COMMAND, error)
 
 
 def validation_failure(error: TripctlError) -> dict[str, Any]:
@@ -329,17 +517,29 @@ def command_failure(command: str, error: TripctlError) -> dict[str, Any]:
     if not isinstance(error, TripctlError):
         raise TypeError("error must be a TripctlError")
     safe_command = (
-        command if command in {_INSPECT_COMMAND, _VALIDATE_COMMAND} else "unknown"
+        command
+        if command
+        in {
+            _INSPECT_COMMAND,
+            _PROPOSE_COMMAND,
+            _SCORE_COMMAND,
+            _VALIDATE_COMMAND,
+        }
+        else "unknown"
     )
     storage_mode = (
         "canonical"
         if error.code
         in {
             _CANONICAL_INSPECT_UNAVAILABLE,
+            _CANONICAL_PROPOSE_UNAVAILABLE,
+            _CANONICAL_SCORE_UNAVAILABLE,
             _CANONICAL_VALIDATE_UNAVAILABLE,
             _CANONICAL_SOURCE_STALE,
+            "INVALID_PROPOSAL_REF",
+            "STALE_PROPOSAL_REF",
         }
-        else "unknown"
+        else ("legacy" if error.code == _CANONICAL_PLAN_REQUIRED else "unknown")
     )
     return {
         "contract_version": TRIPCTL_VERSION,
@@ -416,10 +616,26 @@ def _canonical_marker_present(data_dir: Path) -> bool:
 
 
 def _failure_next_action(code: str, command: str) -> str:
-    if code in {_CANONICAL_INSPECT_UNAVAILABLE, _CANONICAL_VALIDATE_UNAVAILABLE}:
+    if code in {
+        _CANONICAL_INSPECT_UNAVAILABLE,
+        _CANONICAL_PROPOSE_UNAVAILABLE,
+        _CANONICAL_SCORE_UNAVAILABLE,
+        _CANONICAL_VALIDATE_UNAVAILABLE,
+    }:
         return "use_developer_runtime"
     if code == _CANONICAL_SOURCE_STALE:
-        return "retry_validation" if command == _VALIDATE_COMMAND else "retry_inspection"
+        return {
+            _INSPECT_COMMAND: "retry_inspection",
+            _PROPOSE_COMMAND: "retry_proposal",
+            _SCORE_COMMAND: "retry_score",
+            _VALIDATE_COMMAND: "retry_validation",
+        }.get(command, "retry_command")
+    if code == _CANONICAL_PLAN_REQUIRED:
+        return "use_canonical_trip"
+    if code == "INVALID_EVALUATION_AT":
+        return "provide_evaluation_at"
+    if code in {"INVALID_PROPOSAL_REF", "STALE_PROPOSAL_REF"}:
+        return "rerun_proposal"
     if code == "STALE_LEGACY_EVIDENCE_PREVIEW":
         return "retry_inspection"
     if code == "STALE_LEGACY_TIMELINE_SOURCE":
@@ -443,6 +659,10 @@ __all__ = [
     "command_failure",
     "inspect_trip",
     "inspection_failure",
+    "propose_trip",
+    "proposal_failure",
+    "score_trip",
+    "score_failure",
     "validate_trip",
     "validation_failure",
 ]
