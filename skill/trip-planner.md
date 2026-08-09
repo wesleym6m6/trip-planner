@@ -235,6 +235,21 @@ echo '{
 
 ### 所有腳本的呼叫方式
 
+每日 live provider 開發先執行：
+
+```bash
+python3 $REPO/scripts/trip_planner_dev_session.py status
+python3 $REPO/scripts/trip_planner_dev_session.py start  # 只在 inactive 時由使用者執行
+```
+
+Active session 必須重用 credential availability，不要逐次要求解鎖。它只把 allowlisted
+provider key 留在 `/run/user/$UID` private tmpfs 最多 24 小時，不保存 `BW_SESSION`；
+credential availability 不建立或延長 provider／mutation／deploy authority，也不取代 exact
+typed gate。一般 conversational scope 是否仍有效只依目前對話與契約判斷，不能從 session
+推論；已明確且未變更時不要機械性重問，但所有 required exact response／expiry 仍要執行。
+不要直接呼叫內部 `_emit` 或讀 runtime session file；提前結束用 `stop`，並記得它不能撤回
+已由既有 process 繼承的環境變數。
+
 ```bash
 # 一律用 direnv exec，不要 cd
 direnv exec $REPO python3 scripts/<腳本名>.py [引數]

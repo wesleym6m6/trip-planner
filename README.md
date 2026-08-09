@@ -32,11 +32,21 @@ cd trip-plan
 # Python 虛擬環境（需要 uv）
 uv venv
 pip install -r requirements.txt
+```
 
-# direnv（管理環境變數）
-cp .envrc.example .envrc
-# 編輯 .envrc，填入你的 Google Maps API Key
-direnv allow
+建立不進版控的 `.envrc`，內容就是下列三行；不要保留 `.envrc.example` 裡的 placeholder
+key exports，否則它們會優先於 daily session：
+
+```bash
+source "$PWD/scripts/trip_planner_direnv.sh"
+export VIRTUAL_ENV="$PWD/.venv"
+PATH_add "$VIRTUAL_ENV/bin"
+```
+
+接著允許 direnv；完成下一節的 Bitwarden 登入後，每天開發開始時再啟動一次 daily session：
+
+```bash
+direnv allow .
 ```
 
 ### 2. Google Maps API Key
@@ -47,10 +57,36 @@ direnv allow
 
 API Key 的「API restrictions」需包含這兩個 service。舊版 Directions API 自 2025/3 起已無法新啟用。
 
-填入 `.envrc`：
+建議把 key 放在 Bitwarden 中名為 `GOOGLE_MAPS_API_KEY` 的 Secure Note 或 password，先完成一次
+`bw login`。之後每天開發開始時執行：
+
+```bash
+python3 scripts/trip_planner_dev_session.py start
+direnv reload
+```
+
+若當日 session 已 active，命令不會再次解鎖。它只把 allowlisted provider key 放在
+`/run/user/$UID` 的 private tmpfs，權限 `0600`；wall 或 BOOTTIME 任一 deadline 到期就會
+拒絕讀取，重新開機或時鐘回退到建立時間之前也會 fail closed，而 wall clock 回調不能延長
+BOOTTIME 的 24 小時上限。Generation-bound user timer 以一秒精度做 best-effort 實體清除，
+但它只是 cleanup，不是有效期判斷；不保存 Bitwarden master password 或 `BW_SESSION`。
+安全查詢與提前結束：
+
+```bash
+python3 scripts/trip_planner_dev_session.py status
+python3 scripts/trip_planner_dev_session.py stop
+```
+
+不使用 Bitwarden 時，也可在啟動 Trip Planner／Codex 的同一個 shell 直接提供：
+
 ```bash
 export GOOGLE_MAPS_API_KEY="your-key-here"
 ```
+
+Daily session 只提供 credential availability，不等於 provider、canonical write 或 deploy
+授權，也不會延長任何 exact typed gate。一般 live scope 是否仍由目前對話涵蓋，要依對話
+本身判斷，不能由 session 狀態推論。`stop`／到期會阻止後續載入，但無法撤回已由既有
+process 繼承的環境變數；需要立即撤回時也要結束那些 process。
 
 ### 3. 安裝 Claude Code Skill
 
