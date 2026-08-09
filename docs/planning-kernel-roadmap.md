@@ -2004,6 +2004,36 @@ authority。
 - Phase 5.33仍未完成。下一個必要離線切片是一次性migrated baseline review／classify／adopt；目前mutation engine
   只會在既有protected activity被刪除時被動同步metadata，不能以scheduler變更或generic approval偷清保護。
 
+### 2026-08-09 — Phase 5.33 migrated baseline adoption 第七切片完成
+
+- 新增sole-operation `AdoptMigratedBaseline`與四種無歧義typed分類：`movable → selected/movable`、
+  `fixed_day → fixed/fixed_day`、`fixed_time → fixed/fixed_time`、`booked → booked/fixed_time`。分類必須依
+  exact review順序完整覆蓋所有protected IDs；禁止partial、extra、duplicate、reorder或與其他mutation混用，
+  fixed-time／booked缺既有time時fail closed。
+- `prepare_migrated_baseline_classification_review()`只讀exact canonical revision、migration source與protected
+  inventory；safe view只有counts/options，title/day/date/time只存在標為direct-human-review-only的ephemeral private
+  projection，不得log、store或當成持久authority；不可序列化的是process-local review handle。分類後的final private
+  projection明列每項exact choice與 resulting decision/flexibility，`MigratedBaselineAdoptionStager`再以既有canonical
+  gate包成30分鐘review。只接受目前writer的`legacy-v1` source，foreign schema及candidate／cancelled／excluded
+  reactivation一律fail closed。
+- `accept_apply`仍只做人類checkpoint，不mint protected `ApprovalGrant`。缺少或錯scope的external grant會零write並
+  保留同一pending response；matching grant才可經TripStore CAS／kernel／atomic replace／receipt commit。一次
+  `after_replace` lost ACK可由同一response重試取得exact replay，canonical只留一份receipt；unknown write outcome維持
+  nullable並要求retry exact apply，不猜測結果。正常採用回`applied`／`continue_planning`，不假稱external evidence
+  refresh或`travel_ready`；若原transaction在lost ACK後已rollback，舊response明確回`rolled_back`並要求fresh review。
+- 清除仍存在activity的migration protection本身現已計入protected net diff；直接TripStore apply也不能只靠最高分類
+  繞過approval。Adoption只物化decision／flexibility並清空`protected_activity_ids`，保留source schema/revision、ignored
+  travel edges、evidence、duration、location、time及其他activity fields；scheduler acceptance另證明不會偷清保護。
+- 新增6個product/adversarial regressions與4個pure-mutation regressions；148個baseline、store、migration、schedule、
+  canonical-gate及product predecessor tests全過。獨立反過度工程稽核確認此為最小必要one-time seam，未新增partial
+  adoption、generic metadata editor、database/sidecar、新approval hierarchy、legacy reread、provider、真實trip write、
+  render或deploy。
+- Commit前完整`./scripts/check.sh` exit 0：Python compile、1050個offline tests及Ishigaki／South Island／Tainan
+  三個read-only real-trip validators全過；未讀credential、未呼叫provider，23個`trips/*/data`檔案aggregate hash維持
+  `91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。
+- Phase 5.33仍未完成；repo skill敘述與本切片offline gate已完成，下一步只剩真正統一host interface、installed skill
+  同步與另行授權的bounded live smoke。CLI不得為了字面上的`apply`序列化review、response或authority。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

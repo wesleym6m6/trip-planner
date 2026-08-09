@@ -52,6 +52,18 @@ canonical stores與canned exact authority。它驗證fixed activities、daily/sp
 跨城buffer、proposal resume、retained approval response與lost-ACK receipt reconciliation；成功write後仍須
 輸出`waiting_external`／`refresh_external_evidence`。此腳本不是provider/live smoke或真實apply authority。
 
+Migrated baseline只能走一次性的typed review／classify／adopt seam。先用
+`prepare_migrated_baseline_classification_review()`讀取process-local review；exact activity inventory只能透過
+標為`private_ephemeral_direct_human_review_only`的private projection直接給人審閱，不得log、store或當成持久authority。
+目前只接受writer產生的`legacy-v1` migration；candidate／cancelled／excluded activity一律fail closed，不得默默re-activate。再用
+`MigratedBaselineAdoptionStager.classify()`依review順序完整提交`movable`／`fixed_day`／`fixed_time`／`booked`
+分類；不得partial、加項、調序或混入其他patch。最後仍須既有canonical exact `accept_apply` response與
+分開取得的matching `ApprovalGrant`，兩者缺一都零write並保留pending。採納只物化decision／flexibility並
+清空`protected_activity_ids`；不得更動或升級evidence、時間、地點、duration、migration provenance或ignored
+travel。Generic「繼續」與scheduler永遠不能視為baseline adoption authority。
+成功只回`applied`／`continue_planning`且不升級evidence或`travel_ready`；unknown須retry同一exact apply，已rollback
+receipt則要求fresh review。
+
 ## 核心原則
 
 1. **API 資料一次快取，同一趟旅行不重複查詢。** 每個透過 Places API 解析的地點都寫入 `places_cache.json`。從行程刪除景點不會刪 cache——用戶可能會加回來。

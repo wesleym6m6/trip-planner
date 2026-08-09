@@ -14,9 +14,12 @@ from typing import Any, Callable
 from trip_planner.codec import compute_revision, validate_plan
 from trip_planner.migrations import preview_legacy_migration
 from trip_planner.mutations import (
+    AdoptMigratedBaseline,
     AddActivity,
     AddConstraint,
     ApprovalGrant,
+    MigratedActivityClassification,
+    MigratedActivityClassificationKind,
     PlaceActivity,
     Placement,
     PlanPatch,
@@ -231,6 +234,27 @@ class Phase1MutationTests(unittest.TestCase):
             idempotency_key=key,
             operations=tuple(operations),
             intent="offline mutation fixture",
+        )
+
+    def _baseline_adoption(
+        self,
+        plan: dict[str, Any],
+        kinds: dict[str, MigratedActivityClassificationKind],
+        *,
+        key: str = "baseline-adoption",
+    ) -> PlanPatch:
+        migration = plan["state"]["trip"]["_trip_planner"]["migration"]
+        return self._patch(
+            plan,
+            AdoptMigratedBaseline(
+                op_id="adopt-migrated-baseline",
+                source_revision=migration["source_revision"],
+                classifications=tuple(
+                    MigratedActivityClassification(activity_id, kind)
+                    for activity_id, kind in kinds.items()
+                ),
+            ),
+            key=key,
         )
 
     def _grant(self, scope: str) -> ApprovalGrant:
@@ -971,6 +995,263 @@ class Phase1MutationTests(unittest.TestCase):
                 "migration"
             ]["protected_activity_ids"],
         )
+
+    def test_migrated_baseline_adoption_is_complete_exact_and_protected(
+        self,
+    ) -> None:
+        plan = self._migrated_unclassified_plan()
+        before = deepcopy(plan)
+        patch = self._baseline_adoption(
+            plan,
+            {
+                self.alpha: MigratedActivityClassificationKind.MOVABLE,
+                self.beta: MigratedActivityClassificationKind.FIXED_DAY,
+                self.gamma: MigratedActivityClassificationKind.BOOKED,
+            },
+        )
+
+        preview = apply_patch_to_plan(plan, patch)
+
+        self.assert_problem(preview, "APPROVAL_REQUIRED")
+        self.assertIsNotNone(preview.required_approval_scope)
+        self.assertEqual(
+            {self.alpha, self.beta, self.gamma},
+            {
+                change.entity_id
+                for change in preview.protected_changes
+                if change.field == "migration.protection"
+            },
+        )
+        approved = apply_patch_to_plan(
+            plan,
+            patch,
+            approvals=(self._grant(preview.required_approval_scope),),
+        )
+        self.assertTrue(approved.can_apply, approved.problems)
+        adopted = approved.to_plan_dict()
+        migration = adopted["state"]["trip"]["_trip_planner"]["migration"]
+        before_migration = before["state"]["trip"]["_trip_planner"][
+            "migration"
+        ]
+        self.assertEqual([], migration["protected_activity_ids"])
+        self.assertEqual(
+            before_migration["source_schema"],
+            migration["source_schema"],
+        )
+        self.assertEqual(
+            before_migration["source_revision"],
+            migration["source_revision"],
+        )
+        self.assertEqual(
+            before_migration["ignored_travel_edges"],
+            migration["ignored_travel_edges"],
+        )
+        expected = {
+            self.alpha: ("selected", "movable"),
+            self.beta: ("fixed", "fixed_day"),
+            self.gamma: ("booked", "fixed_time"),
+        }
+        for activity_id, fields in expected.items():
+            activity = _activity(adopted, activity_id)
+            original = _activity(before, activity_id)
+            self.assertEqual(fields[0], activity["decision_state"])
+            self.assertEqual(fields[1], activity["flexibility"])
+            for field in (
+                "time",
+                "duration_min",
+                "location_id",
+                "note",
+            ):
+                self.assertEqual(original.get(field), activity.get(field))
+            self.assertEqual(
+                original.get("evidence_state"),
+                activity.get("evidence_state"),
+            )
+
+        movable_change = apply_patch_to_plan(
+            adopted,
+            self._patch(
+                adopted,
+                UpdateActivity("move-adopted", self.alpha, {"time": "09:15"}),
+                key="move-adopted",
+            ),
+        )
+        self.assertTrue(movable_change.can_apply, movable_change.problems)
+        for activity_id in (self.beta, self.gamma):
+            protected_change = apply_patch_to_plan(
+                adopted,
+                self._patch(
+                    adopted,
+                    UpdateActivity(
+                        f"move-{activity_id}",
+                        activity_id,
+                        {"time": "12:15"},
+                    ),
+                    key=f"move-{activity_id}",
+                ),
+            )
+            self.assert_problem(protected_change, "APPROVAL_REQUIRED")
+
+    def test_migrated_baseline_adoption_rejects_partial_mixed_and_repeat(
+        self,
+    ) -> None:
+        plan = self._migrated_unclassified_plan()
+        with self.assertRaises(ValueError):
+            AdoptMigratedBaseline(
+                op_id="duplicate-classification",
+                source_revision=(
+                    plan["state"]["trip"]["_trip_planner"]["migration"][
+                        "source_revision"
+                    ]
+                ),
+                classifications=(
+                    MigratedActivityClassification(
+                        self.alpha,
+                        MigratedActivityClassificationKind.MOVABLE,
+                    ),
+                    MigratedActivityClassification(
+                        self.alpha,
+                        MigratedActivityClassificationKind.FIXED_DAY,
+                    ),
+                ),
+            )
+        partial = self._baseline_adoption(
+            plan,
+            {self.alpha: MigratedActivityClassificationKind.MOVABLE},
+            key="partial-adoption",
+        )
+        self.assert_problem(
+            apply_patch_to_plan(plan, partial),
+            "MIGRATED_BASELINE_CLASSIFICATION_MISMATCH",
+        )
+
+        mixed = self._patch(
+            plan,
+            partial.operations[0],
+            UpdateActivity("mixed-edit", self.alpha, {"note": "mixed"}),
+            key="mixed-adoption",
+        )
+        self.assert_problem(
+            apply_patch_to_plan(plan, mixed),
+            "BASELINE_ADOPTION_MUST_BE_EXCLUSIVE",
+        )
+
+        wrong_source = self._baseline_adoption(
+            plan,
+            {
+                activity_id: MigratedActivityClassificationKind.MOVABLE
+                for activity_id in (self.alpha, self.beta, self.gamma)
+            },
+            key="wrong-source-adoption",
+        )
+        wrong_operation = wrong_source.operations[0]
+        assert isinstance(wrong_operation, AdoptMigratedBaseline)
+        wrong_source = PlanPatch(
+            trip_id=wrong_source.trip_id,
+            base_revision=wrong_source.base_revision,
+            idempotency_key=wrong_source.idempotency_key,
+            operations=(
+                AdoptMigratedBaseline(
+                    op_id=wrong_operation.op_id,
+                    source_revision="changed-source-revision",
+                    classifications=wrong_operation.classifications,
+                ),
+            ),
+        )
+        self.assert_problem(
+            apply_patch_to_plan(plan, wrong_source),
+            "MIGRATED_BASELINE_SOURCE_CHANGED",
+        )
+
+        full = self._baseline_adoption(
+            plan,
+            {
+                activity_id: MigratedActivityClassificationKind.MOVABLE
+                for activity_id in (self.alpha, self.beta, self.gamma)
+            },
+            key="full-adoption",
+        )
+        preview = apply_patch_to_plan(plan, full)
+        adopted = apply_patch_to_plan(
+            plan,
+            full,
+            approvals=(self._grant(preview.required_approval_scope),),
+        ).to_plan_dict()
+        adopted["generation"] += 1
+        self._seal(adopted)
+        repeat = PlanPatch(
+            trip_id=adopted["trip_id"],
+            base_revision=adopted["revision"],
+            idempotency_key="repeat-adoption",
+            operations=full.operations,
+        )
+        self.assert_problem(
+            apply_patch_to_plan(adopted, repeat),
+            "MIGRATED_BASELINE_ALREADY_ADOPTED",
+        )
+
+    def test_migrated_baseline_fixed_time_requires_existing_time(self) -> None:
+        plan = self._migrated_unclassified_plan()
+        _activity(plan, self.alpha).pop("time", None)
+        self._seal(plan)
+        patch = self._baseline_adoption(
+            plan,
+            {
+                self.alpha: MigratedActivityClassificationKind.BOOKED,
+                self.beta: MigratedActivityClassificationKind.MOVABLE,
+                self.gamma: MigratedActivityClassificationKind.MOVABLE,
+            },
+            key="missing-fixed-time",
+        )
+        self.assert_problem(
+            apply_patch_to_plan(plan, patch),
+            "FIXED_TIME_REQUIRES_SCHEDULED_TIME",
+        )
+
+    def test_migrated_baseline_rejects_foreign_schema_and_reactivation(
+        self,
+    ) -> None:
+        foreign = self._migrated_unclassified_plan()
+        foreign["state"]["trip"]["_trip_planner"]["migration"][
+            "source_schema"
+        ] = "future-v2"
+        self._seal(foreign)
+        foreign_patch = self._baseline_adoption(
+            foreign,
+            {
+                activity_id: MigratedActivityClassificationKind.MOVABLE
+                for activity_id in (self.alpha, self.beta, self.gamma)
+            },
+            key="foreign-schema-adoption",
+        )
+        self.assert_problem(
+            apply_patch_to_plan(foreign, foreign_patch),
+            "MIGRATED_BASELINE_SOURCE_SCHEMA_UNSUPPORTED",
+        )
+
+        for decision_state in ("candidate", "cancelled", "excluded"):
+            with self.subTest(decision_state=decision_state):
+                inactive = self._migrated_unclassified_plan()
+                activity = _activity(inactive, self.alpha)
+                activity["decision_state"] = decision_state
+                activity["flexibility"] = "movable"
+                self._seal(inactive)
+                inactive_patch = self._baseline_adoption(
+                    inactive,
+                    {
+                        activity_id: MigratedActivityClassificationKind.MOVABLE
+                        for activity_id in (
+                            self.alpha,
+                            self.beta,
+                            self.gamma,
+                        )
+                    },
+                    key=f"reactivation-{decision_state}",
+                )
+                self.assert_problem(
+                    apply_patch_to_plan(inactive, inactive_patch),
+                    "MIGRATED_BASELINE_REACTIVATION_FORBIDDEN",
+                )
 
     def test_cosmetic_edit_of_protected_activity_needs_no_grant(self) -> None:
         plans = (

@@ -635,6 +635,21 @@ receipt reconciliation；lost ACK若有exact receipt會如實回replay confirmed
 `canonical_write_outcome=unknown`及nullable `canonical_write_performed`，不猜測結果。Generic「繼續」
 不能替代exact enum response；目前仍沒有CLI `apply`入口，也未授權任何真實trip mutation。
 
+Migrated canonical trip另有一次性的baseline adoption seam。Developer host先以
+`prepare_migrated_baseline_classification_review()`取得綁exact revision、migration source與
+protected activity順序的process-local review；safe view只有數量與四種typed選項，exact title／day／date／time
+只在ephemeral private projection，該projection不得log、store或當成持久authority，review handle本身不可序列化。
+目前只接受migration writer產生的`legacy-v1` source；已是candidate／cancelled／excluded的activity會fail closed，
+不得由baseline adoption默默重新啟用。分類必須逐項完整覆蓋，且`movable`、`fixed_day`、`fixed_time`、`booked`分別固定映射為
+`selected/movable`、`fixed/fixed_day`、`fixed/fixed_time`、`booked/fixed_time`；後兩者缺既有time即拒絕。
+`MigratedBaselineAdoptionStager`只建立sole-operation `AdoptMigratedBaseline` patch，保留source provenance、
+ignored travel、evidence、duration、place與time。它再包入既有30分鐘canonical `accept_apply` gate；capture
+不寫入，accept也不會mint protected `ApprovalGrant`。缺少或不匹配的外部exact approval會保留同一pending
+response，只有兩層authority都齊全才以TripStore CAS／receipt原子清空`protected_activity_ids`。Scheduler、
+一般patch、partial classification或generic metadata edit皆不能清除migration protection。
+正常採用回`applied`／`continue_planning`，但不會改動或升級evidence，也不代表`travel_ready`；unknown只允許
+同一exact apply retry，若receipt已rollback則明確回`rolled_back`並要求fresh review。
+
 離線產品驗收可執行`python3 scripts/phase533_acceptance.py`。它只建立temporary canonical stores，
 使用canned exact authority走過`inspect → evidence validate → propose → score replay → typed review →
 exact response → execute`。Busan保留10:00 booked抵達、18:00 booked晚餐與每日住宿anchors，並驗證

@@ -178,6 +178,33 @@ class Placement(str, Enum):
     AFTER = "after"
 
 
+class MigratedActivityClassificationKind(str, Enum):
+    """Small human-owned vocabulary for one migrated activity."""
+
+    MOVABLE = "movable"
+    FIXED_DAY = "fixed_day"
+    FIXED_TIME = "fixed_time"
+    BOOKED = "booked"
+
+    @property
+    def decision_state(self) -> str:
+        return {
+            type(self).MOVABLE: "selected",
+            type(self).FIXED_DAY: "fixed",
+            type(self).FIXED_TIME: "fixed",
+            type(self).BOOKED: "booked",
+        }[self]
+
+    @property
+    def flexibility(self) -> str:
+        return {
+            type(self).MOVABLE: "movable",
+            type(self).FIXED_DAY: "fixed_day",
+            type(self).FIXED_TIME: "fixed_time",
+            type(self).BOOKED: "fixed_time",
+        }[self]
+
+
 @dataclass(frozen=True, slots=True)
 class _UnsetValue:
     """Sentinel that distinguishes an omitted time from an explicit clear."""
@@ -302,6 +329,54 @@ class SetLodgingSelection:
 
 
 @dataclass(frozen=True, slots=True)
+class MigratedActivityClassification:
+    """One explicit human classification for a protected legacy activity."""
+
+    activity_id: str
+    kind: MigratedActivityClassificationKind
+
+    def __post_init__(self) -> None:
+        _require_request_id(
+            self.activity_id,
+            "MigratedActivityClassification.activity_id",
+        )
+        if type(self.kind) is not MigratedActivityClassificationKind:
+            raise TypeError(
+                "MigratedActivityClassification.kind must be exact"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AdoptMigratedBaseline:
+    """Classify every protected legacy activity and adopt it atomically."""
+
+    op_id: str
+    source_revision: str
+    classifications: tuple[MigratedActivityClassification, ...]
+
+    def __post_init__(self) -> None:
+        _require_request_id(self.op_id, "AdoptMigratedBaseline.op_id")
+        _require_request_id(
+            self.source_revision,
+            "AdoptMigratedBaseline.source_revision",
+        )
+        values = tuple(self.classifications)
+        if not values or any(
+            type(item) is not MigratedActivityClassification
+            for item in values
+        ):
+            raise TypeError(
+                "AdoptMigratedBaseline.classifications must be non-empty and exact"
+            )
+        ordered = tuple(sorted(values, key=lambda item: item.activity_id))
+        if len({item.activity_id for item in ordered}) != len(ordered):
+            raise ValueError(
+                "AdoptMigratedBaseline classifications must have unique activity IDs"
+            )
+        object.__setattr__(self, "classifications", ordered)
+
+
+@dataclass(frozen=True, slots=True)
 class UpdateActivity:
     op_id: str
     activity_id: str
@@ -399,7 +474,8 @@ class RemoveConstraint:
 
 
 PatchOperation: TypeAlias = (
-    AddActivity
+    AdoptMigratedBaseline
+    | AddActivity
     | UpdateActivity
     | PlaceActivity
     | RemoveActivity
@@ -773,6 +849,19 @@ def patch_to_dict(patch: PlanPatch) -> dict[str, Any]:
                     for anchor in operation.anchors
                 ],
             }
+        elif isinstance(operation, AdoptMigratedBaseline):
+            value = {
+                "op": "adopt_migrated_baseline",
+                "op_id": operation.op_id,
+                "source_revision": operation.source_revision,
+                "classifications": [
+                    {
+                        "activity_id": item.activity_id,
+                        "kind": item.kind.value,
+                    }
+                    for item in operation.classifications
+                ],
+            }
         elif isinstance(operation, AddConstraint):
             value = {
                 "op": "add_constraint",
@@ -1066,6 +1155,22 @@ def apply_patch_to_plan(
                 message="A PlanPatch must contain at least one semantic operation.",
             )
         )
+    adoption_count = sum(
+        isinstance(operation, AdoptMigratedBaseline)
+        for operation in patch.operations
+    )
+    if adoption_count and (
+        adoption_count != 1 or len(patch.operations) != 1
+    ):
+        problems.append(
+            MutationProblem(
+                code="BASELINE_ADOPTION_MUST_BE_EXCLUSIVE",
+                message=(
+                    "Migrated baseline adoption must be the patch's only "
+                    "semantic operation."
+                ),
+            )
+        )
 
     blocking_prefix_codes = {
         "MALFORMED_PLAN",
@@ -1075,13 +1180,22 @@ def apply_patch_to_plan(
         "DUPLICATE_OPERATION_ID",
         "PATCH_SCHEMA_INVALID",
         "EMPTY_PATCH",
+        "BASELINE_ADOPTION_MUST_BE_EXCLUSIVE",
     }
     if not any(problem.code in blocking_prefix_codes for problem in problems):
         initial_index, initial_problems = _build_index(candidate)
         problems.extend(initial_problems)
         if initial_index is not None and not initial_problems:
             for operation in patch.operations:
-                if isinstance(operation, AddActivity):
+                if isinstance(operation, AdoptMigratedBaseline):
+                    _apply_adopt_migrated_baseline(
+                        candidate,
+                        operation,
+                        problems,
+                        changes,
+                        affected_days,
+                    )
+                elif isinstance(operation, AddActivity):
                     _apply_add_activity(
                         candidate,
                         operation,
@@ -1164,10 +1278,16 @@ def apply_patch_to_plan(
                     problems,
                 )
                 if not problems:
-                    invalidation_sources = _net_travel_invalidation_sources(
-                        original,
-                        candidate,
-                    )
+                    if isinstance(
+                        patch.operations[0],
+                        AdoptMigratedBaseline,
+                    ):
+                        invalidation_sources = {}
+                    else:
+                        invalidation_sources = _net_travel_invalidation_sources(
+                            original,
+                            candidate,
+                        )
                     _invalidate_day_travel(
                         candidate,
                         invalidation_sources,
@@ -1283,6 +1403,208 @@ def apply_patch_to_plan(
 # Friendly aliases for callers that name the pure operation as a preview.
 preview_patch = apply_patch_to_plan
 apply_plan_patch = apply_patch_to_plan
+
+
+def _apply_adopt_migrated_baseline(
+    plan: dict[str, Any],
+    operation: AdoptMigratedBaseline,
+    problems: list[MutationProblem],
+    changes: list[ChangeRecord],
+    affected_days: set[str],
+) -> None:
+    index = _operation_index(plan, operation.op_id, problems)
+    if index is None:
+        return
+    trip = plan.get("state", {}).get("trip")
+    metadata = (
+        trip.get(_MIGRATION_META_KEY)
+        if isinstance(trip, dict)
+        else None
+    )
+    migration = (
+        metadata.get("migration")
+        if isinstance(metadata, dict)
+        else None
+    )
+    protected = (
+        migration.get("protected_activity_ids")
+        if isinstance(migration, dict)
+        else None
+    )
+    if not isinstance(protected, list) or any(
+        not isinstance(activity_id, str) or not activity_id
+        for activity_id in protected
+    ):
+        problems.append(
+            _problem(
+                "MIGRATED_BASELINE_UNAVAILABLE",
+                "The canonical plan has no valid migrated baseline protection.",
+                operation,
+                "trip",
+                str(plan.get("trip_id", "")) or "trip",
+            )
+        )
+        return
+    if not protected:
+        problems.append(
+            _problem(
+                "MIGRATED_BASELINE_ALREADY_ADOPTED",
+                "The migrated baseline no longer has protected activities.",
+                operation,
+                "trip",
+                str(plan.get("trip_id", "")) or "trip",
+            )
+        )
+        return
+    if migration.get("source_schema") != "legacy-v1":
+        problems.append(
+            _problem(
+                "MIGRATED_BASELINE_SOURCE_SCHEMA_UNSUPPORTED",
+                "Only the legacy-v1 migration baseline can be adopted.",
+                operation,
+                "trip",
+                str(plan.get("trip_id", "")) or "trip",
+            )
+        )
+        return
+    if migration.get("source_revision") != operation.source_revision:
+        problems.append(
+            _problem(
+                "MIGRATED_BASELINE_SOURCE_CHANGED",
+                "The migrated baseline source revision no longer matches.",
+                operation,
+                "trip",
+                str(plan.get("trip_id", "")) or "trip",
+            )
+        )
+        return
+
+    classified_ids = {
+        item.activity_id for item in operation.classifications
+    }
+    protected_ids = set(protected)
+    if classified_ids != protected_ids:
+        problems.append(
+            _problem(
+                "MIGRATED_BASELINE_CLASSIFICATION_MISMATCH",
+                (
+                    "Classifications must cover every protected migrated "
+                    "activity exactly once."
+                ),
+                operation,
+                "trip",
+                str(plan.get("trip_id", "")) or "trip",
+                details={
+                    "protected_activity_count": len(protected_ids),
+                    "classified_activity_count": len(classified_ids),
+                    "missing_activity_count": len(
+                        protected_ids.difference(classified_ids)
+                    ),
+                    "unexpected_activity_count": len(
+                        classified_ids.difference(protected_ids)
+                    ),
+                },
+            )
+        )
+        return
+
+    classified_activities: list[
+        tuple[
+            MigratedActivityClassification,
+            dict[str, Any],
+            dict[str, Any],
+        ]
+    ] = []
+    for classification in operation.classifications:
+        found = index.activities.get(classification.activity_id)
+        if found is None:  # codec metadata normally makes this unreachable
+            problems.append(
+                _problem(
+                    "UNKNOWN_ACTIVITY",
+                    "A classified migrated activity no longer exists.",
+                    operation,
+                    "activity",
+                    classification.activity_id,
+                )
+            )
+            continue
+        day, _position, activity = found
+        if activity.get("decision_state") in {
+            "candidate",
+            "cancelled",
+            "excluded",
+        }:
+            problems.append(
+                _problem(
+                    "MIGRATED_BASELINE_REACTIVATION_FORBIDDEN",
+                    (
+                        "Baseline adoption cannot reactivate an inactive "
+                        "migrated activity."
+                    ),
+                    operation,
+                    "activity",
+                    classification.activity_id,
+                )
+            )
+            continue
+        decision_state = classification.kind.decision_state
+        flexibility = classification.kind.flexibility
+        if flexibility == "fixed_time" and not activity.get("time"):
+            problems.append(
+                _problem(
+                    "FIXED_TIME_REQUIRES_SCHEDULED_TIME",
+                    (
+                        "Fixed-time or booked migrated activities require an "
+                        "existing scheduled time."
+                    ),
+                    operation,
+                    "activity",
+                    classification.activity_id,
+                )
+            )
+            continue
+        classified_activities.append((classification, day, activity))
+    if problems:
+        return
+
+    for classification, day, activity in classified_activities:
+        decision_state = classification.kind.decision_state
+        flexibility = classification.kind.flexibility
+        affected_days.add(str(day["day_id"]))
+        for field, after in (
+            ("decision_state", decision_state),
+            ("flexibility", flexibility),
+        ):
+            before = _field_marker(activity, field)
+            activity[field] = after
+            if before != after:
+                changes.append(
+                    ChangeRecord(
+                        op_id=operation.op_id,
+                        entity_type="activity",
+                        entity_id=classification.activity_id,
+                        field=field,
+                        before=before,
+                        after=after,
+                        kind="baseline_classification",
+                    )
+                )
+    assert isinstance(migration, dict)
+    migration["protected_activity_ids"] = []
+    changes.append(
+        ChangeRecord(
+            op_id=operation.op_id,
+            entity_type="trip",
+            entity_id=str(plan.get("trip_id", "")) or "trip",
+            field=(
+                f"{_MIGRATION_META_KEY}.migration."
+                "protected_activity_ids"
+            ),
+            before=protected,
+            after=[],
+            kind="baseline_adoption",
+        )
+    )
 
 
 def _apply_add_activity(
@@ -2801,9 +3123,39 @@ def _protected_net_changes(
                         )
                     )
 
-    protected.extend(
-        hard_constraint_protected_changes(original, candidate)
+    final_metadata_protected_ids = _migration_protected_activity_ids(
+        candidate
     )
+    adopted_ids = metadata_protected_ids.difference(
+        final_metadata_protected_ids
+    )
+    for activity_id in sorted(adopted_ids):
+        final_found = final_index.activities.get(activity_id)
+        if final_found is None:
+            continue
+        final_activity = final_found[2]
+        protected.append(
+            ChangeRecord(
+                op_id="approval-policy",
+                entity_type="activity",
+                entity_id=activity_id,
+                field="migration.protection",
+                before={"unclassified": True},
+                after={
+                    "decision_state": _field_marker(
+                        final_activity,
+                        "decision_state",
+                    ),
+                    "flexibility": _field_marker(
+                        final_activity,
+                        "flexibility",
+                    ),
+                },
+                kind="baseline_adoption",
+            )
+        )
+
+    protected.extend(hard_constraint_protected_changes(original, candidate))
     return tuple(
         sorted(
             protected,
@@ -3370,6 +3722,7 @@ def _digest(value: Any) -> str:
 __all__ = [
     "ACTIVITY_IDENTITY_FIELDS",
     "ACTIVITY_MUTABLE_FIELDS",
+    "AdoptMigratedBaseline",
     "AddActivity",
     "AddConstraint",
     "ApprovalGrant",
@@ -3380,6 +3733,8 @@ __all__ = [
     "DAY_IDENTITY_FIELDS",
     "DAY_MUTABLE_FIELDS",
     "MutationProblem",
+    "MigratedActivityClassification",
+    "MigratedActivityClassificationKind",
     "LodgingAnchorAssignment",
     "LodgingConfirmationGrant",
     "PATCH_VERSION",

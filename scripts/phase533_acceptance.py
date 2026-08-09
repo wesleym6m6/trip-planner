@@ -782,6 +782,12 @@ def run_walkthrough() -> dict[str, Any]:
         busan["semantic_locations_distinct"] = len(
             {_BUSAN_TERMINAL, _BUSAN_LODGING, _BUSAN_DINNER}
         ) == 3
+        busan["scheduler_preserved_migration_protection"] = (
+            current_busan["state"]["trip"]["_trip_planner"]["migration"][
+                "protected_activity_ids"
+            ]
+            == ["schedule-alpha", "schedule-beta"]
+        )
 
         hokkaido = _execute_case(
             root,

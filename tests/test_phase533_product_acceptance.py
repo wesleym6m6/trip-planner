@@ -67,6 +67,7 @@ class Phase533ProductAcceptanceTests(unittest.TestCase):
         self.assertTrue(busan["arrival_day_boundary_preserved"])
         self.assertTrue(busan["dinner_day_boundary_preserved"])
         self.assertTrue(busan["semantic_locations_distinct"])
+        self.assertTrue(busan["scheduler_preserved_migration_protection"])
         self.assertFalse(busan["lost_ack_injected"])
 
         self.assertTrue(hokkaido["lost_ack_injected"])

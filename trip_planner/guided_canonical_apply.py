@@ -20,6 +20,12 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
+from .baseline_adoption import (
+    MigratedBaselineAdoptionResult,
+    MigratedBaselineAdoptionReview,
+    MigratedBaselineAdoptionStager,
+    MigratedBaselineAdoptionState,
+)
 from .migrations import MigrationPreview
 from .lodging_confirmation import (
     LodgingConfirmationResult,
@@ -68,6 +74,7 @@ class GuidedCanonicalApplyActionKind(str, Enum):
     APPLY_REPAIR_PATCH = "apply_repair_patch"
     APPLY_SCHEDULE_PATCH = "apply_schedule_patch"
     APPLY_LODGING_PATCH = "apply_lodging_patch"
+    ADOPT_MIGRATED_BASELINE = "adopt_migrated_baseline"
 
 
 class GuidedCanonicalApplyResponseKind(str, Enum):
@@ -289,6 +296,7 @@ class GuidedCanonicalApplyReview(_Sealed):
             ProposalReview,
             ScheduleStageReview,
             LodgingConfirmationReview,
+            MigratedBaselineAdoptionReview,
         }:
             result["preview"] = _safe_domain_review(self._preview)
             result["changes"] = list(self.patch_changes())
@@ -375,6 +383,7 @@ class GuidedCanonicalApplyOutcome(_Sealed):
             | RepairResult
             | ScheduleCommitResult
             | LodgingConfirmationResult
+            | MigratedBaselineAdoptionResult
             | None
         ),
         _token: object | None = None,
@@ -388,6 +397,7 @@ class GuidedCanonicalApplyOutcome(_Sealed):
             RepairResult,
             ScheduleCommitResult,
             LodgingConfirmationResult,
+            MigratedBaselineAdoptionResult,
         }:
             raise TypeError("Canonical apply result must be an exact domain result")
         self.status = status
@@ -402,11 +412,18 @@ class GuidedCanonicalApplyOutcome(_Sealed):
     @property
     def domain_result(
         self,
-    ) -> RepairResult | ScheduleCommitResult | LodgingConfirmationResult | None:
+    ) -> (
+        RepairResult
+        | ScheduleCommitResult
+        | LodgingConfirmationResult
+        | MigratedBaselineAdoptionResult
+        | None
+    ):
         if type(self._result) in {
             RepairResult,
             ScheduleCommitResult,
             LodgingConfirmationResult,
+            MigratedBaselineAdoptionResult,
         }:
             return self._result
         return None
@@ -602,6 +619,51 @@ def prepare_guided_canonical_lodging_review(
     )
 
 
+def prepare_guided_canonical_baseline_adoption_review(
+    store: TripStore,
+    stager: MigratedBaselineAdoptionStager,
+    domain_review: MigratedBaselineAdoptionReview,
+    *,
+    evaluation_at: datetime,
+) -> GuidedCanonicalApplyReview:
+    """Wrap one complete migrated-baseline classification review."""
+
+    if (
+        type(store) is not TripStore
+        or type(stager) is not MigratedBaselineAdoptionStager
+        or type(domain_review) is not MigratedBaselineAdoptionReview
+    ):
+        raise TypeError("Baseline adoption review sources must be exact")
+    created = _aware_utc(evaluation_at, "evaluation_at")
+    if (
+        stager._repository is not store
+        or stager.pending_review is not domain_review
+        or not domain_review.ready_to_commit
+        or not domain_review.created_at <= created < domain_review.expires_at
+    ):
+        raise ValueError("Baseline stager has no matching live review")
+    return GuidedCanonicalApplyReview(
+        action_kind=(
+            GuidedCanonicalApplyActionKind.ADOPT_MIGRATED_BASELINE
+        ),
+        trip_slug=store.slug,
+        trip_id=domain_review.patch.trip_id,
+        subject=stager,
+        preview=domain_review,
+        evidence_binding_digest="0" * 64,
+        approval_binding_digest=(
+            domain_review.required_approval_scope.removeprefix("sha256:")
+        ),
+        store_target_digest=store.target_binding_digest,
+        created_at=created,
+        expires_at=min(
+            created + _REVIEW_LIFETIME,
+            domain_review.expires_at,
+        ),
+        _token=_REVIEW_TOKEN,
+    )
+
+
 def capture_guided_canonical_apply_response(
     review: GuidedCanonicalApplyReview,
     kind: GuidedCanonicalApplyResponseKind,
@@ -692,6 +754,12 @@ def execute_guided_canonical_apply_response(
     ):
         raise ValueError("Canonical apply response no longer matches its review")
     if response.kind is GuidedCanonicalApplyResponseKind.REQUEST_CHANGES:
+        if (
+            review.action_kind
+            is GuidedCanonicalApplyActionKind.ADOPT_MIGRATED_BASELINE
+            and type(review._subject) is MigratedBaselineAdoptionStager
+        ):
+            review._subject.cancel_pending()
         return GuidedCanonicalApplyOutcome(
             status="changes_requested",
             next_action="prepare_revised_canonical_proposal",
@@ -699,6 +767,12 @@ def execute_guided_canonical_apply_response(
             _token=_OUTCOME_TOKEN,
         )
     if response.kind is GuidedCanonicalApplyResponseKind.CANCEL:
+        if (
+            review.action_kind
+            is GuidedCanonicalApplyActionKind.ADOPT_MIGRATED_BASELINE
+            and type(review._subject) is MigratedBaselineAdoptionStager
+        ):
+            review._subject.cancel_pending()
         return GuidedCanonicalApplyOutcome(
             status="cancelled",
             next_action="stop_canonical_apply",
@@ -790,6 +864,31 @@ def execute_guided_canonical_apply_response(
             confirmation=lodging_confirmation,
             approvals=approval_values,
         )
+    elif (
+        review.action_kind
+        is GuidedCanonicalApplyActionKind.ADOPT_MIGRATED_BASELINE
+    ):
+        stager = review._subject
+        domain_review = review._preview
+        if (
+            type(stager) is not MigratedBaselineAdoptionStager
+            or type(domain_review) is not MigratedBaselineAdoptionReview
+            or stager._repository is not store
+            or stager.pending_review is not domain_review
+        ):
+            raise ValueError(
+                "Baseline adoption review no longer matches its stager"
+            )
+        human_grant = HumanCheckpointGrant(
+            review_id=domain_review.review_id,
+            approved_by="guided-canonical-apply",
+            approved_at=response.captured_at,
+        )
+        result = stager.commit(
+            domain_review.review_id,
+            human_grant=human_grant,
+            approvals=approval_values,
+        )
     else:  # pragma: no cover - exact enum exhaustiveness guard
         raise ValueError("Canonical apply action is unsupported")
     return _outcome_from_result(result)
@@ -841,6 +940,15 @@ def _preview_fingerprint(
     ):
         binding = {
             "stager_instance": id(subject),
+            "review": preview.to_dict(),
+        }
+    elif (
+        type(preview) is MigratedBaselineAdoptionReview
+        and type(subject) is MigratedBaselineAdoptionStager
+    ):
+        binding = {
+            "stager_instance": id(subject),
+            "run_id": subject.run_id,
             "review": preview.to_dict(),
         }
     else:
@@ -938,6 +1046,28 @@ def _outcome_from_result(result: object) -> GuidedCanonicalApplyOutcome:
         else:
             status = "apply_failed"
             next_action = "inspect_apply_failure"
+    elif type(result) is MigratedBaselineAdoptionResult:
+        if result.state is MigratedBaselineAdoptionState.REPLAY_CONFIRMED:
+            status = "replay_confirmed"
+            next_action = "continue_planning"
+        elif result.state is MigratedBaselineAdoptionState.ROLLED_BACK:
+            status = "rolled_back"
+            next_action = "prepare_fresh_review"
+        elif result.state is MigratedBaselineAdoptionState.OUTCOME_UNKNOWN:
+            status = "outcome_unknown"
+            next_action = "retry_exact_apply"
+        elif result.state in {
+            MigratedBaselineAdoptionState.WAITING_CHECKPOINT,
+            MigratedBaselineAdoptionState.WAITING_APPROVAL,
+        }:
+            status = result.state.value
+            next_action = "obtain_exact_authority"
+        elif result.state is MigratedBaselineAdoptionState.APPLIED:
+            status = "applied"
+            next_action = "continue_planning"
+        else:
+            status = "apply_failed"
+            next_action = "inspect_apply_failure"
     else:
         raise TypeError("Canonical apply result must be exact")
     return GuidedCanonicalApplyOutcome(
@@ -948,7 +1078,7 @@ def _outcome_from_result(result: object) -> GuidedCanonicalApplyOutcome:
     )
 
 
-def _result_changed(result: object) -> bool:
+def _result_changed(result: object) -> bool | None:
     if type(result) is StoreResult:
         return result.changed
     if type(result) is RepairResult:
@@ -963,13 +1093,20 @@ def _result_changed(result: object) -> bool:
             result.applied
             and result.state is not LodgingConfirmationState.REPLAY_CONFIRMED
         )
+    if type(result) is MigratedBaselineAdoptionResult:
+        return result.canonical_write_performed
     if result is None:
         return False
     raise TypeError("Canonical apply result must be exact")
 
 
 def _safe_domain_review(
-    review: ProposalReview | ScheduleStageReview | LodgingConfirmationReview,
+    review: (
+        ProposalReview
+        | ScheduleStageReview
+        | LodgingConfirmationReview
+        | MigratedBaselineAdoptionReview
+    ),
 ) -> dict[str, Any]:
     value = review.to_dict()
     # The digest remains privately bound into this outer review fingerprint;
@@ -1037,6 +1174,7 @@ __all__ = [
     "GuidedCanonicalApplyReview",
     "capture_guided_canonical_apply_response",
     "execute_guided_canonical_apply_response",
+    "prepare_guided_canonical_baseline_adoption_review",
     "prepare_guided_canonical_create_review",
     "prepare_guided_canonical_lodging_review",
     "prepare_guided_canonical_migration_review",
