@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """The bounded, read-only Phase 5 Trip Planner command interface.
 
-The initial read-only commands are ``inspect`` (legacy evidence review) and
-``validate`` (deterministic legacy timeline review).  Neither calls a
-provider, mutates trip data, opens an EvidenceStore, migrates, renders, or
-deploys.
+``inspect`` and ``validate`` dispatch to legacy or canonical storage while
+keeping one redacted JSON envelope.  Neither calls a provider, mutates trip
+data, opens an EvidenceStore, migrates, renders, or deploys.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _parser() -> argparse.ArgumentParser:
     parser = _Parser(
-        description="Read a legacy trip through redacted, read-only reviews.",
+        description="Read a trip through redacted, read-only reviews.",
         allow_abbrev=False,
         add_help=False,
     )
@@ -59,7 +58,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     inspect = commands.add_parser(
         "inspect",
-        help="emit a redacted, read-only legacy evidence review envelope",
+        help="emit a redacted, read-only storage inspection envelope",
         allow_abbrev=False,
         add_help=False,
     )
@@ -71,12 +70,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     inspect.add_argument(
         "trip_path",
-        help="legacy trip directory or its data directory",
+        help="trip directory or its data directory",
         nargs="?",
     )
     validate = commands.add_parser(
         "validate",
-        help="emit a redacted, read-only legacy timeline review envelope",
+        help="emit a redacted, read-only timeline review envelope",
         allow_abbrev=False,
         add_help=False,
     )
@@ -88,7 +87,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     validate.add_argument(
         "trip_path",
-        help="legacy trip directory or its data directory",
+        help="trip directory or its data directory",
         nargs="?",
     )
     return parser

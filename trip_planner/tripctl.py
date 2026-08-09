@@ -1,16 +1,14 @@
-"""Safe, read-only Phase 5 command contracts.
+"""Safe, read-only Phase 5 command contracts with storage-mode dispatch.
 
-``tripctl inspect`` deliberately starts with the established legacy evidence
-preview rather than pretending that a legacy cache is canonical evidence.
-``tripctl validate`` separately projects the deterministic planning kernel
-from a bounded legacy source snapshot.  Neither command contacts providers,
-loads an :class:`EvidenceStore` (whose retention read can write), migrates,
-renders, or mutates trip files.
+``tripctl inspect`` and ``tripctl validate`` preserve their established legacy
+projections while also accepting a bounded, no-follow canonical ``plan.json``.
+Canonical reads never fall back to adjacent legacy files.  They expose only
+safe aggregate metadata and deterministic kernel output; without an exact
+runtime evidence snapshot they remain ``waiting_external`` and can never claim
+``travel_ready``.
 
-Canonical inspection is intentionally refused in this first slice.  A
-canonical readiness result needs a trusted, exact runtime evidence snapshot;
-falling back to adjacent legacy files or synthesising an empty snapshot would
-misrepresent that contract.
+Neither command contacts providers, opens an :class:`EvidenceStore` (whose
+retention read can write), migrates, renders, or mutates caller-owned trip files.
 """
 
 from __future__ import annotations
@@ -20,6 +18,11 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from .canonical_tripctl import (
+    CanonicalTripctlError,
+    inspect_canonical_plan,
+    validate_canonical_timeline,
+)
 from .legacy_evidence import (
     LegacyEvidencePreviewError,
     preview_legacy_evidence,
@@ -43,6 +46,8 @@ _DATA_DIRECTORY_MISSING = "DATA_DIRECTORY_MISSING"
 _DATA_DIRECTORY_UNSAFE = "DATA_DIRECTORY_UNSAFE"
 _INSPECTION_UNAVAILABLE = "LEGACY_INSPECTION_UNAVAILABLE"
 _VALIDATION_UNAVAILABLE = "LEGACY_TIMELINE_VALIDATION_UNAVAILABLE"
+_CANONICAL_SOURCE_STALE = "STALE_CANONICAL_PLAN"
+_CANONICAL_EVIDENCE_MISSING = "CANONICAL_RUNTIME_EVIDENCE_NOT_LOADED"
 _PROBLEM_CODE_RE = re.compile(r"[A-Z][A-Z0-9_]{0,127}")
 _TIMELINE_REPAIR_CODES = frozenset(
     {
@@ -70,17 +75,16 @@ class TripctlError(ValueError):
 
 
 def inspect_trip(path: str | Path) -> dict[str, Any]:
-    """Return one redacted legacy inspection envelope.
+    """Return one redacted inspection envelope for the detected storage mode.
 
     The caller receives no location, title, path, cache value, provider value,
-    or raw identity.  A verifiable legacy preview is rechecked immediately
-    before return.  An already unsafe or incomplete source remains a useful,
-    non-retryable repair review instead of being mislabeled as a new drift.
+    or raw trip identity.  ``plan.json`` always wins when present; an unsafe or
+    malformed marker is rejected and never falls back to adjacent legacy bytes.
     """
 
     data_dir = _data_dir(path)
     if _canonical_marker_present(data_dir):
-        raise TripctlError(_CANONICAL_INSPECT_UNAVAILABLE)
+        return _inspect_canonical_trip(data_dir)
 
     try:
         preview = preview_legacy_evidence(data_dir)
@@ -136,18 +140,17 @@ def inspect_trip(path: str | Path) -> dict[str, Any]:
 
 
 def validate_trip(path: str | Path) -> dict[str, Any]:
-    """Return a redacted, deterministic legacy timeline-validation envelope.
+    """Return a redacted deterministic timeline-validation envelope.
 
     This deliberately does *not* replace the existing seven-file renderer
-    validator.  It adds the distinct planning-kernel question: what timeline
-    blockers are currently known from the legacy trip/itinerary pair?  The
-    pair is read through a bounded no-follow snapshot; providers, cache files,
-    stores, rendering, and trip writes stay out of scope.
+    validator.  Legacy mode evaluates the bounded trip/itinerary pair;
+    canonical mode evaluates one exact ``plan.json`` snapshot.  Providers,
+    cache files, stores, rendering, and trip writes stay out of scope.
     """
 
     data_dir = _data_dir(path)
     if _canonical_marker_present(data_dir):
-        raise TripctlError(_CANONICAL_VALIDATE_UNAVAILABLE)
+        return _validate_canonical_trip(data_dir)
 
     try:
         validation = validate_legacy_timeline(data_dir)
@@ -203,6 +206,111 @@ def validate_trip(path: str | Path) -> dict[str, Any]:
     }
 
 
+def _inspect_canonical_trip(data_dir: Path) -> dict[str, Any]:
+    try:
+        inspection = inspect_canonical_plan(data_dir)
+    except CanonicalTripctlError as exc:
+        raise _canonical_command_error(_INSPECT_COMMAND, exc) from exc
+
+    payload = inspection.to_dict()
+    return {
+        "contract_version": TRIPCTL_VERSION,
+        "command": _INSPECT_COMMAND,
+        "ok": True,
+        # A canonical file alone cannot prove current provider evidence.
+        "status": "waiting_external",
+        "storage_mode": "canonical",
+        "result": {
+            "storage_mode": "canonical",
+            "plan_revision": payload["plan_revision"],
+            "source_digest": payload["source_digest"],
+            "generation": payload["generation"],
+            "day_count": payload["day_count"],
+            "activity_count": payload["activity_count"],
+            "travel_estimate_count": payload["travel_estimate_count"],
+            "constraint_count": payload["constraint_count"],
+            "receipt_count": payload["receipt_count"],
+            "runtime_evidence_loaded": False,
+        },
+        "problems": [
+            {
+                "code": _CANONICAL_EVIDENCE_MISSING,
+                "severity": "warning",
+                "affected_count": 1,
+            }
+        ],
+        "retryable": False,
+        "pending_review_retained": False,
+        "next_action": "refresh_evidence",
+        "requires_user_review": False,
+    }
+
+
+def _validate_canonical_trip(data_dir: Path) -> dict[str, Any]:
+    try:
+        validation = validate_canonical_timeline(data_dir)
+    except CanonicalTripctlError as exc:
+        raise _canonical_command_error(_VALIDATE_COMMAND, exc) from exc
+
+    payload = validation.to_dict()
+    timeline_status = payload["timeline_status"]
+    assert isinstance(timeline_status, str)
+    problems = list(payload["problems"])
+    problems.append(
+        {
+            "code": _CANONICAL_EVIDENCE_MISSING,
+            "severity": "warning",
+            "affected_count": 1,
+        }
+    )
+    problems.sort(key=lambda item: (str(item["code"]), str(item["severity"])))
+    if timeline_status == "infeasible":
+        status = "review_required"
+        next_action = "repair_timeline"
+        requires_user_review = True
+    else:
+        status = "waiting_external"
+        next_action = "refresh_evidence"
+        requires_user_review = False
+    return {
+        "contract_version": TRIPCTL_VERSION,
+        "command": _VALIDATE_COMMAND,
+        "ok": True,
+        "status": status,
+        "storage_mode": "canonical",
+        "result": {
+            "storage_mode": "canonical",
+            "plan_revision": payload["plan_revision"],
+            "source_digest": payload["source_digest"],
+            "timeline_status": timeline_status,
+            "day_count": payload["day_count"],
+            "activity_count": payload["activity_count"],
+            "timeline_entry_count": payload["timeline_entry_count"],
+            "day_summary_count": payload["day_summary_count"],
+            "runtime_evidence_loaded": False,
+        },
+        "problems": problems,
+        "retryable": False,
+        "pending_review_retained": False,
+        "next_action": next_action,
+        "requires_user_review": requires_user_review,
+    }
+
+
+def _canonical_command_error(
+    command: str,
+    error: CanonicalTripctlError,
+) -> TripctlError:
+    if error.code == _CANONICAL_SOURCE_STALE:
+        return TripctlError(error.code, retryable=True)
+    code = (
+        _CANONICAL_INSPECT_UNAVAILABLE
+        if command == _INSPECT_COMMAND
+        else _CANONICAL_VALIDATE_UNAVAILABLE
+    )
+    return TripctlError(code)
+
+
 def inspection_failure(error: TripctlError) -> dict[str, Any]:
     """Return the backward-compatible safe ``inspect`` failure envelope."""
 
@@ -226,7 +334,11 @@ def command_failure(command: str, error: TripctlError) -> dict[str, Any]:
     storage_mode = (
         "canonical"
         if error.code
-        in {_CANONICAL_INSPECT_UNAVAILABLE, _CANONICAL_VALIDATE_UNAVAILABLE}
+        in {
+            _CANONICAL_INSPECT_UNAVAILABLE,
+            _CANONICAL_VALIDATE_UNAVAILABLE,
+            _CANONICAL_SOURCE_STALE,
+        }
         else "unknown"
     )
     return {
@@ -238,7 +350,7 @@ def command_failure(command: str, error: TripctlError) -> dict[str, Any]:
         "problems": [{"code": error.code}],
         "retryable": error.retryable,
         "pending_review_retained": False,
-        "next_action": _failure_next_action(error.code),
+        "next_action": _failure_next_action(error.code, safe_command),
         "requires_user_review": False,
         "storage_mode": storage_mode,
     }
@@ -290,8 +402,8 @@ def _canonical_marker_present(data_dir: Path) -> bool:
     """Detect any canonical marker without reading or following it.
 
     A broken symlink, directory, FIFO, or ordinary ``plan.json`` all block
-    legacy fallback.  The next canonical-specific interface must decide how
-    it can inspect that object safely.
+    legacy fallback.  The canonical reader decides whether that object can be
+    opened safely and maps unsafe inputs to the existing command failure code.
     """
 
     try:
@@ -303,9 +415,11 @@ def _canonical_marker_present(data_dir: Path) -> bool:
     return True
 
 
-def _failure_next_action(code: str) -> str:
+def _failure_next_action(code: str, command: str) -> str:
     if code in {_CANONICAL_INSPECT_UNAVAILABLE, _CANONICAL_VALIDATE_UNAVAILABLE}:
         return "use_developer_runtime"
+    if code == _CANONICAL_SOURCE_STALE:
+        return "retry_validation" if command == _VALIDATE_COMMAND else "retry_inspection"
     if code == "STALE_LEGACY_EVIDENCE_PREVIEW":
         return "retry_inspection"
     if code == "STALE_LEGACY_TIMELINE_SOURCE":

@@ -98,10 +98,12 @@ cp skill/trip-planner.md ~/.claude/skills/trip-planner/SKILL.md
 preview：它以 `plan.json` 加五個 sidecar（後五個檔案）取代前兩個檔案；現有
 renderer、validator 與部分讀取工具可相容讀取，但 legacy writer 會刻意拒絕修改
 已 migration 的 trip。不要直接編輯 canonical JSON；只能經已支援的 `TripStore` /
-`PlanPatch` 路徑操作。目前 Phase 5 的 `tripctl inspect` 與 `tripctl validate` 仍是
-legacy-only、唯讀入口；私有導引草稿不是 `tripctl` CLI，也不建立或修改 trip。完整
-canonical workflow 尚未提供。除非已明確接受 developer workflow，否則不要 migration
-真實 trip。
+`PlanPatch` 路徑操作。目前 Phase 5 的 `tripctl inspect` 與 `tripctl validate` 是
+storage-dispatch、唯讀入口：既有 legacy 行為不變，安全且有效的 canonical `plan.json`
+可輸出 aggregate inspection 與 deterministic timeline review。它們不載入 runtime
+evidence、不能宣稱 `travel_ready`，也沒有 propose／score／apply authority；私有導引草稿
+不是 `tripctl` CLI，也不建立或修改 trip。完整 canonical workflow 尚未提供。除非已明確
+接受 developer workflow，否則不要 migration 真實 trip。
 
 Phase 5已在M0重新收斂：Phase 5.13–5.29保留為`Provider Execution Safety Reference v1`，
 不再讓每個internal runtime gate各占一個roadmap phase；剩餘產品交付固定為5.30 composed
@@ -543,27 +545,36 @@ route待使用者分類、Places／flight／hotel cache一律quarantine。輸出
 相容層仍需要`places_cache.json`，所以即使preview存在也不可自行清理cache。任何真實
 provider驗收或破壞性cleanup都必須在你審閱exact preview後另行明確授權。
 
-Phase 5 目前有兩個 legacy-only 的唯讀統一入口：
+Phase 5 目前有兩個具 storage-mode dispatch 的唯讀統一入口：
 
 ```bash
 .venv/bin/python scripts/tripctl.py inspect trips/{slug}
 .venv/bin/python scripts/tripctl.py validate trips/{slug}
 ```
 
-`inspect` 輸出固定、去敏感化的 JSON envelope，包住同一份 legacy evidence preview；成功只
-表示「可供審閱」，絕不代表 `travel_ready`、可信 route evidence、migration 或 cleanup
-授權。它不呼叫 provider、不開啟可能因 retention 寫入的 EvidenceStore、不 render、也不修改
-`trips/`。若 legacy source 本身缺檔或不安全，inspect 仍會安全輸出既有 aggregate repair
+`inspect` 輸出固定、去敏感化的 JSON envelope。legacy 模式包住同一份 evidence preview；
+成功只表示「可供審閱」，絕不代表 `travel_ready`、可信 route evidence、migration 或 cleanup
+授權。若 legacy source 本身缺檔或不安全，inspect 仍會安全輸出既有 aggregate repair
 problems，但狀態會是 `repair_required`，不會把它誤報成可重試的新 stale preview。
 
-`validate` 是另一個問題：它只將 `trip.json` 與 `itinerary.json` 以 bounded、no-follow 的
-temporary snapshot 載入 deterministic timeline kernel（固定 `now=None`），只輸出
-timeline status、issue token/severity/count 與安全 aggregate count。它不讀取 cache、不呼叫
-provider、不寫入 trip，也不取代 `scripts/validate_trip.py` 對完整七檔 renderer 契約的
-結構檢查；成功一樣只是 `review_required`，不是 `travel_ready`。兩個入口遇到任何
-`plan.json`（包括 broken symlink）都不會 fallback 到相鄰 legacy 檔案：`inspect` 回
-`CANONICAL_INSPECT_UNAVAILABLE`，`validate` 回 `CANONICAL_VALIDATE_UNAVAILABLE`。canonical
-readiness 仍必須等安全 reader 與 exact runtime evidence snapshot contract 後另行加入。
+若存在安全且有效的 `plan.json`，inspect 會選 canonical 模式，只輸出 revision／source digest、
+generation 與 aggregate counts，不輸出 trip ID、標題、地點、時間或 receipt 內容。因本入口
+刻意不開啟可能因 retention 寫入的 EvidenceStore，也沒有 exact runtime evidence snapshot，
+結果固定為 `waiting_external`、`next_action=refresh_evidence`，不能升級成 `travel_ready`。
+
+`validate` 是另一個問題：legacy 模式只將 `trip.json` 與 `itinerary.json` 以 bounded、
+no-follow 的 temporary snapshot 載入 deterministic timeline kernel（固定 `now=None`）；
+canonical 模式則讀取同樣 bounded、no-follow 且重驗來源的 `plan.json` snapshot。兩者都只
+輸出 timeline status、issue token/severity/count 與安全 aggregate count，不讀取 cache、
+不呼叫 provider、不寫入 trip，也不取代 `scripts/validate_trip.py` 對完整 renderer 契約的
+結構檢查。canonical timeline 若 infeasible 會要求修復；其餘結果在 runtime evidence 未載入時
+保持 `waiting_external`，不是 `travel_ready`。
+
+兩個入口遇到任何 `plan.json` 都不會 fallback 到相鄰 legacy 檔案。broken symlink、directory、
+FIFO、oversized 或 malformed canonical marker 仍以既有 `CANONICAL_INSPECT_UNAVAILABLE`／
+`CANONICAL_VALIDATE_UNAVAILABLE` 安全拒絕；讀取或評估期間的 exact source drift 會回可重試的
+`STALE_CANONICAL_PLAN`，不附 partial result。provider、EvidenceStore、migration、render 與
+canonical write 全部仍在這兩個命令之外。
 
 已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
 `#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，

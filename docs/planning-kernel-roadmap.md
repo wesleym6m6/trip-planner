@@ -11,8 +11,9 @@ natural-language runtime intake、Phase 4.5B snapshot-bound lodging evidence /
 comparison candidate、Phase 4.5C joint lodging / itinerary recommendation與
 Phase 4.5D host-signed canonical lodging confirmation / apply，以及Phase 4.6A
 read-only readiness projection與Phase 4.6B legacy evidence / cleanup preview已完成；
-Phase 5 現已有 legacy-only、read-only 的 `tripctl inspect` evidence review 與
-`tripctl validate` deterministic timeline review 起始入口，以及Phase 5.2 static browser
+Phase 5 現已有 storage-dispatch、read-only 的 `tripctl inspect` aggregate review 與
+`tripctl validate` deterministic timeline review 起始入口；legacy 行為保持不變，canonical
+模式在沒有 runtime evidence 時只會是 `waiting_external`。另有Phase 5.2 static browser
 timeline review。Phase 5.3另完成新旅行的private guided draft，Phase 5.4在其後提供一至
 三張帶來源 badge、需要一次主觀審閱的private direction cards；兩者都只在process memory
 中運作。Phase 5.5再把明確方向偏好安全交給下一輪private refinement，Phase 5.6則以
@@ -37,9 +38,11 @@ availability attestation建立exact live credential-binding review，Phase 5.29�
 parser、credential value access／binding、HTTP request、provider call、schedule、render或mutation；accepted
 response也仍不可執行或送出，只能前進到後續獨立ephemeral credential-value binding gate。
 M0已把Phase 5.13–5.29凍結為`Provider Execution Safety Reference v1`，並把剩餘產品交付
-收斂為Phase 5.30–5.33；runtime gate名稱不再各自占用roadmap phase編號。Phase 6.0
-fail-closed public release boundary亦已完成；真實provider驗收仍只在明確授權範圍內進行，
-完整canonical CLI/interface仍待後續有限切片。
+收斂為Phase 5.30–5.33；5.30 composed facade、5.31 bounded execution與5.32
+evidence-to-canonical已完成，5.33現進入unified product interface有限切片。runtime gate名稱不再
+各自占用roadmap phase編號。Phase 6.0 fail-closed public release boundary亦已完成；真實provider
+驗收仍只在明確授權範圍內進行，完整propose／score／apply、resume／retry、baseline adoption、
+skill與canned product acceptance仍待後續切片。
 
 ## 產品目標
 
@@ -1868,6 +1871,24 @@ authority。
 - 本phase全程使用temporary stores與injected canned responses；沒有讀取真實credential、呼叫live provider、修改
   `trips/`、render或deploy。下一個且最後一個Phase 5 macro phase是5.33 unified `tripctl`、resume／retry、migrated
   baseline adoption、skill及Busan／Hokkaido canned product acceptance。
+
+### 2026-08-09 — Phase 5.33 unified `tripctl` storage dispatch 第一切片完成
+
+- `tripctl inspect`／`validate`在同一份`tripctl/v1` envelope內加入storage-mode dispatch；沒有
+  `plan.json`時沿用原legacy contract，有任何canonical marker時一律由canonical reader接手，絕不fallback到
+  相鄰legacy bytes。既有legacy成功輸出、repair語義、race rejection與canonical unavailable failure code保持相容。
+- 新增bounded、no-follow canonical source snapshot。只接受regular `plan.json`，最多16 MiB；在decode／kernel
+  evaluation後重讀exact directory/file identity與domain-separated source digest。symlink、directory、FIFO、oversized、
+  malformed與低階read failure安全拒絕；source drift回可重試的`STALE_CANONICAL_PLAN`且不附partial result。
+- Canonical inspect只輸出revision／source digest、generation與aggregate counts；validate固定`now=None`並只輸出
+  timeline status、safe issue aggregates與counts。兩者都不開EvidenceStore、不讀runtime evidence，因此非infeasible
+  結果保持`waiting_external`／`refresh_evidence`，任何輸出都不能宣稱`travel_ready`。
+- 新增6個Phase 5.33專項regressions，涵蓋canonical優先、determinism、redaction、read-only、drift、FIFO、duplicate
+  key、低階read failure與CLI純JSON；16個直接predecessor `tripctl` tests維持不改且全過。本切片沒有provider、
+  credential、migration、canonical write、`trips/`修改、render、deploy或push。
+- Phase 5.33 macro phase仍未完成；下一切片是typed propose／score facade與process-local resume checkpoint。apply、
+  migrated baseline adoption、skill完整改寫、Busan／Hokkaido canned E2E及另行授權的bounded live smoke仍保留在後續
+  gates，不由本read-only切片暗示完成。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
