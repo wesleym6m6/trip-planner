@@ -1935,6 +1935,33 @@ authority。
 - Phase 5.33仍未完成。下一個安全切片是把evidence-bound score轉成typed、expiring apply review，並沿既有explicit enum
   response、current-evidence recheck、TripStore CAS與receipt boundary執行；本切片的score ref本身不得作mutation authority。
 
+### 2026-08-09 — Phase 5.33 typed apply review 第四切片完成
+
+- 新增host-only `prepare_trip_schedule_apply_review()`：只接受exact `TripStore`、同一個
+  evidence-bound proposal ref／`EvidenceSnapshot`／availability keys／lodging context、reloadable
+  evidence source與timezone-aware review clock。每次都重新compose、solve與trusted replay；ref、
+  runtime context、clock或canonical source漂移一律fail closed，score ref本身不會變成authority。
+- Review preparation沿用`ScheduleStager`的current-evidence reload、strict-improvement check與
+  `TripStore.preview_patch()`，再包進既有30分鐘expiry的`GuidedCanonicalApplyReview`。Outer fingerprint
+  額外綁runtime context；review不可序列化，固定列出exact
+  `accept_apply`／`request_changes`／`cancel`，並明示`apply_authority=false`、
+  `canonical_write_performed=false`、`pending_review_retained=true`。私有人工review可顯示exact canonical
+  diff，但不輸出provider runtime state或evidence／product-context digest。
+- Evidence-bound score現在區分persistent change與no-op：前者才回
+  `apply_review_available=true`／`review_proposal`；後者回`false`／`next_action=none`，強制prepare則以
+  `EMPTY_SCHEDULE_PATCH`拒絕，不製造空授權。`ScheduleStager`也保留exact availability keys供stage、
+  commit與post-commit evidence重建，避免runtime composition context縮水。
+- 新增5個第四切片regressions，涵蓋changed/no-op分流、typed expiry與non-serialization、private-review
+  disclosure boundary、wrong ref／lodging context／clock rejection、staging-time evidence drift與零write；
+  23個Phase 5.33 tests、13個Phase 5.32 canonical apply tests、36個schedule-staging tests及14個Phase 5.32
+  evidence-workflow tests全過。Python compile與`git diff --check`全過；23個trip data files aggregate
+  hash維持`91288401c83f2b5e1d30bcfa6b739dfc1c51e06130a3e44f82ab143ec06fb760`。本切片沒有修改`trips/`、呼叫
+  provider、讀取credential、render、deploy或push。
+- Phase 5.33仍未完成。本切片刻意不capture response、不執行commit，也不新增CLI `apply`；下一個安全
+  邊界是以product-level typed response facade續接既有expiry／replay protection，並在temporary store
+  驗證current-evidence recheck、TripStore CAS與receipt／lost-ACK語義。任何真實canonical mutation仍須
+  當下exact `accept_apply`，generic「繼續」不得被推導成授權。
+
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 
 - 新增獨立的 `trip_planner.public_release`、`public_*.html` templates 與 public-only

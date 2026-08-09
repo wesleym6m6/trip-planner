@@ -59,6 +59,12 @@ from .tripctl_runtime import (
     CanonicalRuntimeError,
     assess_canonical_runtime,
 )
+from .tripctl_apply import (
+    TRIPCTL_APPLY_REVIEW_VERSION,
+    TripctlApplyReviewError,
+    TripctlScheduleApplyReview,
+    prepare_trip_schedule_apply_review,
+)
 
 
 TRIPCTL_VERSION = "tripctl/v1"
@@ -491,19 +497,39 @@ def score_trip_with_evidence(
 
     result = score.to_dict()
     result["storage_mode"] = "canonical"
+    result["apply_review_available"] = score.canonical_change_available
+    if score.canonical_change_available:
+        status = "review_required"
+        next_action = "review_proposal"
+        requires_user_review = True
+    else:
+        readiness = result["readiness"]
+        assert isinstance(readiness, dict)
+        readiness_status = readiness["status"]
+        readiness_next_action = readiness["next_action"]
+        assert isinstance(readiness_status, str)
+        assert isinstance(readiness_next_action, str)
+        status = (
+            "ready"
+            if readiness_status == "travel_ready"
+            else readiness_status
+        )
+        next_action = readiness_next_action
+        requires_user_review = readiness_status == "review"
     return {
         "contract_version": TRIPCTL_VERSION,
         "command": _SCORE_COMMAND,
         "ok": True,
-        # Exact evidence makes this score reviewable, but never self-applying.
-        "status": "review_required",
+        # Exact evidence makes a persistent change reviewable, never
+        # self-applying.  A no-op score has nothing to authorize.
+        "status": status,
         "storage_mode": "canonical",
         "result": result,
         "problems": _evidence_schedule_problems(result),
         "retryable": False,
         "pending_review_retained": False,
-        "next_action": "review_proposal",
-        "requires_user_review": True,
+        "next_action": next_action,
+        "requires_user_review": requires_user_review,
     }
 
 
@@ -883,13 +909,17 @@ def _timeline_next_action(timeline_status: str) -> tuple[str, bool]:
 
 
 __all__ = [
+    "TRIPCTL_APPLY_REVIEW_VERSION",
     "TRIPCTL_VERSION",
+    "TripctlApplyReviewError",
     "TripctlError",
+    "TripctlScheduleApplyReview",
     "command_failure",
     "inspect_trip",
     "inspection_failure",
     "propose_trip",
     "propose_trip_with_evidence",
+    "prepare_trip_schedule_apply_review",
     "proposal_failure",
     "score_trip",
     "score_trip_with_evidence",

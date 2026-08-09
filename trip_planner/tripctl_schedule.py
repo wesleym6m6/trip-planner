@@ -217,6 +217,7 @@ class CanonicalScheduleScore:
     travel_deci_min: int
     buffer_deci_min: int
     service_deci_min: int
+    canonical_change_available: bool = field(default=False, repr=False)
     runtime: CanonicalRuntimeAssessment | None = field(
         default=None,
         repr=False,
@@ -261,6 +262,8 @@ class CanonicalScheduleScore:
             _require_count(getattr(self, name), name)
         if type(self.served_priority_points) is not int:
             raise TypeError("served_priority_points must be an exact integer")
+        if type(self.canonical_change_available) is not bool:
+            raise TypeError("canonical_change_available must be an exact bool")
         _require_runtime_binding(
             self.runtime,
             source_digest=self.source_digest,
@@ -635,6 +638,10 @@ def _score_projection(
         travel_deci_min=score.travel_deci_min,
         buffer_deci_min=score.buffer_deci_min,
         service_deci_min=score.service_deci_min,
+        canonical_change_available=bool(
+            candidate.score.changed_activity_ids
+            or candidate.promoted_activity_ids
+        ),
         runtime=runtime,
     )
 

@@ -614,7 +614,10 @@ class GuidedCanonicalApplyTests(unittest.TestCase):
             domain_review,
             evaluation_at=EVALUATION_AT + timedelta(seconds=1),
         )
-        self.assertNotIn("evidence_binding_digest", review.to_dict()["preview"])
+        safe_review = review.to_dict()
+        self.assertNotIn("evidence_binding_digest", safe_review["preview"])
+        self.assertNotIn("product_context_bound", safe_review)
+        self.assertNotIn("product_context_digest_exposed", safe_review)
         outcome = execute_guided_canonical_apply_response(
             review,
             self._accept(review),

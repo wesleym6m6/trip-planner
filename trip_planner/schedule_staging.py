@@ -26,7 +26,7 @@ from .codec import (
     plan_to_trip_state,
 )
 from .composition import compose_trip_state
-from .facts import EvidenceSnapshot
+from .facts import EvidenceSnapshot, FactKey
 from .models import CheckReport, CheckStatus, TripState
 from .mutations import (
     ApprovalGrant,
@@ -619,6 +619,7 @@ class ScheduleStager:
         max_auto_changes: int = 12,
         expected_solver: str | None = SOLVER_VERSION,
         evidence_source: EvidenceSource | None = None,
+        availability_keys: tuple[FactKey, ...] = (),
     ) -> None:
         _require_text(run_id, "run_id")
         _require_non_negative_int(max_changes, "max_changes")
@@ -631,8 +632,16 @@ class ScheduleStager:
             getattr(evidence_source, "load", None)
         ):
             raise TypeError("evidence_source must provide load() or be None")
+        if (
+            not isinstance(availability_keys, tuple)
+            or any(type(item) is not FactKey for item in availability_keys)
+        ):
+            raise TypeError(
+                "availability_keys must contain exact FactKey values"
+            )
         self._repository = repository
         self._evidence_source = evidence_source
+        self._availability_keys = availability_keys
         self.run_id = run_id
         self.max_changes = max_changes
         self.max_auto_changes = max_auto_changes
@@ -710,6 +719,7 @@ class ScheduleStager:
             current_plan,
             problem,
             evidence_source=self._evidence_source,
+            availability_keys=self._availability_keys,
         )
         if problem_error is not None:
             return _problem_review(
@@ -1150,6 +1160,7 @@ class ScheduleStager:
             current_plan,
             pending.problem,
             evidence_source=self._evidence_source,
+            availability_keys=self._availability_keys,
         )
         if (
             problem_error is not None
@@ -1563,6 +1574,7 @@ class ScheduleStager:
             receipt=receipt,
             replayed=replayed,
             evidence_source=self._evidence_source,
+            availability_keys=self._availability_keys,
         )
 
     def _preview_exact_patch(
@@ -1587,6 +1599,7 @@ def _rebuild_current_problem(
     original: ScheduleProblem,
     *,
     evidence_source: EvidenceSource | None = None,
+    availability_keys: tuple[FactKey, ...] = (),
 ) -> tuple[ScheduleProblem | None, ScheduleStageProblem | None]:
     try:
         if original.evidence_binding is None:
@@ -1613,7 +1626,11 @@ def _rebuild_current_problem(
                 raise TypeError(
                     "EvidenceSource load result must return EvidenceSnapshot"
                 )
-            composed = compose_trip_state(plan, snapshot)
+            composed = compose_trip_state(
+                plan,
+                snapshot,
+                availability_keys=availability_keys,
+            )
             current = schedule_problem_from_composed(
                 composed,
                 scope=original.scope,
@@ -2061,6 +2078,7 @@ def _confirmed_result(
     receipt: _PatchReceipt,
     replayed: bool,
     evidence_source: EvidenceSource | None,
+    availability_keys: tuple[FactKey, ...],
 ) -> ScheduleCommitResult:
     current_revision = _plan_revision(observed_plan)
     revision_is_current = (
@@ -2155,7 +2173,9 @@ def _confirmed_result(
                         "evidence source returned a different evaluation time"
                     )
                 composed = compose_trip_state(
-                    observed_plan, evidence_snapshot
+                    observed_plan,
+                    evidence_snapshot,
+                    availability_keys=availability_keys,
                 )
                 current_problem = schedule_problem_from_composed(
                     composed,

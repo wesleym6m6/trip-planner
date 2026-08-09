@@ -46,6 +46,12 @@ from .tripctl_runtime import (
     CanonicalRuntimeError,
     assess_canonical_runtime,
 )
+from .tripctl_apply import (
+    TRIPCTL_APPLY_REVIEW_VERSION,
+    TripctlApplyReviewError,
+    TripctlScheduleApplyReview,
+    prepare_trip_schedule_apply_review,
+)
 from .legacy_evidence import (
     LEGACY_EVIDENCE_PREVIEW_VERSION,
     MAX_LEGACY_EVIDENCE_FILE_BYTES,
@@ -1132,6 +1138,9 @@ __all__ = [
     "TripReadiness",
     "TripBriefDraft",
     "TripctlError",
+    "TripctlApplyReviewError",
+    "TripctlScheduleApplyReview",
+    "TRIPCTL_APPLY_REVIEW_VERSION",
     "TRIPCTL_VERSION",
     "TRIPCTL_RUNTIME_VERSION",
     "TRIPCTL_SCHEDULE_VERSION",
@@ -1328,6 +1337,7 @@ __all__ = [
     "proposal_failure",
     "propose_trip",
     "propose_trip_with_evidence",
+    "prepare_trip_schedule_apply_review",
     "command_failure",
     "validate_trip",
     "validate_trip_with_evidence",

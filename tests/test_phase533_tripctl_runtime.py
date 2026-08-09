@@ -135,9 +135,10 @@ class Phase533TripctlRuntimeTests(unittest.TestCase):
             )
             self.assertIsInstance(proposal_ref, str)
 
-            self.assertEqual("review_required", score["status"])
-            self.assertEqual("review_proposal", score["next_action"])
-            self.assertTrue(score["requires_user_review"])
+            self.assertEqual("ready", score["status"])
+            self.assertEqual("none", score["next_action"])
+            self.assertFalse(score["requires_user_review"])
+            self.assertFalse(score["result"]["apply_review_available"])
             self.assertTrue(score["result"]["runtime_evidence_loaded"])
             self.assertFalse(score["result"]["provisional"])
             self.assertFalse(score["result"]["apply_authority"])

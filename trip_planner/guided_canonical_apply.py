@@ -102,6 +102,7 @@ class GuidedCanonicalApplyReview(_Sealed):
         "_preview",
         "_evidence_binding_digest",
         "_approval_binding_digest",
+        "_context_binding_digest",
         "_store_target_digest",
         "_preview_fingerprint",
         "_responded",
@@ -123,6 +124,7 @@ class GuidedCanonicalApplyReview(_Sealed):
         store_target_digest: str,
         created_at: datetime,
         expires_at: datetime | None = None,
+        context_binding_digest: str | None = None,
         _token: object | None = None,
     ) -> None:
         if _token is not _REVIEW_TOKEN:
@@ -144,6 +146,11 @@ class GuidedCanonicalApplyReview(_Sealed):
             approval_binding_digest,
             "approval_binding_digest",
         )
+        context_digest = (
+            None
+            if context_binding_digest is None
+            else _digest(context_binding_digest, "context_binding_digest")
+        )
         target_digest = _digest(store_target_digest, "store_target_digest")
         expires = (
             created + _REVIEW_LIFETIME
@@ -158,6 +165,7 @@ class GuidedCanonicalApplyReview(_Sealed):
             preview,
             evidence_digest,
             approvals_digest,
+            context_digest,
         )
         review_id = _sha256(
             {
@@ -182,6 +190,7 @@ class GuidedCanonicalApplyReview(_Sealed):
         self._preview = preview
         self._evidence_binding_digest = evidence_digest
         self._approval_binding_digest = approvals_digest
+        self._context_binding_digest = context_digest
         self._store_target_digest = target_digest
         self._preview_fingerprint = preview_fingerprint
         self._responded = False
@@ -205,6 +214,7 @@ class GuidedCanonicalApplyReview(_Sealed):
                 self._preview,
                 self._evidence_binding_digest,
                 self._approval_binding_digest,
+                self._context_binding_digest,
             )
             != self._preview_fingerprint
             or _sha256(
@@ -267,6 +277,9 @@ class GuidedCanonicalApplyReview(_Sealed):
             "evidence_binding_digest_exposed": False,
             "canonical_write_performed": False,
         }
+        if self._context_binding_digest is not None:
+            result["product_context_bound"] = True
+            result["product_context_digest_exposed"] = False
         if type(self._preview) is PlanCreatePreview:
             result["preview"] = self._preview.to_safe_dict()
             result["proposal"] = self._subject.to_review_payload()
@@ -512,6 +525,7 @@ def prepare_guided_canonical_schedule_review(
     domain_review: ScheduleStageReview,
     *,
     evaluation_at: datetime,
+    context_binding_digest: str | None = None,
 ) -> GuidedCanonicalApplyReview:
     """Wrap one exact pending schedule review without accepting a raw patch."""
 
@@ -544,6 +558,7 @@ def prepare_guided_canonical_schedule_review(
         approval_binding_digest="0" * 64,
         store_target_digest=store.target_binding_digest,
         created_at=created,
+        context_binding_digest=context_binding_digest,
         _token=_REVIEW_TOKEN,
     )
 
@@ -786,6 +801,7 @@ def _preview_fingerprint(
     preview: object,
     evidence_binding_digest: str,
     approval_binding_digest: str,
+    context_binding_digest: str | None,
 ) -> str:
     if type(preview) is PlanCreatePreview and type(subject) is PlanCreateRequest:
         binding: object = {
@@ -813,6 +829,11 @@ def _preview_fingerprint(
             "max_auto_changes": subject.max_auto_changes,
             "expected_solver": subject.expected_solver,
             "review": preview.to_dict(),
+            **(
+                {"availability_keys": subject._availability_keys}
+                if subject._availability_keys
+                else {}
+            ),
         }
     elif (
         type(preview) is LodgingConfirmationReview
@@ -824,15 +845,16 @@ def _preview_fingerprint(
         }
     else:
         raise TypeError("Canonical apply preview/subject pair is unsupported")
-    return _sha256(
-        {
-            "contract_version": GUIDED_CANONICAL_APPLY_VERSION,
-            "action_kind": action_kind.value,
-            "binding": binding,
-            "evidence_binding_digest": evidence_binding_digest,
-            "approval_binding_digest": approval_binding_digest,
-        }
-    )
+    payload = {
+        "contract_version": GUIDED_CANONICAL_APPLY_VERSION,
+        "action_kind": action_kind.value,
+        "binding": binding,
+        "evidence_binding_digest": evidence_binding_digest,
+        "approval_binding_digest": approval_binding_digest,
+    }
+    if context_binding_digest is not None:
+        payload["context_binding_digest"] = context_binding_digest
+    return _sha256(payload)
 
 
 def _outcome_from_result(result: object) -> GuidedCanonicalApplyOutcome:

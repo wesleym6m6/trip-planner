@@ -103,7 +103,9 @@ storage-dispatch、唯讀入口：既有 legacy 行為不變，安全且有效�
 可輸出 aggregate inspection 與 deterministic timeline review。它們不載入 runtime
 evidence、不能宣稱 `travel_ready`。Canonical-only `tripctl propose`／`score`另提供
 provisional deterministic schedule 與 trusted replay score，但沒有 apply authority；私有
-導引草稿不是 `tripctl` CLI，也不建立或修改 trip。完整 canonical workflow 尚未提供。除非
+developer host可用exact process-local evidence把有實際canonical變更的score轉成30分鐘有效的
+typed apply review，但該review本身仍沒有apply authority，也不擷取回覆或寫入trip。私有導引草稿
+不是 `tripctl` CLI，也不建立或修改 trip。完整 canonical workflow 尚未提供。除非
 已明確接受 developer workflow，否則不要 migration 真實 trip。
 
 Phase 5已在M0重新收斂：Phase 5.13–5.29保留為`Provider Execution Safety Reference v1`，
@@ -609,9 +611,22 @@ evidence-bound proposal refs也不能互換。
 retention而寫入的EvidenceStore，也不呼叫provider或寫trip。Evidence-bound結果會附上安全的
 readiness profile與明確`readiness_scope`、`runtime_evidence_loaded=true`、`provisional=false`；
 此處的non-provisional只表示
-分數已綁exact runtime evidence，不代表已獲canonical mutation authority。Score固定進入
-`review_proposal`，並明示`apply_authority=false`、`canonical_write_performed=false`。CLI刻意不新增
-`--evidence-*`入口；typed apply review仍是下一個獨立gate。
+分數已綁exact runtime evidence，不代表已獲canonical mutation authority。Score一律明示
+`apply_authority=false`、`canonical_write_performed=false`。只有candidate對canonical state有實際
+持久化變更時才回`apply_review_available=true`／`review_proposal`；no-op score回
+`apply_review_available=false`／`next_action=none`，不要求不存在的apply授權。CLI刻意不新增
+`--evidence-*`入口。
+
+Developer host可再呼叫`prepare_trip_schedule_apply_review()`，傳入同一exact snapshot、runtime
+context、opaque proposal ref、exact `TripStore`與可重載的evidence source。此review-only bridge會
+重新compose／solve／trusted replay，重驗proposal ref與clock，經`ScheduleStager`重載current
+evidence、確認strict improvement並只做canonical preview，最後包成30分鐘有效、不可序列化的
+`accept_apply`／`request_changes`／`cancel` review。私有人工審閱面會顯示exact canonical diff，
+但不輸出provider runtime state或evidence／product-context digest；結果固定
+`apply_authority=false`、`canonical_write_performed=false`、`pending_review_retained=true`。
+這個bridge不擷取response、不呼叫commit，也沒有CLI `apply`入口；generic「繼續」不能替代exact
+enum response。真正執行仍須在下一個獨立gate重驗review expiry、current evidence、canonical CAS、
+必要approval與receipt語義。
 
 已產生的 legacy 行程頁另有第五個唯讀「檢查」分頁；可在行程網址後加上
 `#review` 直接開啟。它只接收 `validate` 經過固定繁中分類後的 aggregate 摘要，
