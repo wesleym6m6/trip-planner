@@ -7,9 +7,18 @@ legacy compatibility 已完成；Phase 5 的 guided product contract、bounded p
 execution、evidence-to-canonical、same-process apply、baseline adoption、canned product
 acceptance 與一次性 live exit gate皆已完成並凍結。Phase 6.0 fail-closed public-release
 boundary亦已完成。目前工作進入Phase 6 delivery／privacy／operations；第一個bounded
-maintenance slice清理public tracked tree中的private operational metadata，下一個產品
-slice是deterministic private ICS projection。任何future provider call、canonical mutation、
-render或deploy仍各自需要fresh exact gate。
+maintenance slice已清理public tracked tree中的private operational metadata，Phase 6.1A
+deterministic private ICS projection與Phase 6.1B deterministic private HTML projection亦已
+完成；Phase 6.2A canonical-bound private delivery candidate review／response／manifest contract也已
+完成；Phase 6.2B authoritative host reload、target pinning與create-only private writer的synthetic
+structural exit也已完成。Phase 6.2C exact same-object `EvidenceStore`-backed MEMORY_ONLY
+`EvidenceSession` delivery-source adapter與synthetic prepare-only host integration亦已完成；Phase 6.2D
+進一步完成exact adapter-backed writer的synthetic full-execute integration與callback／snapshot
+hardening。兩個closed profiles皆只在isolated temporary root先建立fresh review，再capture matching exact
+enum並execute reviewed bundle；這不構成real ready-bundle
+runtime write。任何real private source access、exact target／artifact-set write、
+provider／credential use、canonical mutation、browser、calendar import／share／serve、public-source creation
+或deploy仍各自需要fresh exact gate；此checkpoint不自動啟動下一個real operation。
 
 ## 產品目標
 
@@ -416,11 +425,15 @@ M0明確不新增generic workflow DSL、database／event sourcing、microservice
 
 Exit gate：
 
-- source revision 相同時輸出穩定；
-- ICS UID 使用 stable activity ID；
-- public build 不含私人預訂資訊；
-- 未明確要求時不 deploy；
-- 釜山與北海道完整走過 draft → review → travel-ready → private render。
+- 相同exact private-delivery input snapshot、renderer contract與template revision產生
+  byte-for-byte相同的allowlisted artifacts；
+- 每個ICS event UID只由stable trip／activity identity與versioned UID policy推導；同一
+  activity的reorder、retime或rename不改變UID；
+- public build不含private reservation、calendar、map、coordinate、URL、cache或provider
+  material；
+- 沒有目前使用者對exact target與artifact set的明確要求時，不寫private render、不deploy；
+- 兩個明確標示的canned fixture families完整走過draft → review → travel-ready → private
+  delivery；這項acceptance不讀real local trip。
 
 ### Phase 6.0 — fail-closed public release boundary
 
@@ -446,14 +459,365 @@ Exit gate：
 - 使用者只需審閱是否可公開與要求發布；不需手動驗證 private JSON 或 route；
 - 第一次安全替換／下架現有 Pages 仍由使用者另行明確授權。
 
+### Phase 6.1A — deterministic private ICS projection
+
+這是pure、process-local的private projection slice，不是filesystem render、calendar import、
+share、serve或publish gate。
+
+範圍：
+
+- 只消費caller已載入的immutable typed planning state與deterministic、明示的calendar
+  metadata；不接受path、raw JSON、provider cache、environment credential或wall clock；
+- 只產生private ICS bytes；event allowlist僅含calendar／event identity、summary、
+  timezone-aware start／end與RFC-required metadata，不投影reservation、coordinate、
+  map／query／URL、provider identifier、credential、arbitrary note或sidecar text；
+- UID綁stable trip／activity identity，不綁day position、display title、scheduled time或
+  source revision；6.1A只驗證caller提供的stable UID namespace形狀與deterministic使用，
+  不宣稱它已綁authoritative trip identity。Phase 6.2才重驗該identity、source revision與
+  readiness；required calendar metadata只由versioned deterministic input推導；
+- 使用timezone-aware timeline semantics處理跨午夜與DST；缺少可執行start／end時
+  fail closed，不以目前日期、numeric-offset cache、next event、default duration或day-level
+  all-day fallback猜測；
+- RFC 5545 TEXT escaping、UTF-8 75-octet folding、CRLF、固定ordering、bounded artifact與
+  value-free refusal codes皆為contract；
+- projector不判定或提升travel_ready，也不建立render、write、canonical mutation、provider、
+  credential或deploy authority。Phase 6.2含ICS的calendar delivery gate才會把fresh exact
+  travel_ready、authoritative source與實際artifact write綁在一起。6.1A的private input
+  digest只綁本次canonicalized allowlisted projection values，不是source provenance或可重播
+  authority。
+
+不在本slice：
+
+- 不讀或寫`trips/`，不建立`calendar.ics`，也不整合或執行legacy `generate_ics.py`／
+  `render_trip.py`；
+- 不建立private bundle manifest、HTML、public source／release、provider request、canonical
+  patch或deployment；
+- actual private file render、calendar import／share／serve與public deploy仍各自需要fresh
+  exact authorization。
+
+Exit gate：
+
+- 相同exact typed input、explicit deterministic calendar metadata與versioned policy產生
+  byte-identical bytes，不依wall clock、locale、process timezone、filesystem或cache順序；
+- 同一stable activity在reorder、retime或rename後UID不變，不同trip／activity UID唯一；
+- synthetic fixtures覆蓋escaping／folding、Unicode、跨午夜、DST、incomplete schedule、
+  loader-proven synthetic ID、invalid UID namespace、activity membership、UID collision與
+  bounded errors；
+- 放在excluded fields的synthetic private sentinels不進輸出或safe error；
+- focused synthetic tests與direct predecessor tests通過；completion evidence只使用
+  synthetic／canned／public fixtures，不以real local trip作為input。使用IANA timezone的
+  UTC projection另明確綁定執行環境的tzdb snapshot；stdlib-only contract不宣稱跨不同
+  tzdb版本仍byte-identical。
+
+### Phase 6.1B — deterministic private HTML projection
+
+這是pure、process-local的private review projection slice，不是filesystem render、serve、
+share、public-source creation或publish gate。HTML可用於draft／review preview；它不要求也
+不推導`travel_ready`，因此與只在後續fresh ready gate才交付的ICS有意分離。
+
+範圍：
+
+- 只接受caller已載入的exact immutable `TripState`；不接受path、raw JSON、sidecar、provider
+  cache、environment、wall clock、`ComposedTripState`、`TripReadiness`或caller template；
+- 使用module-owned、versioned renderer／template contract產生UTF-8／LF／單一terminal newline
+  的bounded static HTML bytes；不在runtime讀template file或載入Jinja／browser資源；
+- allowlisted private view只含trip title／subtitle／timezone／cities、day date／title／subtitle／
+  timezone／availability，以及`candidate|selected|fixed|booked` activity的title、local clock、
+  duration、decision、evidence與flexibility；`cancelled|excluded`不顯示；
+- missing local clock、duration、day timezone或availability以固定「待確認」文字呈現，不補目前
+  日期、default duration、next event、UTC offset或跨日end；完整overnight availability只標示
+  planning window跨日，不冒充authoritative event interval；
+- slug、day／activity／location ID、source revision、note、coordinate、maps query／URL、travel、
+  constraint、load issue、provider／evidence identifier、reservation／todo／packing／info sidecar
+  都不進markup或canonicalized projection digest；
+- 所有private values只進escaped HTML text nodes，不進attribute、URL、CSS、JS、comment或DOM
+  identity。Markup不含script、storage、map、calendar link、form、external subresource或任何
+  network-capable URL attribute；
+- projector不判定readiness、不提升decision／evidence，也不建立source provenance、render、
+  write、serve、share、canonical mutation、provider、credential或deploy authority。Phase 6.2
+  actual HTML preview write gate會從authoritative source重新project並綁exact target／artifact set；
+  readiness可維持draft／review／travel_ready。只有artifact set包含ICS時才要求fresh exact
+  travel_ready、stable authoritative activity identity與current composed readiness binding。
+
+不在本slice：
+
+- 不讀或寫`trips/`，不建立`index.html`／`calendar.ics`／manifest，不整合或執行legacy
+  `render_trip.py`／`generate_ics.py`／`template/trip.html`；
+- 不建立interactive map、client-side checklist、localStorage、external link、public source／release、
+  provider request、canonical patch或deployment；
+- actual private file render、browser／serve／share與public deploy仍各自需要fresh exact authorization。
+
+Exit gate：
+
+- 相同exact allowlisted typed view與versioned renderer／template contract產生byte-identical HTML，
+  不依wall clock、cwd、locale、process timezone、hash seed、filesystem或cache順序；
+- candidate與missing time／duration／timezone／bounds可產生誠實preview，decision／evidence／
+  flexibility badges不被promotion，cancelled／excluded不出現；
+- synthetic regressions覆蓋HTML injection、Unicode／newline、被排除欄位、membership、loader-proven
+  synthetic legacy state、primitive／text／aggregate／output bounds與value-free refusal；
+- parser-level passive-network gate確認沒有dangerous element、network-capable attribute或CSS
+  `url()`／`@import`；private bytes、digests與inventory不進safe repr／dict／error；
+- focused synthetic suite及6.1A ICS、timeline review、Phase 6.0 public release與tracked-document privacy
+  predecessors通過；completion evidence不以real local trip、browser、network或artifact write為input。
+
+### Phase 6.2A — canonical-bound private delivery review contract
+
+這是effect-bounded、process-local的private delivery candidate preparation／response slice，
+不是filesystem writer或write-authorization gate。它先把caller提供的exact canonical bytes、
+profile、artifact set、readiness與lexical target review語意鎖成可測contract；Phase 6.2B才從
+trusted host source重新載入、重驗並建立另一個fresh exact write review。
+
+範圍：
+
+- 只接受bounded caller-provided canonical snapshot bytes、exact factory `EvidenceSnapshot`與
+  canonical codec可驗證的stable trip／day／activity identity；prepare先strict decode／encode
+  round trip，再重算nested policy／fact／observation／snapshot identity，並只從這些validated
+  inputs重新建立`ComposedTripState`。不再接受一份冗餘、可被同process竄改的caller-provided
+  composed object。Availability keys、lodging candidate／assessment／pending review也會深層重建
+  驗證；legacy synthetic ID與generic source adapter不在本slice；
+- artifact profile只有兩種且不能互相升級：`html_preview`固定為`index.html`＋private
+  `manifest.json`，不評估或宣稱readiness；`html_ics_ready_bundle`固定再加入`calendar.ics`，
+  且HTML／ICS必須來自同一exact composed state；
+- ready bundle必須在prepare時重新assessment並得到fresh exact `travel_ready`、
+  `next_action=none`與零readiness problem。ICS的UID namespace只取從exact caller-provided
+  canonical snapshot解碼並驗證的`trip_id`，deterministic `DTSTAMP`只取同一readiness evaluation time；review expiry取30分鐘與
+  readiness recheck deadline的較早者，expiry instant已失效。只有ICS `DTSTAMP`要求whole-second；
+  review／response／recheck deadline保留exact UTC microseconds；
+- private manifest使用deterministic JSON，綁caller-provided canonical snapshot bytes、plan／composition／evidence／
+  full runtime composition context、readiness、projector／template／UID policy版本與payload
+  filename／media type／byte length／digest；
+  pending lodging review只綁其重建後的semantic review identity／state，非authority的diagnostic
+  prose不進runtime binding；
+  不含absolute path、review／response token、credential、provider payload、重複的行程內容或
+  nondeterministic write time。Manifest是private provenance，不是authorization或replay grant；
+- source／target path在6.2A只作lexical private binding；safe output明示尚未驗證filesystem。
+  Ephemeral private review可顯示exact source／target、trip title／dates、fixed filenames、create-only
+  語意與ready bundle的calendar summary，但不得被log／persist／寫入Git；
+- safe repr／dict只含public contract／profile／fixed filenames、value-free boolean status與
+  `write_outcome=not_performed`，不含path、trip value、time、revision／digest、UID、count、bytes或
+  manifest；
+- review／artifact／response以process-local seal與weak registry驗證，factory-only且
+  non-serializable；每個review只允許擷取一次response。Candidate accept必須使用profile-specific exact enum：
+  `accept_html_preview_candidate`或`accept_html_ics_ready_bundle_candidate`；所有response的safe
+  surface都明示`write_authorized=false`。`request_changes`／`cancel`、一般「繼續」、cross-profile
+  accept、expiry、trusted-clock rollback、tamper、second response capture或cross-process reconstruction
+  一律fail closed；fresh期間重複執行無副作用的verify不是replay authority；
+- caller-supplied trusted clock是唯一generic host callback seam；每次prepare／capture與
+  freshness-enabled verify都把
+  callback exception、naive time、missing UTC offset、rollback與expiry收斂為value-free refusal。
+  兩個profile的canonical timezone-name validation都可能讀host TZDB；ready profile另繼承6.1A
+  的offset projection dependency，因此byte determinism只在同一TZDB snapshot下成立。
+
+不在本slice：
+
+- 不從`TripStore`／`EvidenceSource`／`trips/`讀取真實source，不stat／pin source或target，
+  不執行caller／project／private source-target filesystem I/O，也不建立directory或寫出filesystem
+  `index.html`、`calendar.ics`、`manifest.json`；process-local artifact／manifest bytes仍屬private；
+- 不處理overwrite、existing legacy output replacement、bundle-level atomic publication、crash
+  recovery、browser／serve／share、calendar import、public source、provider、canonical mutation或
+  deploy；
+- 6.2A candidate response不是可跨process保存的token，也不是6.2B可直接consume的write grant。
+  Phase 6.2B必須重載source／evidence、重新projection、pin target filesystem並呈現另一個fresh
+  exact target／artifact-set write review；只有該新review的明確response才能執行create-only writer。
+
+Exit gate：
+
+- synthetic canonical fixtures證明兩個closed profiles的exact artifact set、deterministic payload／
+  manifest，以及ready bundle bytes與直接對同一composed state執行6.1A／6.1B projector完全相同；
+- HTML preview可接受非ready canonical snapshot但不評估readiness；ready bundle對draft／review／
+  expired readiness、malformed canonical／snapshot cross-binding、typed identity tamper與ICS refusal皆
+  value-free fail closed；changed canonical bytes會建立不同binding，但6.2A不宣稱已
+  偵測filesystem source drift；
+- manifest不含path、review token或authorization，source中即使只改被projection排除的值，
+  manifest／review binding仍改變；full availability／attribution／lodging runtime context也獨立綁定；
+  target只改變review binding，不改deterministic artifact bytes；
+- profile mismatch、generic string、double response、expiry、rollback與review／artifact／response／
+  readiness mutation皆不產生write；private objects皆factory-only／non-serializable，weak registry不
+  延長private object lifetime，safe surface不含private sentinel；
+- synthetic overnight與DST transition review保留exact local date、numeric offset與end time；HTML
+  microsecond evaluation可review，ready calendar對subsecond `DTSTAMP`明確拒絕，microsecond recheck
+  deadline維持half-open exact boundary；
+- focused synthetic tests及6.1A／6.1B、readiness、public-release與tracked-document privacy
+  predecessors通過；不讀real local trip、不寫filesystem artifact、不執行provider／render／deploy／push。
+
+### Phase 6.2B — authoritative create-only private delivery writer
+
+這是canonical-only、trusted-host的private filesystem writer slice。它不接受Phase 6.2A
+review／response作input，也不把candidate accept、manifest或digest升級成write grant；host會從
+authoritative source重新建立另一份fresh write review，只有該review的profile-specific exact
+response可進入最後pre-write recheck。
+
+範圍：
+
+- public prepare API只接受exact `TripStore`、具exact canonical `trip_id`且提供non-mutating
+  `read_snapshot(evaluation_at=...)`的read-only evidence source、closed profile、existing private
+  root、單一target leaf、trusted clock及bounded availability／lodging runtime context。該root必須由host
+  另行確認屬ignored private storage；writer不解析或證明VCS ignore設定；
+- canonical raw bytes使用bounded、no-follow、pre／post identity reader重載，並要求regular、single-link、
+  current-user-owned且不可group／world write；evidence read不得在application層建立lock、cleanup temp、
+  replace／unlink／fsync、durably purge、migrate或reset corruption（ordinary read仍可能受host atime policy影響）。
+  Prepare與execute都以review-bound evaluation instant做reload sandwich、
+  deep validation與exact byte reprojection；current clock只驗五分鐘review／readiness freshness window。
+  可選`fault_hook`只屬trusted synthetic fault-injection seam，real host必須為`None`；
+- private root只允許`TripStore.trip_dir`下既存的單一direct child，必須current-user-owned、mode `0700`、
+  non-symlink且identity不變；target是其下目前不存在的safe single-component leaf。Review與execute都重驗
+  parent identity與absence；existing file／directory／FIFO／symlink一律不merge、overwrite、replace或delete；
+- 新的factory-only、sealed、non-serializable write review／response使用
+  `authorize_html_preview_create_only_write`或
+  `authorize_html_ics_ready_bundle_create_only_write`；generic string、6.2A response、cross-profile、
+  second capture／execute、expiry、clock rollback、tamper或process restart全部fail closed。Response只表示
+  accepted for final pre-write recheck；在reload／reprojection／target check完成前不宣稱write已發生；
+- writer以pinned directory descriptor建立mode `0700`的exact target，依closed allowlist用
+  `O_EXCL|O_NOFOLLOW`建立mode `0600` payload並逐檔`fsync`。Payload與target directory完成後再次重載
+  source／evidence、重投影並檢查freshness，最後才建立exact `manifest.json`、fsync target及parent；
+- portable v1明確以valid exact `manifest.json`作logical commit marker，不宣稱multi-file atomic visibility。
+  Manifest前fault可留下visible但uncommitted partial target；manifest entry可能已建立、file／directory
+  durability或syscall acknowledgement不明時才是`outcome_unknown`。同一live response只能read／verify
+  exact target並對exact files／directories完成fsync reconciliation；不補寫、
+  overwrite、repair或cleanup。`final_target_published`只描述final bounded inspection時的exact private logical
+  commit，不保證同UID actor之後不修改filesystem；conflict、partial與process restart都需新的exact recovery boundary。
+
+不在本slice：
+
+- 不支援legacy source、arbitrary absolute output、existing output replacement、automatic partial cleanup、
+  cross-process resume、generic artifact store或portable whole-tree atomic rename；
+- Phase 6.2B原始structural exit只支援`EvidenceStore.read_snapshot()`與synthetic exact protocol，未包含
+  MEMORY_ONLY `EvidenceSession` adapter。後續Phase 6.2C證明exact adapter與synthetic prepare-only
+  integration，Phase 6.2D再證明isolated synthetic full execute；三者均未證明real ready-bundle runtime write；
+- 不自動建立private root，不將artifact加入Git，不開browser、不serve／share、不import calendar、不建立
+  public source、不呼provider、不canonical mutate、不deploy；
+- synthetic temp-root測試中的write只驗filesystem contract，不構成任何real trip／real target authority。
+  真實private source read、ephemeral write review與exact target／artifact-set execution仍需fresh explicit user gate。
+
+Exit gate：
+
+- 兩個synthetic canonical profiles都從fresh authoritative reload建立write review，exact response後只在isolated
+  temp private root產生固定tree；directory為`0700`、files為`0600`，bytes與reviewed artifacts完全相同；
+- prepare後已存在的source／evidence／runtime context、private-root identity、target absence或effective
+  projection drift會在第一個target mutation前拒絕；write期間新出現的drift會在manifest前拒絕並如實留下
+  `partial_uncommitted`或`outcome_unknown`。Wrong trip、hardlink／symlink／nonregular source、unsafe root／leaf、existing target、
+  profile mismatch、expiry／rollback、tamper、double capture／execute皆fail closed；
+- fault matrix至少區分`not_performed`、`partial_uncommitted`、`created`、`outcome_unknown`、exact reconciled與
+  recovery conflict；valid manifest只會在完整payload後出現，unknown不盲目retry或宣稱rollback。
+  `final_target_published`只代表private logical commit，`None`表示未知／衝突；`cleanup_complete`只表示沒有
+  outstanding cleanup，不聲稱執行過delete／repair；
+- safe repr／dict／error／outcome不含private path、trip value、timestamp、revision／digest、UID、bytes、manifest或
+  content-derived inventory；focused synthetic suite及6.2A、6.1A／B、readiness、public-release、evidence-store與
+  tracked-document privacy predecessors通過；completion evidence不讀real local trip或使用real target。
+
+### Phase 6.2C — process-local MEMORY_ONLY delivery-source adapter
+
+這是把既有run-scoped `EvidenceSession`接入Phase 6.2B authoritative reload protocol的
+non-mutating source slice；它不驗證provider目前live truth，也不建立provider、filesystem write、
+recovery或publication authority。
+
+範圍：
+
+- module-owned factory只接受exact live `EvidenceSession`及建立該session的same-object exact
+  `EvidenceStore`。Adapter將store的trip／slug／root／trip-dir／data-dir／cache／lock identity綁入
+  factory-only、sealed、process-local、non-serializable object；arbitrary `load()` source與cross-process
+  reconstruction不支援。Writer仍另以exact `TripStore`重驗writer protocol所需、但仍屬private
+  material的四個source identity欄位；它們不是safe／loggable output；
+- `read_snapshot(evaluation_at=...)`在session lock下要求exact UTC且不得早於session trusted-clock
+  high-water，只呼叫exact backing `EvidenceStore.read_snapshot()`取得application-level read-only durable
+  view；不得呼叫`EvidenceSession.load()`／`merge()`或backing `load()`，不得推進session clock；
+- 每次read都要求policy object、exact durable store revision、requested evaluation／purge instant及
+  retained durable observations與目前session basis相同；任何drift、future observation、migration、
+  corruption、path／object tamper或clock rollback皆以fixed value-free code拒絕，不rebase、修復或清除session；
+- 驗證後只以pure in-memory retention projection建立同時包含durable與目前retained MEMORY_ONLY
+  observations的`EvidenceSnapshot`，並以目前provider problems重算exact outcome binding。它不指派
+  pruned ledger、不改store revision／problem maps／endpoint basis，也不cache snapshot；
+- adapter read不在application層建立lock、cleanup temp、replace／unlink／fsync、durably purge、migrate或
+  reset corruption；ordinary read仍可能依host policy更新atime。`EvidenceSession`建構、既有`load()`／
+  `merge()` lifecycle不因此被稱為non-mutating；
+- adapter、snapshot、seal與paths都是private process-local material。Value-free capability view不含path、
+  value、timestamp、revision／digest、UID、bytes或content-derived inventory，且明示不呼provider、
+  不寫artifact、不是write authority；它只能讓既有6.2B另行建立fresh exact write review，不能mint、
+  延長或取代write response。
+
+不在本slice：
+
+- 不支援generic duck-typed durable source、legacy source、session rebase／persistent snapshot、provider refresh、
+  automatic recovery或cross-process resume；
+- 不讀real local trip、不選定／存取real private target，不capture／execute write response、不建立filesystem
+  artifact，不開browser、不serve／share、不import calendar、不建立public source、不canonical mutate或deploy；
+- synthetic review preparation不構成real ready-bundle truth或write authority。任何real source read、exact
+  private target／artifact-set execution、provider／credential use與後續外部動作仍需fresh exact gate。
+
+Exit gate：
+
+- exact synthetic `TripStore`、`EvidenceStore`與其same-object `EvidenceSession`可經adapter為兩個closed
+  6.2B profiles建立fresh write review；ready profile確實消費retained MEMORY_ONLY route evidence，但兩個
+  synthetic target皆維持absent，沒有capture／execute或artifact write；
+- 相同evaluation instant的重複read產生exact相同snapshot；session ledger／store revision／problem maps／
+  endpoint basis／clock high-water及durable cache bytes／identity／mtime／directory inventory皆不變，
+  ordinary atime明確不列入zero-metadata-mutation保證；
+- mixed durable＋MEMORY_ONLY observations可一起replay；retention只filter returned view，outcome-only drift只改
+  exact outcome／snapshot binding。Durable revision／record drift、wrong backing／path、clock rollback、method
+  shadow、adapter tamper及serialization皆fail closed且不回顯private material；
+- safe repr／dict／error與writer safe review不含synthetic private sentinel、path、value、timestamp、revision／
+  digest、UID、count、bytes或content-derived inventory；focused synthetic suite及6.2B、EvidenceSession、
+  EvidenceStore read-only、readiness、projection與tracked-document privacy predecessors通過；completion
+  evidence不讀real local trip、不使用real target，也不執行provider、browser、serve／share、calendar import、
+  public-source creation或deploy。
+
+### Phase 6.2D — EvidenceSession-backed writer synthetic execution integration
+
+這是exact 6.2C adapter經6.2B writer完成capture／execute的isolated synthetic acceptance與
+hostile-callback hardening slice；它不建立新的authority kind，也不是real trip delivery gate。
+
+範圍：
+
+- 只用`TemporaryDirectory`下的synthetic canonical `TripStore`、same-object exact `EvidenceStore`／
+  `EvidenceSession`／`EvidenceSessionDeliverySource`、既存mode `0700` private root及absent target。
+  兩個closed profiles分別capture matching exact write enum並execute；preview固定建立`index.html`＋
+  `manifest.json`，ready bundle固定再含`calendar.ics`，target為`0700`、files為`0600`且bytes與review完全相同；
+- initial pre-target與final pre-manifest checkpoint都採bounded
+  `source reproduce A → trusted-clock freshness → source reproduce B`。第一份reproduction抓source callback
+  推進clock，freshness抓expiry／rollback，第二份reproduction抓clock callback造成的canonical／evidence／
+  runtime-context drift；任何prewrite drift不建立target，payload後drift則不建立manifest；
+- live review record改用exact `RLock`並在registry取回時重驗。Clock callback若guarded re-enter
+  review／response `to_safe_dict()`不再self-deadlock；module-owned transition guard會拒絕並poison任何nested
+  capture／fresh verify／execute／reconcile，callback不能把外層cancel替換成accept，仍只允許單一response與attempt；
+- exact adapter在writer path使用module-pinned unbound dispatch；adapter在任何durable snapshot field比較前，
+  先完成policy identity、tuple／count、UTC、digest／version、observation、aggregate bytes、sorting／duplicate
+  slot與snapshot identity的bounded exact preflight。Hostile comparison object不得先取得callback execution；
+- 正常execute只新增synthetic target tree；canonical bytes、durable cache bytes／identity／size／mtime與data-dir
+  inventory、session ledger／store revision／problem／endpoint basis／clock high-water皆不變。Ordinary atime仍
+  不在zero-metadata-mutation保證內；`fault_hook`只作trusted synthetic fault injection，real host必須為`None`。
+
+不在本slice：
+
+- 不新增pre-access review、authority enum、public facade、generic artifact store或cross-process token；
+- 不讀real local trip、不選定或存取real private target、不呼provider、不使用credential、不canonical mutate；
+- 不開browser、不serve／share、不import calendar、不建立public source、不deploy，也不重做6.2B完整fsync／
+  lost-ack／reconciliation fault matrix；synthetic `CREATED`不能推論real source freshness或publication authority。
+
+Exit gate：
+
+- 兩個profile皆由mixed durable＋MEMORY_ONLY exact adapter完成fresh review、matching capture與one-shot execute，
+  isolated target的exact tree／mode／bytes與ready manifest均符合review，fixture cleanup後不留下artifact；
+- capture後outcome-only MEMORY_ONLY drift在第一個target mutation前以fixed stale code拒絕；payload fsync後的
+  memory drift與final clock callback注入的drift皆只回`partial_uncommitted`，且沒有`manifest.json`；
+- durable store drift及adapter seal tamper皆在target建立前拒絕且不rebase session；reentrant clock safe view
+  不hang、不recapture，outer cancel中的nested authorize不產生response；hostile durable snapshot scalar不觸發
+  comparison callback；
+- focused synthetic suite、6.2B／C與既有explicit predecessor allowlist、privacy、AST／imports／exports及
+  whitespace checks通過；completion evidence不讀real local trip、不使用real target、不呼provider或push。
+
+Phase 6.2D後不預設自動開始6.2E或任何real operation。下一個可離線、bounded的產品slice是以兩組既有
+canned fixture families完成Phase 6的`draft → review → travel-ready → private delivery` acceptance；在
+rebaseline與另行審查前不啟動。
+
 ## 驗證策略
 
 每個 phase 都使用相同四層驗證：
 
 1. unit：純函式、typed model、edge cases。
 2. adversarial fixture：刻意漏項、衝突、過期、跨午夜及 provider failure。
-3. legacy compatibility：現有 local trips 只能讀取，且不發生資料變動。
-4. end-to-end acceptance：釜山與北海道真實需求。
+3. legacy compatibility：每個slice使用synthetic legacy fixtures；real local-trip validators
+   只在另行授權的macro／release gate執行，且不得發生資料變動。
+4. end-to-end acceptance：兩個明確標示的canned product scenarios。
 
 不只檢查最後 status，也檢查：
 
@@ -2008,6 +2372,186 @@ provider、confirmation或mutation authority。
   provider、讀credential、寫trip、render private trip、deploy或push；renderer regression只使用temporary
   synthetic fixture。舊Git objects仍可能包含先前內容，任何history rewrite／remote takedown都需另外明確
   授權。下一個產品slice是Phase 6.1A deterministic private ICS projection。
+
+### 2026-08-10 — Phase 6.1A deterministic private ICS projection 完成
+
+- 新增pure、typed、process-local private ICS projector，只消費caller已載入的immutable
+  `TripState`、caller-owned UID namespace與explicit deterministic calendar timestamp；不接受
+  path、raw JSON、provider cache、credential或wall clock，也不執行filesystem write。
+- Projector只輸出bounded private bytes：calendar title、active event summary、stable UID與
+  timezone-aware UTC start／end。UID不綁display title、time、order或source revision；本slice
+  只驗證namespace形狀與deterministic使用，不宣稱authoritative trip identity、source
+  provenance或travel readiness，這些仍由後續private bundle gate重驗。
+- RFC 5545 TEXT escaping、UTF-8 octet folding、CRLF、fixed ordering、完整day bounds、DST
+  gap／fold、跨午夜、缺時程、loader-proven synthetic ID、membership、UID collision、input／
+  artifact bounds與value-free refusal皆有synthetic regressions。Excluded-field sentinels與raw
+  source revision不進ICS或safe output；private projection／artifact digests及event inventory只留
+  repr-hidden process fields，不能作authority。
+- Phase 6.1A focused synthetic suite、direct time／readiness predecessors、public-release與
+  tracked-document privacy regressions皆通過；completion evidence只採synthetic／canned／public
+  fixtures。一次誤觸的read-only local predecessor test未納入exit evidence，沒有產生artifact、
+  provider call或source write。
+- 本slice未建立`calendar.ics`、未整合legacy renderer、未render HTML、未讀credential、未
+  canonical mutate、未deploy或push。Projection、filesystem render、calendar import／share／
+  serve、public-source creation與deploy仍是不同的fresh exact authorization boundaries。下一個
+  bounded產品slice是Phase 6.1B deterministic private HTML projection。
+
+### 2026-08-10 — Phase 6.1B deterministic private HTML projection 完成
+
+- 新增pure、typed、process-local private HTML review projector，只接受caller已載入的exact
+  immutable `TripState`，並使用module-owned versioned renderer／template contract產生bounded
+  UTF-8 static bytes；不接受path、raw JSON、caller template、readiness assertion、environment或
+  wall clock，也不執行filesystem write。
+- Allowlisted review view誠實顯示`candidate|selected|fixed|booked`、decision／evidence／
+  flexibility與尚待確認的time／duration／timezone／day bounds；`cancelled|excluded`不顯示。
+  Fractional local-time precision被lossless保留，完整overnight bounds只標planning window，沒有
+  推導UTC、event end、目前日期、default duration或`travel_ready`。
+- Private values只經escaping進HTML text nodes；fixed markup以exact tag／attribute allowlist、CSP、
+  zero-comment與no external-resource／network-capable context regressions保護。ID、revision、note、
+  coordinate、map／URL、travel、constraint、issue與sidecar material不進markup或view digest。
+  Safe result不含private bytes、digest、日期、ID或inventory，且明示未綁source authority、未評估
+  readiness、未執行write。
+- 19個6.1B focused synthetic regressions與6.1A ICS、time／readiness、兩個pure timeline-review
+  projection、Phase 6.0 public-release及tracked-document privacy predecessors合計88個tests通過；
+  exit evidence只採synthetic／canned／public input。Reviewer另行誤跑的temporary synthetic legacy
+  render未納入exit evidence；temp已自動清除，沒有private input、network或repo artifact。
+- 本projector slice未讀real local trip、未建立`index.html`／`calendar.ics`／manifest、未使用
+  provider／credential、未canonical mutate、未deploy或push。它不宣稱authoritative source、
+  private delivery、travel readiness或filesystem render已完成；其後續bounded產品slice是Phase 6.2A
+  process-local candidate contract，actual target與artifact set仍需fresh exact authority。
+
+### 2026-08-10 — Phase 6.2A canonical-bound private delivery candidate contract 完成
+
+- 新增effect-bounded、process-local的private delivery preparation contract。Public prepare API只接受
+  bounded caller-provided canonical snapshot bytes、deep-validated exact `EvidenceSnapshot`、closed
+  profile、lexical private source／target、trusted clock及bounded availability／lodging runtime context；
+  它strict round-trip canonical bytes後在module內重新composition，不接受或信任另一份
+  caller-provided `ComposedTripState`。
+- `html_preview`固定產生process-local `index.html`＋private manifest且不評估readiness；
+  `html_ics_ready_bundle`固定再加入`calendar.ics`，並要求同一重組state於prepare instant重新取得
+  fresh exact `travel_ready`。兩個profile都可能因canonical timezone validation讀host TZDB；含ICS
+  profile另綁同一TZDB snapshot的offset projection語意。
+- Nested provider policy／fact／observation／snapshot、availability key、lodging candidate／location／
+  claim／assessment／pending review皆先做bounded exact-primitive preflight再重建identity。Hostile
+  container／timezone callback、stale nested ID、normalization drift、巨大count、subsecond calendar、
+  expiry／rollback與overflow都以value-free code fail closed。
+- Deterministic private manifest綁caller-provided canonical bytes、recomputed composition／evidence／
+  runtime context、readiness、projector versions與artifact digests，但不含path、review token或write
+  time，也不是authorization。Ephemeral review明示source／target尚未filesystem-verified、
+  `write_authorized=false`；每個review只能capture一次profile-specific candidate response，fresh verify
+  可重複但不產生authority。Weak registry不延長private object lifetime，trusted-clock high-water在
+  同一live review record內先前進，且不因其他refusal回退。
+- Phase 6.2A focused synthetic suite 28個tests通過；明確allowlist的6.1A／6.1B、time、readiness、
+  public-release、tracked-document privacy、composition、lodging-confirmation與direct codec
+  predecessors合計136個tests通過。驗證中的temporary synthetic／public fixtures會在isolated temp
+  directory建立並自動清除；未讀real local trip、未執行provider或actual deploy、未選定或存取real
+  private target，repo未留下delivery artifact。
+- 本checkpoint不證明filesystem source drift detection、target identity、private render/write、atomic
+  publication、calendar import／share／serve、public-source creation或deploy。它也不是write grant或
+  可續跑token；下一個bounded slice是Phase 6.2B，由authoritative host重新載入source／evidence、pin
+  exact create-only target、重新projection並呈現另一個fresh exact target／artifact-set write review。
+
+### 2026-08-10 — Phase 6.2B create-only writer synthetic structural exit 完成
+
+- 新增獨立的canonical-only private delivery writer。它不接受Phase 6.2A review／response作input；
+  每次都由exact `TripStore`、bounded canonical source與host-bound read-only evidence source重新建立
+  projection，pin既存private-root identity並綁定一個absent lexical leaf，再呈現新的profile-specific write review。
+- `html_preview`與`html_ics_ready_bundle`兩個closed synthetic profiles皆以fresh exact response走過
+  create-only path。Target固定`0700`、files固定`0600`，`manifest.json`最後建立且只代表private logical
+  commit；writer不宣稱portable multi-file atomicity，不merge／overwrite／repair／delete existing target。
+  Extreme umask若移除owner access會保守留下uncommitted empty target，不以path chmod修改raced replacement。
+- Source／evidence reload sandwich、five-minute／readiness freshness、clock rollback、private-root／target inode、
+  artifact pre／post stat與exact bytes皆在bounded checkpoints重驗。Prepare後既有drift在第一個target mutation
+  前拒絕；write期間的新drift在manifest前拒絕並如實回`partial_uncommitted`或`outcome_unknown`。
+- Fault regressions涵蓋target／manifest create lost acknowledgement、payload與manifest fsync、extra entry、
+  same-size content tamper、target dentry swap、transient recovery read與exact file／directory reconciliation。
+  同一live response只允許一次create attempt；unknown可做same-process exact read／verify與fsync-only
+  reconciliation，但不盲目retry、重寫content或cleanup。Outcome與safe status皆sealed；
+  `final_target_published=None`表示未知／衝突，
+  `cleanup_complete`只表示沒有outstanding cleanup。Success也只證明final bounded inspection當下的exact
+  private logical commit，不宣稱對同UID後續filesystem mutation提供持續immutability。
+- `EvidenceStore.read_snapshot()`提供bounded no-follow read-only seam：不在application層建立lock、cleanup orphan、
+  replace／unlink／fsync、durably purge、migrate或repair，retention只套用到in-memory view並保留exact durable
+  store revision。Existing valid／expired cache、orphan保留及corruption no-repair皆由synthetic regressions覆蓋；
+  ordinary filesystem read可能依host policy更新atime，不列為zero-metadata-mutation保證。
+- Phase 6.2B focused synthetic suite 30個tests通過；明確allowlist的6.1A／6.1B、6.2A／B、time、readiness、
+  public release、tracked-document privacy、composition、lodging-confirmation、codec migration與EvidenceStore
+  predecessors合計241個tests通過，AST／import compile與diff whitespace checks亦通過。Focused exit只使用
+  isolated synthetic／public temp fixtures；較廣的241-test compatibility gate包含會hash／copy local trip corpus
+  的codec migration class，因此不能作為「未讀real local trip」證據。其built-in pre／post hashes matched，
+  未修改local trip；也未呼provider、選定或存取real private target、deploy或push，repo未留下delivery artifact。
+- Private root是否屬ignored storage仍是trusted-host precondition，writer不解析VCS設定；本checkpoint也不授權
+  real private source read／write、browser、calendar import／share／serve、public-source creation或deploy。
+  本checkpoint當時尚無MEMORY_ONLY `EvidenceSession` read-only delivery-source adapter，因此real
+  ready-bundle runtime integration未被證明。後續Phase 6.2C只完成synthetic prepare-only adapter／host
+  integration；任何real trip／target execution仍需fresh exact user authorization。
+
+### 2026-08-11 — Phase 6.2C MEMORY_ONLY adapter synthetic prepare-only exit 完成
+
+- 新增factory-only、sealed、process-local、non-serializable
+  `EvidenceSessionDeliverySource`。它只接受same-object exact `EvidenceStore`-backed
+  `EvidenceSession`，並封存trip／slug、完整private path identity、exact session clock與lock；generic
+  source、cross-process reconstruction、instance method shadow及host-state tamper皆fail closed。
+- Adapter在exact session lock下要求exact UTC evaluation instant且拒絕trusted-clock rollback；只呼叫
+  application-level read-only `EvidenceStore.read_snapshot()`，重驗policy object、durable store revision及
+  retained durable observations，再以pure retention projection建立mixed durable＋MEMORY_ONLY
+  `EvidenceSnapshot`與exact provider-outcome binding。
+- Policy registry、ledger、fact key／value、observation、provenance、provider problem、clock及session／source
+  instance state皆先做exact type、shape、identity與count／byte bounds重驗；hostile nested object、dict key、
+  callback、comparison、property、sort或tamper在使用前以fixed value-free code拒絕。
+- Adapter read不呼叫session／store `load()`、不rebase、不推進clock、不指派pruned ledger，也不改store
+  revision、problem或endpoint state。Cache bytes、identity、mtime及directory inventory保持不變；ordinary
+  atime不列入zero-metadata-mutation保證。既有session construction／`load()`／`merge()` lifecycle不因此被
+  稱為non-mutating。
+- Safe capability view採exact fixed-key allowlist，只描述adapter read；不含trip identity、path、timestamp、
+  revision／digest、evidence／outcome value、UID、count、bytes或inventory。Adapter、snapshot、seal與
+  protocol-visible paths仍是private process-local material，不是current provider truth、resumable token、
+  write response或publication authority。
+- Mixed durable＋MEMORY_ONLY synthetic evidence可為兩個closed 6.2B profiles建立fresh write review；ready
+  profile確實消費retained MEMORY_ONLY route evidence，但兩個target皆維持absent，未capture或execute
+  response，也未寫delivery artifact。
+- Phase 6.2C focused synthetic suite 18個tests通過；包含6.1A／6.1B、6.2A／B／C、time、readiness、
+  public release、tracked-document privacy、composition、lodging confirmation、codec migration、
+  EvidenceSession／Store與Phase 5.32 direct predecessor的明確allowlist合計281個tests通過。AST／import
+  compile與diff whitespace checks亦通過。Focused exit只使用isolated synthetic／public temp fixtures；較廣的
+  281-test gate同樣包含read-only local codec compatibility traversal，built-in pre／post hashes matched但不能
+  作為「未讀real local trip」證據。未使用real target、未呼provider，也未執行browser、serve／share、
+  calendar import、public-source creation、deploy或push。
+- 本checkpoint只關閉synthetic prepare-only adapter／host integration；任何real private source access、exact
+  target／artifact-set write、provider／credential use與後續外部動作仍需要fresh exact gate，且不由本
+  checkpoint自動啟動。
+
+### 2026-08-11 — Phase 6.2D adapter-backed writer synthetic execution exit 完成
+
+- Exact same-object `EvidenceSessionDeliverySource`已在isolated temporary fixtures中，分別以matching
+  `authorize_html_preview_create_only_write`與
+  `authorize_html_ics_ready_bundle_create_only_write`完成6.2B one-shot capture／execute。兩個target皆為
+  `0700`、files為`0600`，exact tree與bytes等於reviewed artifacts；ready manifest維持`travel_ready`。
+- 修正final evidence reproduction後仍呼叫trusted clock的stale window。Initial pre-target與final
+  pre-manifest現在都做`source A → freshness → source B`；clock callback若改變MEMORY_ONLY outcome，
+  第二次reproduction會在manifest前拒絕。Live review record另改為exact `RLock`並驗證registry lock type，
+  guarded clock重入safe view不再self-deadlock；module-owned transition guard拒絕nested authority operation，
+  callback不能把cancel換成authorize。Generic source在payload後觸發reentry時仍先記錄truthful
+  `partial_uncommitted`，不遺失filesystem effect status。
+- Adapter-backed writer使用module-pinned exact unbound dispatch。Durable `EvidenceSnapshot`在任何field comparison
+  前先做bounded exact policy／observation／UTC／digest／version／aggregate／order／duplicate-slot與snapshot
+  identity preflight；hostile comparison value不先取得callback execution。
+- 正常execute不呼session／store `load()`或provider，也不改canonical bytes、durable cache bytes／identity／
+  size／mtime、data-dir inventory、session ledger／revision／problem／endpoint basis／clock high-water。
+  Ordinary atime仍不在zero-metadata-mutation保證內；synthetic target由fixture cleanup移除。
+- Regression另證明capture後outcome-only memory drift在target前拒絕；payload後memory drift與final clock callback
+  drift只留下無manifest的`partial_uncommitted`；durable drift與adapter seal tamper不建立target且不rebase
+  session。`fault_hook`明定只屬trusted synthetic seam，real host必須傳`None`。
+- Phase 6.2D focused synthetic suite 9個tests、更新後6.2C 19個tests通過；排除local-corpus codec class的
+  synthetic／public-only explicit predecessor allowlist合計265個tests通過。Privacy 4個tests、15個worktree
+  Python AST、imports／exports及tracked／untracked whitespace checks亦通過。
+- 在final transition guard前曾沿用舊handoff命令跑288-test gate與1,196-test discovery；兩者雖通過，卻包含
+  read-only local trip compatibility traversal，故不列為本slice的no-real-source exit evidence，也不再重跑。
+  相關tests的built-in pre／post hashes與本輪status／inventory檢查均matched，沒有修改local trip或留下artifact。
+- 本checkpoint未選定或存取real private target、呼provider、使用credential、開browser、serve／share、
+  calendar import、canonical mutation、public-source creation、deploy或push。Synthetic `CREATED`不是real write
+  authorization；這次read-only compatibility traversal也不授權任何後續real source access。任何real source
+  access與exact target／artifact-set execution仍需fresh exact gate。
 
 ### 2026-08-03 — Phase 6.0 fail-closed public release boundary 完成
 

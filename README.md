@@ -118,7 +118,8 @@ cp skill/trip-planner.md ~/.claude/skills/trip-planner/SKILL.md
    `release.json`（包含來源與每個 HTML、首頁的 digest），不寫入任何檔案。
 2. 審閱公開內容與候選 manifest 後，才建立精確的 `public/release.json`。
 3. 使用者明確要求發布時才執行 `bash scripts/deploy.sh`。沒有 manifest、來源／模板／
-   HTML digest 漂移或不安全檔案時，腳本會在 render、git 或網路動作前拒絕。
+   HTML digest 漂移或不安全檔案時，腳本會fail closed：missing manifest在build前拒絕，
+   其餘drift／unsafe狀態則在artifact output、git或網路動作前拒絕。
 
 公開輸出只有首頁、每趟公開摘要頁與 artifact manifest；不含地圖、ICS、訂位、待辦、
 行李、地址、座標、外部連結或 provider cache。digest 只能綁定已審閱的內容，不能判斷
@@ -743,6 +744,60 @@ legacy 候選 discovery；不能代表房態、訂位或可直接寫入計畫。
 3. **Build** — 組裝 JSON → 充實交通 → legacy營業時間提示 → 渲染私有 HTML
 
 公開發布是另外的、明確審閱流程，不是 Build 的自動步驟。
+
+Phase 6.1A 的private ICS projector只在記憶體中消費caller已載入的typed state並回傳
+private bytes；它不讀`trips/`、不寫`calendar.ics`，也不授權render、calendar import／
+share／serve或deploy。現有`render_trip.py`／`generate_ics.py`仍是legacy preview path，
+尚未具備Phase 6的determinism、provenance或atomic bundle contract。
+
+Phase 6.1B另提供pure、process-local private HTML review projection。它可誠實顯示
+candidate與尚未決定的時間／時長／時區／day bounds，並分開標示decision、evidence與
+flexibility；不判斷`travel_ready`。輸出是固定versioned renderer產生的static HTML bytes，
+沒有script、map、storage、link、external resource或network-capable attribute；note、ID、
+座標、maps query、travel/provider material與sidecars不進markup。這仍不是filesystem
+render或serve／share authority；actual preview write與含ICS的ready bundle留待Phase 6.2。
+
+Phase 6.2A先提供canonical-bound、process-local的private delivery candidate review／response／
+manifest contract。Profile只有`html_preview`與`html_ics_ready_bundle`；前者不評估readiness，
+後者必須從bounded canonical snapshot與deep-validated evidence重新建立同一exact composed state、
+重新得到fresh `travel_ready`，並以validated canonical trip identity
+產生ICS。Review只lexically綁定private source／target，profile-specific candidate accept也只留在
+同一process且明示`write_authorized=false`；本slice不讀real trip、不驗filesystem、不寫filesystem artifact。
+真正的create-only writer、target pinning、publication與crash recovery留待Phase 6.2B，屆時必須
+重新載入source／evidence並取得另一個fresh exact target／artifact-set write authorization。
+
+Phase 6.2B提供獨立的authoritative create-only writer gate；它不接受或升級6.2A response。
+Trusted host會以同一review-bound instant重新讀取bounded canonical bytes與non-mutating evidence
+snapshot、重投影exact artifacts，並把write review限制在該trip之下既存mode `0700`的private
+root及一個不存在的leaf；該root是否屬ignored storage由host另行確認，writer不解析VCS ignore設定。
+只有新的profile-specific write response可執行一次；writer以
+`0700` target、`0600` fixed files及manifest-last建立private bundle。這是可驗證的logical commit，
+不是portable multi-file atomic transaction：manifest前fault可留下uncommitted partial target，
+manifest entry或durability／ack不確定時必須reconcile或走新的recovery review，絕不blind retry／overwrite／cleanup。
+同一live response只能對exact bytes做same-process read／verify與fsync-only reconciliation，不重寫content；
+private logical commit不等於public publish。
+Success只表示final bounded inspection當下為exact，不保證同UID actor之後不再修改filesystem。
+Writer的`fault_hook`只是trusted synthetic fault-injection seam；任何real operation都必須保持`None`。
+
+Phase 6.2C為exact `EvidenceStore` backing的MEMORY_ONLY `EvidenceSession`提供sealed、process-local
+delivery-source adapter。它在session lock下以同一evaluation instant呼叫application-level read-only
+`EvidenceStore.read_snapshot()`；ordinary filesystem read仍可能依host policy更新atime，因此不宣稱
+zero-filesystem-metadata mutation。Adapter重驗durable revision／records與session basis，再以pure in-memory
+retention projection回傳durable＋MEMORY_ONLY snapshot；不呼叫session／store `load()`、不rebase、
+不推進clock、不persist retention，也不refresh provider。Synthetic integration可用它為兩個closed
+profile建立fresh 6.2B write review，但target保持不存在，沒有capture／execute或artifact write；因此
+這不是real ready-bundle、provider truth或write authority。
+Browser、serve／share、calendar import、public-source creation與deploy仍各自需要另行授權。
+
+Phase 6.2D在isolated temporary fixtures中讓exact adapter完成兩個profile的matching capture與
+one-shot execute，並驗證exact tree／mode／bytes；這些synthetic targets會自動清除。Writer的initial
+pre-target與final pre-manifest gate都採`source reproduce → clock freshness → source reproduce`，因此
+clock callback造成的outcome drift會在manifest前被第二次reproduction抓住。Live review使用exact
+`RLock`避免guarded clock重入safe view時self-deadlock；module-owned transition guard另拒絕nested
+capture／fresh verify／execute／reconcile，clock callback不能把cancel替換成authorize。Safe view仍可重入，
+partial filesystem effect也必須先記錄truthful outcome。Durable snapshot則在comparison前先完成bounded
+exact preflight。這只關閉synthetic full-execute integration，不授權real private source read、
+exact target write、provider／credential、browser、calendar import／share／serve或deploy。
 
 ## 專案結構
 

@@ -419,6 +419,90 @@ class EvidenceStore:
 
         return self._read_and_prune(action="load")
 
+    def read_snapshot(self, *, evaluation_at: datetime) -> EvidenceSnapshot:
+        """Read one exact evidence snapshot without application-level writes.
+
+        Private-delivery pre-write review must not silently acquire retention,
+        migration, corruption-reset, or orphan-cleanup authority.  This method
+        therefore performs a bounded no-follow read, applies retention only to
+        the in-memory view, and does not create a lock, replace/unlink/fsync a
+        file, clean orphan temps, durably purge, migrate, or reset corruption.
+        Ordinary filesystem reads may still be subject to host atime policy.
+        Callers that need durable cleanup must continue to use :meth:`load` or
+        :meth:`cleanup` under their separate mutation boundary.
+        """
+
+        checked_at = _aware_utc(
+            evaluation_at,
+            "EvidenceStore.read_snapshot evaluation_at",
+        )
+        self._validate_layout()
+        try:
+            cache = self._read_regular_bytes(
+                self.cache_path,
+                required=False,
+            )
+            if cache is None:
+                ledger = EvidenceLedger(policies=self.policies)
+                store_epoch = _initial_store_epoch(
+                    self.trip_id,
+                    self.policies,
+                )
+                store_revision = _store_revision(
+                    self.trip_id,
+                    self.policies,
+                    ledger,
+                    store_epoch,
+                )
+            else:
+                self._require_private_cache_metadata(
+                    owner_uid=cache.owner_uid,
+                    mode=cache.mode,
+                )
+                stored = _decode_document(
+                    cache.data,
+                    expected_trip_id=self.trip_id,
+                    policies=self.policies,
+                )
+                if stored.load_changed:
+                    raise EvidenceStoreError(
+                        "EVIDENCE_READONLY_MIGRATION_REQUIRED",
+                        "Evidence cache requires an explicit durable migration.",
+                    )
+                if any(
+                    observation.retrieved_at > checked_at
+                    for observation in stored.ledger.observations
+                ):
+                    raise EvidenceStoreError(
+                        "EVIDENCE_READONLY_CLOCK_CONFLICT",
+                        "Evidence cache contains observations after the review instant.",
+                    )
+                pruned = _prune_durable_evidence(
+                    stored.ledger,
+                    purge_now=checked_at,
+                )
+                ledger = pruned.ledger
+                # Keep the exact durable source revision.  The effective
+                # in-memory retained view is already bound independently by
+                # EvidenceSnapshot.evidence_revision; inventing a hypothetical
+                # post-purge store revision would misstate what is on disk.
+                store_revision = stored.store_revision
+            snapshot = EvidenceSnapshot.from_ledger(
+                ledger,
+                evaluation_at=checked_at,
+                purge_now=checked_at,
+                store_revision=store_revision,
+            )
+        except EvidenceStoreError:
+            raise
+        except (_OversizedEvidenceCache, FactContractError) as exc:
+            raise EvidenceStoreError(
+                "EVIDENCE_READONLY_UNAVAILABLE",
+                "Evidence cache cannot be used without explicit repair.",
+            ) from exc
+        self._validate_layout()
+        return snapshot
+
     def cleanup(self) -> EvidenceStoreResult:
         """Idempotently apply retention without accepting provider content."""
 
@@ -1361,7 +1445,10 @@ class EvidenceStore:
         try:
             descriptor = os.open(
                 path,
-                os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW,
+                os.O_RDONLY
+                | _O_CLOEXEC
+                | _O_NOFOLLOW
+                | getattr(os, "O_NONBLOCK", 0),
             )
         except FileNotFoundError:
             if required:
@@ -1381,6 +1468,11 @@ class EvidenceStore:
                 raise EvidenceStoreError(
                     "UNSAFE_EVIDENCE_PATH",
                     "Opened evidence cache is not a regular file.",
+                )
+            if opened.st_nlink != 1:
+                raise EvidenceStoreError(
+                    "UNSAFE_EVIDENCE_PATH",
+                    "Evidence cache must have exactly one filesystem link.",
                 )
             self._require_private_cache_metadata(
                 owner_uid=opened.st_uid,
@@ -1410,6 +1502,32 @@ class EvidenceStore:
                     probed_trip_id=_probe_oversized_trip_id(data, suffix),
                     owner_uid=opened.st_uid,
                     mode=stat.S_IMODE(opened.st_mode),
+                )
+            current = os.fstat(descriptor)
+            opened_identity = (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_mode,
+                opened.st_nlink,
+                opened.st_uid,
+                opened.st_size,
+                opened.st_mtime_ns,
+                opened.st_ctime_ns,
+            )
+            current_identity = (
+                current.st_dev,
+                current.st_ino,
+                current.st_mode,
+                current.st_nlink,
+                current.st_uid,
+                current.st_size,
+                current.st_mtime_ns,
+                current.st_ctime_ns,
+            )
+            if current_identity != opened_identity:
+                raise EvidenceStoreError(
+                    "EVIDENCE_SOURCE_CHANGED",
+                    "Evidence cache changed while it was being read.",
                 )
             return _ReadEvidenceCache(
                 data=data,

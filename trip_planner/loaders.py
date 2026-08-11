@@ -100,9 +100,65 @@ def load_legacy_trip(path: str | Path) -> TripState:
     trip_raw, trip_bytes = _read_json_object(trip_path)
     itinerary_raw, itinerary_bytes = _read_json_object(itinerary_path)
 
+    fallback_slug = (
+        data_dir.parent.name if data_dir.name == "data" else data_dir.name
+    )
+    return _load_legacy_objects(
+        trip_raw,
+        itinerary_raw,
+        trip_bytes=trip_bytes,
+        itinerary_bytes=itinerary_bytes,
+        trip_path=trip_path,
+        itinerary_path=itinerary_path,
+        fallback_slug=fallback_slug,
+    )
+
+
+def _load_legacy_values(
+    trip_raw: dict[str, Any],
+    itinerary_raw: dict[str, Any],
+    *,
+    trip_bytes: bytes,
+    itinerary_bytes: bytes,
+    fallback_slug: str,
+) -> TripState:
+    """Parse detached legacy-compatible values without filesystem access."""
+
+    if (
+        type(trip_raw) is not dict
+        or type(itinerary_raw) is not dict
+        or type(trip_bytes) is not bytes
+        or type(itinerary_bytes) is not bytes
+        or type(fallback_slug) is not str
+        or not fallback_slug
+    ):
+        raise LoadError("MALFORMED_DATA", "in-memory legacy input is invalid")
+    return _load_legacy_objects(
+        trip_raw,
+        itinerary_raw,
+        trip_bytes=trip_bytes,
+        itinerary_bytes=itinerary_bytes,
+        trip_path=Path("<canonical-plan>/trip.json"),
+        itinerary_path=Path("<canonical-plan>/itinerary.json"),
+        fallback_slug=fallback_slug,
+    )
+
+
+def _load_legacy_objects(
+    trip_raw: dict[str, Any],
+    itinerary_raw: dict[str, Any],
+    *,
+    trip_bytes: bytes,
+    itinerary_bytes: bytes,
+    trip_path: Path,
+    itinerary_path: Path,
+    fallback_slug: str,
+) -> TripState:
+    """Shared parser for file-backed and detached compatibility values."""
+
     slug = _optional_text(trip_raw.get("slug"), trip_path, "$.slug")
     if slug is None:
-        slug = data_dir.parent.name if data_dir.name == "data" else data_dir.name
+        slug = fallback_slug
     if not slug:
         raise LoadError("MISSING_FIELD", "trip slug is required", path=trip_path)
     title = _optional_text(trip_raw.get("title"), trip_path, "$.title") or slug

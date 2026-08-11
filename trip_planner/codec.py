@@ -36,7 +36,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime, timezone
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeAlias
 
@@ -783,12 +782,9 @@ def legacy_compatibility_views(
 def plan_to_trip_state(plan: Mapping[str, Any]) -> "TripState":
     """Project a canonical plan into the existing immutable kernel aggregate.
 
-    The Phase 0 loader currently accepts filesystem paths.  Until its parsing
-    core is factored into an in-memory adapter, this function uses a private
-    temporary directory containing detached compatibility views.  It never
-    writes to the canonical plan, the legacy source, or any caller-provided
-    path.  The resulting aggregate is relabeled with the canonical schema and
-    revision rather than the temporary compatibility-file hash.
+    The canonical document is converted to detached compatibility values and
+    parsed entirely in memory.  The resulting aggregate is relabeled with the
+    canonical schema and revision rather than the compatibility-view hash.
     """
 
     validate_plan(plan)
@@ -800,16 +796,15 @@ def plan_to_trip_state(plan: Mapping[str, Any]) -> "TripState":
         trip["slug"] = str(plan["trip_id"])
     _omit_blank_legacy_optional_fields(trip, itinerary)
 
-    from .loaders import load_legacy_trip
+    from .loaders import _load_legacy_values
 
-    with TemporaryDirectory(prefix="trip-planner-codec-") as temporary:
-        data_dir = Path(temporary) / "data"
-        data_dir.mkdir()
-        (data_dir / "trip.json").write_bytes(canonical_json_bytes(trip))
-        (data_dir / "itinerary.json").write_bytes(
-            canonical_json_bytes(itinerary)
-        )
-        state = load_legacy_trip(data_dir)
+    state = _load_legacy_values(
+        trip,
+        itinerary,
+        trip_bytes=canonical_json_bytes(trip),
+        itinerary_bytes=canonical_json_bytes(itinerary),
+        fallback_slug=str(plan["trip_id"]),
+    )
 
     return replace(
         state,
