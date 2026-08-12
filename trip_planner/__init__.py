@@ -655,13 +655,16 @@ from .lodging_confirmation import (
     lodging_confirmation_request_from_option,
 )
 from .readiness import (
+    CANONICAL_LODGING_EVIDENCE_VERSION,
     READINESS_VERSION,
+    CanonicalLodgingEvidenceAssessment,
     CanonicalLodgingSummary,
     ReadinessAction,
     ReadinessProblem,
     ReadinessSource,
     ReadinessStatus,
     TripReadiness,
+    assess_canonical_lodging_evidence,
     assess_trip_readiness,
 )
 from .private_ics import (
@@ -874,6 +877,8 @@ __all__ = [
     "AuthorizedProviderResult",
     "AvailabilityDisposition",
     "AvailabilityInterval",
+    "CANONICAL_LODGING_EVIDENCE_VERSION",
+    "CanonicalLodgingEvidenceAssessment",
     "CanonicalLodgingSummary",
     "IntentAuthority",
     "LODGING_COMPARISON_VERSION",
@@ -1307,6 +1312,7 @@ __all__ = [
     "UpdateActivity",
     "UpdateConstraint",
     "authorize_provider_result",
+    "assess_canonical_lodging_evidence",
     "google_maps_policy_registry",
     "UpdateDay",
     "HumanCheckpointGrant",

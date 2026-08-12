@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from collections.abc import Mapping
@@ -17,9 +18,15 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
-from .codec import plan_to_trip_state, validate_plan
+from .codec import deep_copy_json, plan_to_trip_state, validate_plan
 from .composition import ComposedTripState, compose_trip_state
-from .facts import EvidenceSnapshot, FactKey, FactKind, FactObservation
+from .evidence_integrity import validate_evidence_snapshot_integrity
+from .facts import (
+    EvidenceSnapshot,
+    FactKey,
+    FactKind,
+    FactObservation,
+)
 from .lodging import (
     LodgingIntakeAssessment,
     LodgingIntakeStatus,
@@ -35,18 +42,23 @@ from .models import (
     IssueSeverity,
     TravelEstimate,
 )
+from .places_identity import (
+    _extract_fresh_google_place_endpoint_batch,
+)
 from .repair import report_digest_for
 from .scheduling import trip_state_digest
 from .timeline import evaluate_composed_timeline
 
 
-READINESS_VERSION = "trip-readiness/v1"
+READINESS_VERSION = "trip-readiness/v2"
+CANONICAL_LODGING_EVIDENCE_VERSION = "canonical-lodging-evidence/v1"
 _MAX_COUNT = 4096
 _PROBLEM_CODE_RE = re.compile(r"[A-Z][A-Z0-9_]{0,127}")
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _STATE_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
 _REPORT_DIGEST_RE = re.compile(r"report-[0-9a-f]{64}")
 _SUMMARY_TOKEN = object()
+_LODGING_EVIDENCE_TOKEN = object()
 _READINESS_TOKEN = object()
 _SUMMARY_ZH = {
     "draft": "行程仍在草擬；先補齊必要資訊。",
@@ -381,6 +393,468 @@ class ReadinessProblem:
         }
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class CanonicalLodgingEvidenceAssessment:
+    """Factory-only readiness evidence for canonical lodging identities.
+
+    The assessment is a process-local projection.  It never promotes the
+    canonical lodging ``evidence_state`` and cannot grant provider, booking,
+    canonical-mutation, or delivery authority.
+    """
+
+    trip_ref: str
+    plan_revision: str
+    canonical_state_digest: str
+    composed_state_digest: str
+    canonical_lodging_digest: str
+    policy_registry_revision: str = field(repr=False)
+    store_revision: str = field(repr=False)
+    evidence_revision: str = field(repr=False)
+    outcome_revision: str | None = field(repr=False)
+    evidence_snapshot_id: str = field(repr=False)
+    evaluated_at: datetime = field(repr=False)
+    purge_checked_at: datetime = field(repr=False)
+    stay_count: int
+    unique_location_count: int
+    verified_location_count: int
+    location_key_ids: tuple[str, ...] = field(repr=False)
+    used_observation_ids: tuple[str, ...] = field(repr=False)
+    observation_bindings: tuple[tuple[str, str, str, str], ...] = field(
+        repr=False,
+    )
+    required_attribution_labels: tuple[str, ...] = field(repr=False)
+    recheck_required_at: datetime | None
+    problems: tuple[ReadinessProblem, ...]
+    assessment_id: str = ""
+    _token: InitVar[object | None] = None
+
+    def __post_init__(self, _token: object | None) -> None:
+        if _token is not _LODGING_EVIDENCE_TOKEN:
+            raise ValueError(
+                "CanonicalLodgingEvidenceAssessment must come from the assessor"
+            )
+        trip_ref = _digest_value(self.trip_ref, "trip_ref")
+        revision = _digest_value(self.plan_revision, "plan_revision")
+        canonical_digest = _digest_value(
+            self.canonical_state_digest,
+            "canonical_state_digest",
+            state_digest=True,
+        )
+        composed_digest = _digest_value(
+            self.composed_state_digest,
+            "composed_state_digest",
+            state_digest=True,
+        )
+        lodging_digest = _digest_value(
+            self.canonical_lodging_digest,
+            "canonical_lodging_digest",
+        )
+        policy_revision = _digest_value(
+            self.policy_registry_revision,
+            "policy_registry_revision",
+        )
+        store_revision = _digest_value(self.store_revision, "store_revision")
+        evidence_revision = _digest_value(
+            self.evidence_revision,
+            "evidence_revision",
+        )
+        outcome_revision = (
+            _digest_value(self.outcome_revision, "outcome_revision")
+            if self.outcome_revision is not None
+            else None
+        )
+        snapshot_id = _digest_value(
+            self.evidence_snapshot_id,
+            "evidence_snapshot_id",
+        )
+        evaluated = _utc(self.evaluated_at, "evaluated_at")
+        purge_checked = _utc(self.purge_checked_at, "purge_checked_at")
+        stay_count = _count(self.stay_count, "stay_count")
+        unique_count = _count(
+            self.unique_location_count,
+            "unique_location_count",
+        )
+        verified_count = _count(
+            self.verified_location_count,
+            "verified_location_count",
+        )
+        if not verified_count <= unique_count <= stay_count:
+            raise ValueError("lodging evidence counts disagree")
+        key_ids = _normalized_digest_tuple(
+            self.location_key_ids,
+            "location_key_ids",
+        )
+        used_ids = _normalized_digest_tuple(
+            self.used_observation_ids,
+            "used_observation_ids",
+        )
+        if len(key_ids) != unique_count or len(used_ids) != verified_count:
+            raise ValueError("lodging evidence bindings disagree with counts")
+        if (
+            type(self.observation_bindings) is not tuple
+            or len(self.observation_bindings) != verified_count
+        ):
+            raise TypeError("observation_bindings must be an exact tuple")
+        bindings: list[tuple[str, str, str, str]] = []
+        for item in self.observation_bindings:
+            if type(item) is not tuple or len(item) != 4:
+                raise TypeError("observation binding must be an exact tuple")
+            observation_id = _digest_value(item[0], "observation_id")
+            value_digest = _digest_value(item[1], "value_digest")
+            if type(item[2]) is not str:
+                raise TypeError("observation deadline must be text")
+            deadline = _utc(
+                datetime.fromisoformat(item[2]),
+                "observation deadline",
+            ).isoformat()
+            endpoint_id = _digest_value(item[3], "endpoint_id")
+            bindings.append(
+                (observation_id, value_digest, deadline, endpoint_id)
+            )
+        normalized_bindings = tuple(sorted(bindings))
+        if tuple(bindings) != normalized_bindings:
+            raise ValueError("observation bindings must be normalized")
+        if {item[0] for item in bindings} != set(used_ids):
+            raise ValueError("observation bindings differ from used evidence")
+        labels = self.required_attribution_labels
+        if (
+            type(labels) is not tuple
+            or any(type(item) is not str for item in labels)
+            or tuple(sorted(set(labels))) != labels
+        ):
+            raise TypeError("required attribution labels must be normalized")
+        if labels not in {(), ("Google Maps",)}:
+            raise ValueError("lodging identity attribution is not allowlisted")
+        problems = _normalized_problems(self.problems)
+        if problems != self.problems:
+            raise ValueError("lodging evidence problems must be normalized")
+        ready = not problems and verified_count == unique_count
+        recheck = (
+            _utc(self.recheck_required_at, "recheck_required_at")
+            if self.recheck_required_at is not None
+            else None
+        )
+        if ready and unique_count:
+            if recheck is None or recheck <= evaluated:
+                raise ValueError("ready lodging evidence requires a future deadline")
+        elif recheck is not None:
+            raise ValueError("unready or empty lodging evidence has no deadline")
+        payload = {
+            "contract_version": CANONICAL_LODGING_EVIDENCE_VERSION,
+            "trip_ref": trip_ref,
+            "plan_revision": revision,
+            "canonical_state_digest": canonical_digest,
+            "composed_state_digest": composed_digest,
+            "canonical_lodging_digest": lodging_digest,
+            "policy_registry_revision": policy_revision,
+            "store_revision": store_revision,
+            "evidence_revision": evidence_revision,
+            "outcome_revision": outcome_revision,
+            "evidence_snapshot_id": snapshot_id,
+            "evaluated_at": evaluated.isoformat(),
+            "purge_checked_at": purge_checked.isoformat(),
+            "stay_count": stay_count,
+            "unique_location_count": unique_count,
+            "verified_location_count": verified_count,
+            "location_key_ids": list(key_ids),
+            "observation_bindings": [list(item) for item in normalized_bindings],
+            "required_attribution_labels": list(labels),
+            "recheck_required_at": (
+                recheck.isoformat() if recheck is not None else None
+            ),
+            "problems": [item.to_dict() for item in problems],
+        }
+        expected_id = _canonical_digest(
+            payload,
+            prefix="canonical-lodging-evidence",
+        )
+        if self.assessment_id and self.assessment_id != expected_id:
+            raise ValueError("assessment_id differs from content")
+        object.__setattr__(self, "trip_ref", trip_ref)
+        object.__setattr__(self, "plan_revision", revision)
+        object.__setattr__(self, "canonical_state_digest", canonical_digest)
+        object.__setattr__(self, "composed_state_digest", composed_digest)
+        object.__setattr__(self, "canonical_lodging_digest", lodging_digest)
+        object.__setattr__(self, "policy_registry_revision", policy_revision)
+        object.__setattr__(self, "store_revision", store_revision)
+        object.__setattr__(self, "evidence_revision", evidence_revision)
+        object.__setattr__(self, "outcome_revision", outcome_revision)
+        object.__setattr__(self, "evidence_snapshot_id", snapshot_id)
+        object.__setattr__(self, "evaluated_at", evaluated)
+        object.__setattr__(self, "purge_checked_at", purge_checked)
+        object.__setattr__(self, "stay_count", stay_count)
+        object.__setattr__(self, "unique_location_count", unique_count)
+        object.__setattr__(self, "verified_location_count", verified_count)
+        object.__setattr__(self, "location_key_ids", key_ids)
+        object.__setattr__(self, "used_observation_ids", used_ids)
+        object.__setattr__(self, "observation_bindings", normalized_bindings)
+        object.__setattr__(self, "required_attribution_labels", labels)
+        object.__setattr__(self, "recheck_required_at", recheck)
+        object.__setattr__(self, "problems", problems)
+        object.__setattr__(self, "assessment_id", expected_id)
+
+    @property
+    def ready(self) -> bool:
+        return not self.problems and (
+            self.verified_location_count == self.unique_location_count
+        )
+
+    def to_safe_dict(self) -> dict[str, Any]:
+        """Return only counts, fixed labels, problems, deadline, and a digest."""
+
+        return {
+            "contract_version": CANONICAL_LODGING_EVIDENCE_VERSION,
+            "ready": self.ready,
+            "stay_count": self.stay_count,
+            "unique_location_count": self.unique_location_count,
+            "verified_location_count": self.verified_location_count,
+            "used_evidence_count": len(self.used_observation_ids),
+            "required_attribution_labels": list(
+                self.required_attribution_labels
+            ),
+            "recheck_required_at": (
+                self.recheck_required_at.isoformat()
+                if self.recheck_required_at is not None
+                else None
+            ),
+            "problems": [item.to_dict() for item in self.problems],
+            "assessment_id": self.assessment_id,
+        }
+
+    def __repr__(self) -> str:
+        return (
+            "CanonicalLodgingEvidenceAssessment("
+            f"assessment_id={self.assessment_id!r}, "
+            f"ready={self.ready!r}, "
+            f"verified_location_count={self.verified_location_count!r})"
+        )
+
+    def __reduce_ex__(self, protocol: int) -> object:
+        del protocol
+        raise TypeError(
+            "CanonicalLodgingEvidenceAssessment is process-local"
+        )
+
+
+def _normalized_digest_tuple(value: object, name: str) -> tuple[str, ...]:
+    if type(value) is not tuple or len(value) > _MAX_COUNT:
+        raise TypeError(f"{name} must be an exact bounded tuple")
+    normalized = tuple(_digest_value(item, name) for item in value)
+    if tuple(sorted(set(normalized))) != normalized:
+        raise ValueError(f"{name} must be sorted and unique")
+    return normalized
+
+
+def _canonical_lodging_location_ids(
+    plan: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Extract exact IDs after ``validate_plan`` owns schema validation."""
+
+    state = plan["state"]
+    if type(state) is not dict:
+        raise TypeError("validated canonical state must be an exact dict")
+    trip = state["trip"]
+    if type(trip) is not dict:
+        raise TypeError("validated canonical trip must be an exact dict")
+    lodgings = trip.get("lodgings", [])
+    if type(lodgings) is not list or len(lodgings) > _MAX_COUNT:
+        raise ValueError("canonical lodging stay count exceeds the bound")
+    locations: list[str] = []
+    for lodging in lodgings:
+        if type(lodging) is not dict:
+            raise TypeError("validated canonical lodging must be an exact dict")
+        location_id = lodging["location_id"]
+        if type(location_id) is not str or len(location_id) > 256:
+            raise TypeError("canonical lodging location must be exact text")
+        locations.append(location_id)
+    return tuple(sorted(set(locations)))
+
+
+def _require_exact_json_tree(value: object) -> None:
+    """Reject scalar/container subclasses before canonical field lookup."""
+
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if item is None or type(item) in {str, bool, int}:
+            continue
+        if type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError("canonical_plan contains a non-finite number")
+            continue
+        if type(item) is list:
+            pending.extend(item)
+            continue
+        if type(item) is dict:
+            for key, child in dict.items(item):
+                if type(key) is not str:
+                    raise TypeError("canonical_plan keys must be exact strings")
+                pending.append(child)
+            continue
+        raise TypeError("canonical_plan must contain exact JSON values")
+
+
+def assess_canonical_lodging_evidence(
+    *,
+    canonical_plan: Mapping[str, Any],
+    composed: ComposedTripState,
+    snapshot: EvidenceSnapshot,
+) -> CanonicalLodgingEvidenceAssessment:
+    """Rebuild lodging identity readiness from one exact current snapshot."""
+
+    if not isinstance(canonical_plan, Mapping):
+        raise TypeError("canonical_plan must be a mapping")
+    if type(composed) is not ComposedTripState:
+        raise TypeError("composed must be exact ComposedTripState")
+    if type(snapshot) is not EvidenceSnapshot:
+        raise TypeError("snapshot must be exact EvidenceSnapshot")
+    detached_plan = deep_copy_json(canonical_plan)
+    if type(detached_plan) is not dict:
+        raise TypeError("canonical_plan must detach to an exact dict")
+    _require_exact_json_tree(detached_plan)
+    validate_plan(detached_plan)
+    return _assess_canonical_lodging_evidence_from_validated_inputs(
+        canonical_plan=detached_plan,
+        composed=composed,
+        snapshot=snapshot,
+    )
+
+
+def _assess_canonical_lodging_evidence_from_validated_inputs(
+    *,
+    canonical_plan: dict[str, Any],
+    composed: ComposedTripState,
+    snapshot: EvidenceSnapshot,
+) -> CanonicalLodgingEvidenceAssessment:
+    """Project after this module's public boundary detached and preflighted."""
+
+    if (
+        type(canonical_plan) is not dict
+        or type(composed) is not ComposedTripState
+        or type(snapshot) is not EvidenceSnapshot
+    ):
+        raise TypeError("validated lodging evidence inputs must be exact")
+    location_ids = _canonical_lodging_location_ids(canonical_plan)
+    snapshot_binding, endpoint_outcomes = (
+        _extract_fresh_google_place_endpoint_batch(
+            snapshot,
+            location_ids,
+        )
+    )
+    (
+        policy_registry_revision,
+        store_revision,
+        evidence_revision,
+        outcome_revision,
+        evidence_snapshot_id,
+        evaluated_at,
+        purge_checked_at,
+    ) = snapshot_binding
+    summary = CanonicalLodgingSummary.from_plan(
+        canonical_plan,
+        composed=composed,
+    )
+    binding = composed.evidence
+    if not (
+        binding.policy_registry_revision == policy_registry_revision
+        and binding.store_revision == store_revision
+        and binding.evidence_revision == evidence_revision
+        and binding.outcome_revision == outcome_revision
+        and binding.evaluation_at == evaluated_at
+        and binding.purge_checked_at == purge_checked_at
+        and binding.snapshot_id == evidence_snapshot_id
+    ):
+        raise ValueError("composed evidence differs from the current snapshot")
+    if summary.stay_count < len(location_ids):
+        raise ValueError("canonical lodging location count is invalid")
+    key_ids: list[str] = []
+    used_ids: list[str] = []
+    observation_bindings: list[tuple[str, str, str, str]] = []
+    raw_problems: list[ReadinessProblem] = []
+    deadlines: list[datetime] = []
+    for outcome in endpoint_outcomes:
+        key_id = outcome[2]
+        if type(key_id) is not str:
+            raise ValueError("lodging identity key projection is invalid")
+        key_ids.append(key_id)
+        if outcome[1] != "VERIFIED":
+            if outcome[1] == "CONFLICT_DETECTED":
+                _add_problem(
+                    raw_problems,
+                    "LODGING_EVIDENCE_CONFLICTED",
+                    IssueSeverity.WARNING,
+                    ReadinessSource.LODGING,
+                    ReadinessAction.RESOLVE_CONFLICT,
+                )
+            else:
+                _add_problem(
+                    raw_problems,
+                    "LODGING_EVIDENCE_UNVERIFIED",
+                    IssueSeverity.WARNING,
+                    ReadinessSource.LODGING,
+                    ReadinessAction.REFRESH_EVIDENCE,
+                )
+            continue
+        observation_id = outcome[4]
+        value_digest = outcome[5]
+        valid_until = outcome[6]
+        endpoint_id = outcome[7]
+        if not (
+            type(observation_id) is str
+            and type(value_digest) is str
+            and type(valid_until) is datetime
+            and type(endpoint_id) is str
+        ):
+            _add_problem(
+                raw_problems,
+                "LODGING_EVIDENCE_UNVERIFIED",
+                IssueSeverity.WARNING,
+                ReadinessSource.LODGING,
+                ReadinessAction.REFRESH_EVIDENCE,
+            )
+            continue
+        used_ids.append(observation_id)
+        deadlines.append(valid_until)
+        observation_bindings.append(
+            (
+                observation_id,
+                value_digest,
+                valid_until.isoformat(),
+                endpoint_id,
+            )
+        )
+    problems = _normalized_problems(tuple(raw_problems))
+    return CanonicalLodgingEvidenceAssessment(
+        trip_ref=_canonical_digest(
+            composed.trip_id,
+            prefix="canonical-lodging-evidence-trip-ref",
+        ),
+        plan_revision=composed.plan_revision,
+        canonical_state_digest=composed.canonical_state_digest,
+        composed_state_digest=composed.composed_state_digest,
+        canonical_lodging_digest=summary.binding_digest,
+        policy_registry_revision=policy_registry_revision,
+        store_revision=store_revision,
+        evidence_revision=evidence_revision,
+        outcome_revision=outcome_revision,
+        evidence_snapshot_id=evidence_snapshot_id,
+        evaluated_at=evaluated_at,
+        purge_checked_at=purge_checked_at,
+        stay_count=summary.stay_count,
+        unique_location_count=len(location_ids),
+        verified_location_count=len(used_ids),
+        location_key_ids=tuple(sorted(key_ids)),
+        used_observation_ids=tuple(sorted(used_ids)),
+        observation_bindings=tuple(sorted(observation_bindings)),
+        required_attribution_labels=("Google Maps",) if location_ids else (),
+        recheck_required_at=(
+            min(deadlines) if not problems and deadlines else None
+        ),
+        problems=problems,
+        _token=_LODGING_EVIDENCE_TOKEN,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TripReadiness:
     """Factory-only safe readiness result bound to exact runtime identity."""
@@ -401,6 +875,7 @@ class TripReadiness:
     lodging_night_count: int
     next_action: ReadinessAction
     problems: tuple[ReadinessProblem, ...]
+    lodging_evidence_assessment_id: str = ""
     readiness_id: str = ""
     _token: InitVar[object | None] = None
 
@@ -426,6 +901,10 @@ class TripReadiness:
         lodging_digest = _digest_value(
             self.canonical_lodging_digest,
             "canonical_lodging_digest",
+        )
+        lodging_evidence_assessment_id = _digest_value(
+            self.lodging_evidence_assessment_id,
+            "lodging_evidence_assessment_id",
         )
         binding_digest = _digest_value(
             self.evidence_binding_digest,
@@ -485,6 +964,9 @@ class TripReadiness:
             "composed_state_digest": composed_digest,
             "kernel_report_digest": report_digest,
             "canonical_lodging_digest": lodging_digest,
+            "lodging_evidence_assessment_id": (
+                lodging_evidence_assessment_id
+            ),
             "evidence_binding_digest": binding_digest,
             "evidence_snapshot_id": snapshot_id,
             "evaluated_at": evaluated.isoformat(),
@@ -530,6 +1012,11 @@ class TripReadiness:
         )
         object.__setattr__(
             self,
+            "lodging_evidence_assessment_id",
+            lodging_evidence_assessment_id,
+        )
+        object.__setattr__(
+            self,
             "evidence_binding_digest",
             binding_digest,
         )
@@ -551,6 +1038,9 @@ class TripReadiness:
             "composed_state_digest": self.composed_state_digest,
             "kernel_report_digest": self.kernel_report_digest,
             "canonical_lodging_digest": self.canonical_lodging_digest,
+            "lodging_evidence_assessment_id": (
+                self.lodging_evidence_assessment_id
+            ),
             "evidence_binding_digest": self.evidence_binding_digest,
             "evidence_snapshot_id": self.evidence_snapshot_id,
             "evaluated_at": self.evaluated_at.isoformat(),
@@ -609,16 +1099,32 @@ def assess_trip_readiness(
             "pending_lodging_review must be exact when provided"
         )
 
+    detached_plan = deep_copy_json(canonical_plan)
+    if type(detached_plan) is not dict:
+        raise TypeError("canonical_plan must detach to an exact dict")
+    _require_exact_json_tree(detached_plan)
+    validate_plan(detached_plan)
+    validate_evidence_snapshot_integrity(snapshot)
     expected_composed = compose_trip_state(
-        canonical_plan,
+        detached_plan,
         snapshot,
         availability_keys=availability_keys,
     )
+    canonical_lodging_evidence = (
+        _assess_canonical_lodging_evidence_from_validated_inputs(
+            canonical_plan=detached_plan,
+            composed=expected_composed,
+            snapshot=snapshot,
+        )
+    )
     canonical_lodging = CanonicalLodgingSummary.from_plan(
-        canonical_plan,
+        detached_plan,
         composed=expected_composed,
     )
-    now = _utc(snapshot.evaluation_at, "snapshot.evaluation_at")
+    # From this point onward the lodging bridge binds only to the detached,
+    # twice-read snapshot projection used by the assessment.  Do not re-read
+    # raw snapshot identity fields after that integrity boundary.
+    now = canonical_lodging_evidence.evaluated_at
     raw_problems: list[ReadinessProblem] = []
     canonical_matches = (
         composed.trip_id == expected_composed.trip_id
@@ -637,14 +1143,18 @@ def assess_trip_readiness(
 
     binding = composed.evidence
     binding_matches = (
-        binding.policy_registry_revision == snapshot.policies.revision
-        and binding.store_revision == snapshot.store_revision
-        and binding.evidence_revision == snapshot.evidence_revision
-        and binding.outcome_revision == snapshot.outcome_revision
+        binding.policy_registry_revision
+        == canonical_lodging_evidence.policy_registry_revision
+        and binding.store_revision == canonical_lodging_evidence.store_revision
+        and binding.evidence_revision
+        == canonical_lodging_evidence.evidence_revision
+        and binding.outcome_revision
+        == canonical_lodging_evidence.outcome_revision
         and binding.evaluation_at == now
         and binding.purge_checked_at
-        == _utc(snapshot.purge_checked_at, "snapshot.purge_checked_at")
-        and binding.snapshot_id == snapshot.snapshot_id
+        == canonical_lodging_evidence.purge_checked_at
+        and binding.snapshot_id
+        == canonical_lodging_evidence.evidence_snapshot_id
     )
     if not binding_matches:
         _add_problem(
@@ -713,6 +1223,7 @@ def assess_trip_readiness(
     _check_lodging(
         expected_composed,
         canonical_lodging,
+        canonical_lodging_evidence,
         lodging_intake,
         pending_lodging_review,
         raw_problems,
@@ -735,11 +1246,19 @@ def assess_trip_readiness(
         }
         for item in problems
     )
-    recheck_candidates = (
-        []
-        if suppress_evidence_deadline or not evidence_ready
-        else list(deadlines)
+    evidence_deadlines_allowed = (
+        not suppress_evidence_deadline
+        and evidence_ready
+        and canonical_lodging_evidence.ready
     )
+    recheck_candidates = list(deadlines) if evidence_deadlines_allowed else []
+    if (
+        evidence_deadlines_allowed
+        and canonical_lodging_evidence.recheck_required_at is not None
+    ):
+        recheck_candidates.append(
+            canonical_lodging_evidence.recheck_required_at
+        )
     if review_deadline is not None:
         recheck_candidates.append(review_deadline)
     recheck = min(recheck_candidates) if recheck_candidates else None
@@ -757,13 +1276,20 @@ def assess_trip_readiness(
         composed_state_digest=expected_composed.composed_state_digest,
         kernel_report_digest=report_digest_for(report),
         canonical_lodging_digest=canonical_lodging.binding_digest,
+        lodging_evidence_assessment_id=(
+            canonical_lodging_evidence.assessment_id
+        ),
         evidence_binding_digest=expected_composed.evidence.binding_digest,
-        evidence_snapshot_id=snapshot.snapshot_id,
+        evidence_snapshot_id=(
+            canonical_lodging_evidence.evidence_snapshot_id
+        ),
         evaluated_at=now,
         status=status,
         recheck_required_at=recheck,
         used_evidence_count=len(
-            expected_composed.evidence.used_observation_ids
+            set(expected_composed.evidence.used_observation_ids).union(
+                canonical_lodging_evidence.used_observation_ids
+            )
         ),
         lodging_stay_count=canonical_lodging.stay_count,
         lodging_night_count=canonical_lodging.night_count,
@@ -1056,19 +1582,23 @@ def _optional_datetime_text(value: object) -> str | None:
 def _check_lodging(
     composed: ComposedTripState,
     summary: CanonicalLodgingSummary,
+    evidence: CanonicalLodgingEvidenceAssessment,
     intake: LodgingIntakeAssessment | None,
     pending_review: LodgingConfirmationReview | None,
     problems: list[ReadinessProblem],
 ) -> None:
-    if summary.stay_count:
-        _add_problem(
-            problems,
-            "LODGING_EVIDENCE_UNVERIFIED",
-            IssueSeverity.WARNING,
-            ReadinessSource.LODGING,
-            ReadinessAction.REFRESH_EVIDENCE,
-            affected_count=summary.stay_count,
-        )
+    if type(evidence) is not CanonicalLodgingEvidenceAssessment:
+        raise TypeError("lodging evidence must be an exact assessment")
+    if (
+        evidence.plan_revision != composed.plan_revision
+        or evidence.canonical_state_digest
+        != composed.canonical_state_digest
+        or evidence.composed_state_digest != composed.composed_state_digest
+        or evidence.canonical_lodging_digest != summary.binding_digest
+        or evidence.stay_count != summary.stay_count
+    ):
+        raise ValueError("lodging evidence differs from current composition")
+    problems.extend(evidence.problems)
     if intake is None:
         has_waiting_review = (
             pending_review is not None
@@ -1329,12 +1859,15 @@ def _status_for(
 
 
 __all__ = [
+    "CANONICAL_LODGING_EVIDENCE_VERSION",
     "READINESS_VERSION",
+    "CanonicalLodgingEvidenceAssessment",
     "CanonicalLodgingSummary",
     "ReadinessAction",
     "ReadinessProblem",
     "ReadinessSource",
     "ReadinessStatus",
     "TripReadiness",
+    "assess_canonical_lodging_evidence",
     "assess_trip_readiness",
 ]

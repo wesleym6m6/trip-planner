@@ -799,6 +799,41 @@ partial filesystem effect也必須先記錄truthful outcome。Durable snapshot�
 exact preflight。這只關閉synthetic full-execute integration，不授權real private source read、
 exact target write、provider／credential、browser、calendar import／share／serve或deploy。
 
+Phase 6.3A已完成canonical lodging identity readiness bridge。Factory-only assessment只接受
+validated canonical plan、exact recomposed state與同一exact
+`EvidenceSnapshot`，並從canonical opaque lodging location內部推導固定`PLACE_IDENTITY` keys；
+caller不能傳入key、ready boolean、status、deadline、observation或可重播token。只有所有
+unique lodging locations都由current snapshot重新證明為fresh、retained且符合exact built-in
+Google place identity policy時，readiness才能移除這個identity gap。Snapshot會先經descriptor-pinned、
+double-read、callback-free的bounded primitive projection，重算policy／value／observation／aggregate
+identity；missing、stale、wrong policy／provider、malformed conflict aggregate或任何canonical／snapshot
+drift仍fail closed。
+
+這個runtime sidecar不會改寫plan；canonical lodging的decision仍為`selected`／`fixed`／
+`booked`，持久化evidence仍固定為`unverified`。Fresh identity不等於price、availability、
+reservation、booking status、property operation、route或hours已驗證，也不授權provider、
+credential、canonical mutation、private target write、render或deploy。Busan／Hokkaido兩組既有
+semantic fixture families的`draft → review → travel-ready → private delivery`完整acceptance屬於
+Phase 6.3B。
+
+Phase 6.3B已完成這個純離線產品gate；可執行
+`python3 scripts/phase63b_acceptance.py`。它復用Phase 5.33的Busan單住宿與Hokkaido
+split-stay semantic goldens，在同一個自動清除的temporary root內走過canonical apply，之後才以
+canned Places response經dedicated identity review／finalize與temporary `EvidenceStore` CAS建立
+durable ID-only evidence；apply清除的travel edges則只用明示synthetic的custom MEMORY_ONLY policy，
+經public fact authorization與同process `EvidenceSession`補回。Identity-only狀態仍固定為`review`，
+ready-bundle writer會在target建立前拒絕；兩類evidence都fresh且其他gates全過後才得到
+`travel_ready`。
+
+最後的private delivery使用新的profile-specific create-only response，在temporary private root建立
+`0700` target與`0600` `index.html`／`calendar.ics`／`manifest.json` exact tree；manifest仍綁
+`trip-readiness/v2`與exact readiness ID。腳本會誠實寫入temporary canonical store、durable evidence
+cache與private bundle，全部在return前清除；不讀repository `trips/`、不呼real provider、不讀credential、
+不寫real target、不開browser、不import calendar、不serve／share、不建立public source或deploy。Redacted
+JSON transcript只輸出aggregate status／counts／booleans，不輸出地點、Place ID、observation／snapshot／
+readiness digest、private title／time、absolute temp path或serialized authority。這個canned success不能推論
+任何real source目前fresh，也不授權real delivery。
+
 ## 專案結構
 
 ```

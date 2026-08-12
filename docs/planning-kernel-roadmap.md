@@ -1,6 +1,6 @@
 # Trip Planner 成熟化 Roadmap
 
-狀態：進行中
+狀態：既定Phase 0–6 offline product exit已完成；real operations按exact gate另行授權
 啟動日期：2026-07-27
 目前 checkpoint：Phase 0–4.6B 的 deterministic kernel、evidence、readiness 與
 legacy compatibility 已完成；Phase 5 的 guided product contract、bounded provider
@@ -14,11 +14,14 @@ deterministic private ICS projection與Phase 6.1B deterministic private HTML pro
 structural exit也已完成。Phase 6.2C exact same-object `EvidenceStore`-backed MEMORY_ONLY
 `EvidenceSession` delivery-source adapter與synthetic prepare-only host integration亦已完成；Phase 6.2D
 進一步完成exact adapter-backed writer的synthetic full-execute integration與callback／snapshot
-hardening。兩個closed profiles皆只在isolated temporary root先建立fresh review，再capture matching exact
-enum並execute reviewed bundle；這不構成real ready-bundle
-runtime write。任何real private source access、exact target／artifact-set write、
+hardening。Phase 6.3A canonical lodging identity readiness bridge及其callback-free snapshot
+integrity boundary亦已完成；Phase 6.3B再以既有Busan／Hokkaido semantic families完成
+`draft → review → travel_ready → private delivery` canned product acceptance，因此既定Phase 6
+offline exit gate已關閉。兩個closed profiles皆只在isolated temporary root先建立fresh review，再capture
+matching exact enum並execute reviewed bundle；這不構成real ready-bundle runtime write。任何real private
+source access、exact target／artifact-set write、
 provider／credential use、canonical mutation、browser、calendar import／share／serve、public-source creation
-或deploy仍各自需要fresh exact gate；此checkpoint不自動啟動下一個real operation。
+或deploy仍各自需要fresh exact gate；不存在預設Phase 6.4，本checkpoint不自動啟動下一個real operation。
 
 ## 產品目標
 
@@ -805,9 +808,169 @@ Exit gate：
 - focused synthetic suite、6.2B／C與既有explicit predecessor allowlist、privacy、AST／imports／exports及
   whitespace checks通過；completion evidence不讀real local trip、不使用real target、不呼provider或push。
 
-Phase 6.2D後不預設自動開始6.2E或任何real operation。下一個可離線、bounded的產品slice是以兩組既有
-canned fixture families完成Phase 6的`draft → review → travel-ready → private delivery` acceptance；在
-rebaseline與另行審查前不啟動。
+Phase 6.2D後不預設自動開始6.2E或任何real operation。唯讀gap audit確認，既有
+Busan／Hokkaido canonical lodgings在Phase 4.6A對所有canonical stay保留
+`LODGING_EVIDENCE_UNVERIFIED`的條件下，不能誠實直接進入ready bundle。因此先完成
+Phase 6.3A exact-snapshot lodging identity readiness bridge；兩組既有semantic fixture families的
+`draft → review → travel-ready → private delivery`完整acceptance為Phase 6.3B，不由6.3A
+自動啟動。
+
+### Phase 6.3A — canonical lodging identity readiness bridge（完成）
+
+這是pure、process-local、factory-only的typed readiness slice。它只讓canonical lodging在不改變
+持久化`evidence_state=unverified`的前提下，從同一exact `EvidenceSnapshot`重新證明目前
+opaque lodging location identity可供travel-readiness使用；它不是provider、booking、canonical mutation或
+delivery authority。Production實作與synthetic exit gate已完成。
+
+範圍：
+
+- 新增factory-only `CanonicalLodgingEvidenceAssessment`與唯一factory。Factory只接受validated
+  canonical plan、exact recomposed `ComposedTripState`及同一exact `EvidenceSnapshot`；它必須從
+  canonical lodgings內部推導unique `PLACE_IDENTITY` keys及固定Google identity qualifier，不接受
+  caller-supplied key、boolean、status、deadline、observation或可重播token；
+- 每個location必須由current snapshot的detached primitive projection解析為fresh、retained且
+  exact Google place identity；projection會重驗`google-place-id-v1`、`google-places`、
+  `INDEFINITE_ID`、required attribution及所有nested／aggregate identities，不呼叫snapshot resolution、
+  observation freshness／retention或facts schema callbacks；
+- assessment必須綁定plan revision、canonical／composed state、canonical lodging digest、
+  policy／store／evidence／outcome revisions、evaluation／purge-check instant、snapshot ID、ordered
+  key／observation IDs、attribution labels、normalized problems及最早half-open deadline；
+- `assess_trip_readiness()`每次自行重建assessment，只合併factory產生的problems、
+  used-observation count與deadline。Canonical lodging decision／evidence、plan bytes與composition state皆不得
+  promotion或mutation；
+- fresh identity只證明canonical opaque location identity；不證明price、availability、reservation、
+  booking status、property operation、route或hours。
+
+不在本slice：
+
+- 不新增authority enum、pre-access gate、caller-provided readiness input、serialized／cross-process
+  assessment或generic lodging verification token；
+- 不讀real local trip、不呼provider、不讀credential、不寫canonical／target／artifact，不capture／
+  execute delivery response；只允許synthetic in-memory HTML／ICS projection，不使用browser、deploy、
+  serve／share或import calendar；
+- 不完成Busan／Hokkaido Phase 6 acceptance；這個完整產品gate屬於Phase 6.3B。
+
+Exit gate：
+
+- no-lodging + `NOT_REQUIRED`維持原結果；single-stay及split-stay只有在所有unique locations
+  都具exact fresh identity且其他既有gates全部通過時才可`travel_ready`；
+- missing、stale、wrong key／policy／provider或snapshot drift皆保持draft／review及對應typed
+  `next_action`；current fixed Google provider/source-slot model不產生合法multi-source lodging identity
+  conflict，偽造duplicate／conflict aggregate則在assessment前以snapshot corruption fail closed；
+- duplicate location只消費一次identity observation；used-evidence count及`recheck_required_at`
+  deterministic，deadline取所有used facts的最早有效邊界；
+- plan revision、canonical／composed state、lodging、snapshot、observation或validity任一漂移皆改變
+  binding／readiness identity並fail closed；
+- safe outputs不含location、provider value、observation、attribution URI或private material；canonical
+  bytes及`evidence_state=unverified`完全不變；
+- focused readiness、private-delivery direct predecessor、public exports、privacy、compile及whitespace
+  gates通過，全程只用synthetic in-memory fixtures，不讀real local trip。
+
+Phase 6.3A完成後不自動啟動Phase 6.3B或任何real operation；6.3B仍需另行bounded scope與
+審查。
+
+### 2026-08-12 — Phase 6.3A canonical lodging identity readiness bridge 完成
+
+- 新增pure、factory-only、process-local `CanonicalLodgingEvidenceAssessment`。它只從一次
+  detached／validated canonical plan內部推導fixed Google `PLACE_IDENTITY` keys；caller不能提供key、
+  ready boolean、status、deadline、observation或receipt。Canonical lodging decision不變，persisted
+  `evidence_state`仍固定`unverified`。
+- `assess_trip_readiness()`每次從current snapshot重建assessment；所有unique lodging locations都具有
+  exact built-in `google-place-id-v1` fresh identity時才移除lodging identity problem，並把used observation、
+  value digest、endpoint binding與最早half-open deadline納入assessment／readiness identity。Single-stay、
+  split-stay與duplicate-location synthetic fixtures皆可在其他gates通過時誠實到`travel_ready`；safe output
+  不含location、provider place ID、observation ID或URI。
+- 新增consumer-strict `evidence_integrity` boundary：以import-time pinned slot descriptors把exact snapshot
+  讀成bounded primitive projection，重驗四種factory fact schemas、policy／key／value／provenance／observation、
+  registry／evidence／snapshot identities、source slots、order、retention與validity，再以第二次完整讀取拒絕
+  mixed-generation view。Resolver、freshness／retention methods、dataclass constructors、facts normalizers、
+  Enum value或caller callbacks皆不參與identity決策；malformed parser／date／descriptor error統一fail closed。
+- Ready-bundle runtime context現在綁`lodging_evidence_assessment_id`，nested readiness contract升為
+  `trip-readiness/v2`；manifest top-level schema仍為v1。Synthetic ready review只在memory建立exact
+  `index.html`／`calendar.ics`／`manifest.json` bytes，沒有capture、execute或filesystem write。
+- Phase 6.3A focused synthetic suite 23個tests通過；包含6.1A／6.1B、6.2A–D、time、readiness、public release、
+  composition、lodging confirmation、EvidenceSession／Store、Phase 5.32、lodging／places／routes／details與
+  facts的explicit synthetic／public-only allowlist合計435個tests通過。Privacy 4個tests、6個worktree Python
+  AST、imports／3個public exports及tracked／untracked whitespace checks亦通過。這些commands明確排除會
+  traversal local trip corpus的codec migration／legacy／tripctl suites。
+- 本checkpoint未列舉、讀取或hash real local trip，未呼provider、讀credential、修改canonical、選定或寫入
+  real target，也未capture／execute delivery、開browser、serve／share、calendar import、public-source
+  creation、deploy、commit或push。該checkpoint當時未自動啟動Phase 6.3B；其後完成記錄見下節。
+
+### Phase 6.3B — Busan／Hokkaido canned Phase 6 product acceptance（完成）
+
+這是acceptance-only的bounded offline slice。它復用既有Phase 5.33 semantic fixtures與Phase 6.3A／
+6.2B–D public boundaries，證明兩組產品family可誠實走完整條鏈；不新增production API、enum、authority、
+facade或generic workflow framework。
+
+範圍：
+
+- Busan／Hokkaido各自在一個自動清除的temporary root重播Phase 5.33
+  `inspect → validate → propose → score replay → typed apply review → exact response → execute`；只有
+  Phase 5.33 matching apply response可改temporary canonical store，該response不會被重用或升級成delivery
+  authority；
+- Phase 6.3B使用嚴格晚於Phase 5.33 latest apply path的單一trusted instant。每個canonical lodging identity
+  都以current snapshot建立dedicated Places request，對canned provider-shaped response做candidate review／
+  finalize，再用exact revision CAS寫入temporary `EvidenceStore`；每次promotion後重新取得fresh basis；
+- schedule apply正確移除的travel edges，必須由post-apply timeline的exact missing scopes唯一對回原semantic
+  fixture的day／ordered locations／mode／duration。它們只經明示synthetic custom provider policy與public
+  `ProviderRequest`／`ProviderResult` authorization進入同process `EvidenceSession`，固定
+  MEMORY_ONLY，不宣稱Google Routes adapter或real route已驗證；
+- readiness與writer只使用同一`EvidenceSessionDeliverySource`的fresh combined snapshot。Identity-only
+  狀態仍為`review`且ready bundle在target建立前以fixed reprojection refusal拒絕；完整evidence才可
+  `travel_ready`；
+- final delivery另擷取fresh `AUTHORIZE_HTML_ICS_READY_BUNDLE_CREATE_ONLY_WRITE` response，並在temporary
+  private root one-shot execute。Target、files、bytes與manifest readiness binding必須exact matching review；
+  canonical bytes與durable evidence cache在delivery前後不變。
+
+不在本slice：
+
+- 不讀或列舉repository real `trips/`、不呼provider、不讀credential、不選real source／target，也不進行real
+  canonical mutation、render、browser、calendar import、serve／share、public-source creation或deploy；
+- 不把canned Places response或custom route result宣稱為current provider truth，不把persistent
+  `lodging.evidence_state`改成`verified`，也不讓MEMORY_ONLY route進durable cache；
+- 不新增cross-process assessment／delivery token、production CLI authority registry、real host convenience
+  wrapper或新的publication gate。Temporary success不授權任何後續real operation。
+
+Exit gate：
+
+- 兩案status chain固定為`draft → review → travel_ready → created`；post-apply空evidence同時有lodging與route
+  problems，identity-only只剩`PLAN_NEEDS_VERIFICATION`，ready writer在zero target write下拒絕；
+- Busan恰使用1個lodging identity與2個synthetic route observations；Hokkaido恰使用2個identity與1個route；
+  兩案final `used_evidence_count=3`、zero problems且deadline為future half-open boundary；
+- Busan保留10:00 booked抵達、18:00 booked晚餐、每日住宿anchors、三類distinct locations、migration
+  protection與missing-approval resume；Hokkaido保留連續split stays、換宿日A→B anchors、16:00 check-in、
+  180分鐘driving、至少45分鐘buffer與one-shot lost-ACK receipt reconciliation；
+- canonical lodging persistently維持`unverified`；delivery不改canonical bytes或durable evidence，MEMORY_ONLY
+  routes不落盤；
+- 每案只在matching fresh write response後建立一個`0700` temporary target，三個`0600` reviewed files的
+  bytes exact，top-level manifest v1、nested readiness v2及readiness ID exact；fixture退出後zero retained
+  artifact；
+- CLI transcript誠實標示temporary canonical／evidence／projection／bundle effects並保持secret-safe；focused、
+  predecessor allowlist、privacy、AST／imports與whitespace gates通過。
+
+### 2026-08-12 — Phase 6.3B canned Phase 6 product acceptance 完成
+
+- 新增`phase63b_acceptance.py`，不import test helper且不新增production facade。它直接復用Phase 5.33兩組
+  semantic builders／apply product seam，在temporary `TripStore`結果上續接6.3A lodging readiness與6.2B
+  exact writer；所有temporary canonical、evidence與private artifacts均在return前清除。
+- Identity走dedicated public Places review／finalize及durable exact-revision CAS；route只走明示synthetic的
+  generic public fact authorization並留在same-process `EvidenceSession`。所有6.3B evidence時刻嚴格晚於
+  Phase 5.33 apply；writer與readiness只消費同一sealed adapter view。
+- 兩案均誠實通過`draft → review → travel_ready → created`。Identity-only ready bundle在target建立前拒絕；
+  final Busan為1 identity＋2 routes、Hokkaido為2 identities＋1 route，兩案皆zero problems、used count 3；
+  canonical lodging仍`unverified`。
+- Busan／Hokkaido原semantic invariants、canonical bytes、single receipt與durable evidence boundary皆經direct
+  assertion；private target tree／mode／reviewed bytes、manifest v1＋readiness v2 binding與cleanup亦完整驗證。
+- Phase 6.3B專項2個tests通過；與Phase 5.33 canned product及Phase 6.3A direct predecessors合跑27個tests
+  通過。包含6.1A／6.1B、6.2A–D、time、readiness、public release、composition、lodging confirmation、
+  EvidenceSession／Store、Phase 5.32、lodging／places／routes／details、facts、Phase 5.33 canned product與
+  6.3A／B的explicit synthetic／public-only allowlist共439個tests通過。Privacy 4個tests、8個worktree
+  Python AST、imports／3個public exports、tracked／cached及4個untracked whitespace checks亦通過；allowlist
+  明確排除會traverse local trip corpus的codec migration／legacy／generic tripctl suites。
+- 本checkpoint未讀real local trip、未呼provider、未讀credential、未寫real target，未開browser、import
+  calendar、serve／share、建立public source、deploy、commit或push。此checkpoint關閉既定Phase 6 offline
+  product exit；不存在預設Phase 6.4，任何real delivery／publication仍須fresh exact authority。
 
 ## 驗證策略
 

@@ -37,17 +37,12 @@ from zoneinfo import ZoneInfo
 from .canonical_tripctl import MAX_CANONICAL_PLAN_BYTES
 from .codec import decode_plan, encode_plan
 from .composition import COMPOSITION_VERSION, ComposedTripState, compose_trip_state
+from .evidence_integrity import validate_evidence_snapshot_integrity
 from .facts import (
     EVIDENCE_SNAPSHOT_VERSION,
-    EvidencePersistence,
     EvidenceSnapshot,
     FactKey,
     FactKind,
-    FactObservation,
-    FactValue,
-    ProviderPolicy,
-    ProviderPolicyRegistry,
-    ProviderProvenance,
 )
 from .lodging import (
     IntentAuthority,
@@ -113,7 +108,6 @@ MAX_PRIVATE_DELIVERY_PATH_CHARS = 4096
 MAX_PRIVATE_DELIVERY_ACTIVE_REVIEWS = 4096
 MAX_PRIVATE_DELIVERY_EVIDENCE_ITEMS = 4096
 MAX_PRIVATE_DELIVERY_EVIDENCE_BYTES = 16 * 1024 * 1024
-MAX_PRIVATE_DELIVERY_POLICIES = 256
 MAX_PRIVATE_DELIVERY_POLICY_ITEMS = 256
 MAX_PRIVATE_DELIVERY_LODGING_CANDIDATES = 256
 MAX_PRIVATE_DELIVERY_LODGING_PROBLEMS = 256
@@ -803,13 +797,6 @@ def prepare_private_delivery_review(
         )
     except Exception:
         raise PrivateDeliveryError("PRIVATE_DELIVERY_COMPOSITION_FAILED") from None
-    runtime_context_sha256 = _runtime_context_sha256(
-        expected,
-        availability_keys=availability_keys,
-        lodging_intake=lodging_intake,
-        pending_lodging_review=pending_lodging_review,
-    )
-
     try:
         html = project_private_html(expected.state)
     except PrivateHtmlProjectionError:
@@ -860,6 +847,18 @@ def prepare_private_delivery_review(
             raise PrivateDeliveryError("PRIVATE_DELIVERY_ICS_PROJECTION_FAILED") from None
         except Exception:
             raise PrivateDeliveryError("PRIVATE_DELIVERY_ICS_PROJECTION_FAILED") from None
+
+    runtime_context_sha256 = _runtime_context_sha256(
+        expected,
+        availability_keys=availability_keys,
+        lodging_intake=lodging_intake,
+        pending_lodging_review=pending_lodging_review,
+        lodging_evidence_assessment_id=(
+            readiness.lodging_evidence_assessment_id
+            if readiness is not None
+            else None
+        ),
+    )
 
     payload_artifacts = [
         _artifact(
@@ -1212,6 +1211,7 @@ def _runtime_context_sha256(
     availability_keys: tuple[FactKey, ...],
     lodging_intake: LodgingIntakeAssessment | None,
     pending_lodging_review: LodgingConfirmationReview | None,
+    lodging_evidence_assessment_id: str | None,
 ) -> str:
     if (
         lodging_intake is not None
@@ -1223,6 +1223,13 @@ def _runtime_context_sha256(
         and type(pending_lodging_review) is not LodgingConfirmationReview
     ):
         raise PrivateDeliveryError("PRIVATE_DELIVERY_TYPED_INPUT_REQUIRED")
+    if lodging_evidence_assessment_id is not None:
+        try:
+            _validate_digest(lodging_evidence_assessment_id)
+        except Exception:
+            raise PrivateDeliveryError(
+                "PRIVATE_DELIVERY_READINESS_BINDING_MISMATCH"
+            ) from None
     availability_payload = []
     for item in composed.activity_availability:
         availability_payload.append(
@@ -1254,33 +1261,38 @@ def _runtime_context_sha256(
         }
         for item in composed.live_attributions
     ]
+    payload: dict[str, object] = {
+        "composition_contract_version": composed.contract_version,
+        "trip_id": composed.trip_id,
+        "plan_revision": composed.plan_revision,
+        "canonical_state_digest": composed.canonical_state_digest,
+        "composed_state_digest": composed.composed_state_digest,
+        "evidence": composed.evidence.to_dict(),
+        "availability_key_ids": sorted(
+            item.key_id for item in availability_keys
+        ),
+        "activity_availability": availability_payload,
+        "live_attributions": live_attribution_payload,
+        "lodging_intake_assessment": (
+            lodging_intake.to_dict()
+            if lodging_intake is not None
+            else None
+        ),
+        "pending_lodging_review": (
+            {
+                "review_id": pending_lodging_review.review_id,
+                "state": pending_lodging_review.state.value,
+            }
+            if pending_lodging_review is not None
+            else None
+        ),
+    }
+    if lodging_evidence_assessment_id is not None:
+        payload["lodging_evidence_assessment_id"] = (
+            lodging_evidence_assessment_id
+        )
     return _digest_json(
-        {
-            "composition_contract_version": composed.contract_version,
-            "trip_id": composed.trip_id,
-            "plan_revision": composed.plan_revision,
-            "canonical_state_digest": composed.canonical_state_digest,
-            "composed_state_digest": composed.composed_state_digest,
-            "evidence": composed.evidence.to_dict(),
-            "availability_key_ids": sorted(
-                item.key_id for item in availability_keys
-            ),
-            "activity_availability": availability_payload,
-            "live_attributions": live_attribution_payload,
-            "lodging_intake_assessment": (
-                lodging_intake.to_dict()
-                if lodging_intake is not None
-                else None
-            ),
-            "pending_lodging_review": (
-                {
-                    "review_id": pending_lodging_review.review_id,
-                    "state": pending_lodging_review.state.value,
-                }
-                if pending_lodging_review is not None
-                else None
-            ),
-        },
+        payload,
         prefix="private-delivery-runtime-context",
     )
 
@@ -1601,20 +1613,6 @@ def _bounded_exact_text(
     return type(value) is str and len(value) <= maximum
 
 
-def _exact_text_tuple(
-    value: object,
-    *,
-    maximum: int = MAX_PRIVATE_DELIVERY_POLICY_ITEMS,
-    allow_empty: bool = True,
-) -> bool:
-    return (
-        type(value) is tuple
-        and len(value) <= maximum
-        and (allow_empty or bool(value))
-        and all(_bounded_exact_text(item) for item in value)
-    )
-
-
 def _exact_factory_utc(value: object) -> bool:
     """Recognize timestamps already normalized by trusted factories.
 
@@ -1627,50 +1625,6 @@ def _exact_factory_utc(value: object) -> bool:
         and value.tzinfo is _UTC
         and value.fold == 0
     )
-
-
-def _validate_provider_policy_shape(policy: object) -> None:
-    if type(policy) is not ProviderPolicy:
-        raise ValueError("snapshot policy is invalid")
-    if any(
-        not _bounded_exact_text(value)
-        for value in (
-            policy.policy_id,
-            policy.provider_id,
-            policy.adapter_id,
-            policy.adapter_version,
-            policy.contract_region,
-            policy.policy_digest,
-        )
-    ):
-        raise ValueError("snapshot policy text is invalid")
-    if (
-        type(policy.allowed_fact_kinds) is not tuple
-        or not policy.allowed_fact_kinds
-        or len(policy.allowed_fact_kinds) > len(FactKind)
-        or any(type(item) is not FactKind for item in policy.allowed_fact_kinds)
-        or not _exact_text_tuple(
-            policy.allowed_value_fields,
-            allow_empty=False,
-        )
-        or not _exact_text_tuple(
-            policy.allowed_operations,
-            allow_empty=False,
-        )
-        or not _exact_text_tuple(policy.allowed_query_fields)
-        or not _exact_text_tuple(policy.required_attribution_labels)
-        or type(policy.persistence) is not EvidencePersistence
-        or type(policy.max_validity_seconds) is not int
-        or not 0 < policy.max_validity_seconds <= 2**63 - 1
-        or (
-            policy.max_retention_seconds is not None
-            and (
-                type(policy.max_retention_seconds) is not int
-                or not 0 < policy.max_retention_seconds <= 2**63 - 1
-            )
-        )
-    ):
-        raise ValueError("snapshot policy shape is invalid")
 
 
 def _validate_fact_key_shape(key: object) -> None:
@@ -1709,74 +1663,6 @@ def _validate_fact_key_shape(key: object) -> None:
             raise ValueError("fact key qualifier is invalid")
 
 
-def _validate_fact_value_shape(value: object) -> None:
-    if (
-        type(value) is not FactValue
-        or type(value.kind) is not FactKind
-        or not _bounded_exact_text(value.schema_version)
-        or type(value.canonical_json) is not bytes
-        or not _bounded_exact_text(value.value_digest)
-    ):
-        raise ValueError("fact value shape is invalid")
-
-
-def _validate_provenance_shape(value: object) -> None:
-    if type(value) is not ProviderProvenance:
-        raise ValueError("provider provenance is invalid")
-    if any(
-        not _bounded_exact_text(item)
-        for item in (
-            value.provider_id,
-            value.adapter_id,
-            value.adapter_version,
-            value.request_fingerprint,
-            value.retention_policy_id,
-        )
-    ) or any(
-        item is not None and not _bounded_exact_text(item)
-        for item in (
-            value.provider_record_id,
-            value.response_id,
-            value.source_uri,
-        )
-    ):
-        raise ValueError("provider provenance text is invalid")
-    if type(value.attributions) is not tuple or len(value.attributions) > 32:
-        raise ValueError("provider attribution shape is invalid")
-    for item in value.attributions:
-        if (
-            type(item) is not tuple
-            or len(item) != 2
-            or not _bounded_exact_text(item[0])
-            or (
-                item[1] is not None
-                and not _bounded_exact_text(item[1])
-            )
-        ):
-            raise ValueError("provider attribution item is invalid")
-
-
-def _validate_observation_shape(value: object) -> None:
-    if (
-        type(value) is not FactObservation
-        or not _bounded_exact_text(value.contract_version)
-        or not _bounded_exact_text(value.observation_id)
-        or type(value.confidence) is not float
-        or not math.isfinite(value.confidence)
-        or not 0.0 <= value.confidence <= 1.0
-        or not _exact_factory_utc(value.retrieved_at)
-        or not _exact_factory_utc(value.valid_until)
-        or (
-            value.purge_at is not None
-            and not _exact_factory_utc(value.purge_at)
-        )
-    ):
-        raise ValueError("fact observation shape is invalid")
-    _validate_fact_key_shape(value.key)
-    _validate_fact_value_shape(value.value)
-    _validate_provenance_shape(value.provenance)
-
-
 def _validate_evidence_snapshot(snapshot: EvidenceSnapshot) -> None:
     """Recompute every nested evidence identity before delivery projection.
 
@@ -1787,122 +1673,8 @@ def _validate_evidence_snapshot(snapshot: EvidenceSnapshot) -> None:
     """
 
     try:
-        if type(snapshot) is not EvidenceSnapshot:
-            raise ValueError("snapshot must be exact")
-        if (
-            type(snapshot.contract_version) is not str
-            or snapshot.contract_version != EVIDENCE_SNAPSHOT_VERSION
-            or type(snapshot.policies) is not ProviderPolicyRegistry
-            or type(snapshot.policies.policies) is not tuple
-            or not snapshot.policies.policies
-            or len(snapshot.policies.policies) > MAX_PRIVATE_DELIVERY_POLICIES
-            or type(snapshot.observations) is not tuple
-            or len(snapshot.observations) > MAX_PRIVATE_DELIVERY_EVIDENCE_ITEMS
-            or not _bounded_exact_text(snapshot.policies.revision)
-            or not _exact_factory_utc(snapshot.evaluation_at)
-            or not _exact_factory_utc(snapshot.purge_checked_at)
-            or not _bounded_exact_text(snapshot.store_revision)
-            or not _bounded_exact_text(snapshot.evidence_revision)
-            or not _bounded_exact_text(snapshot.snapshot_id)
-            or (
-                snapshot.outcome_revision is not None
-                and not _bounded_exact_text(snapshot.outcome_revision)
-            )
-        ):
-            raise ValueError("snapshot aggregate is invalid")
-
-        policies: list[ProviderPolicy] = []
-        for policy in snapshot.policies.policies:
-            _validate_provider_policy_shape(policy)
-            validated_policy = replace(policy)
-            if validated_policy != policy:
-                raise ValueError("snapshot policy identity drifted")
-            policies.append(validated_policy)
-        validated_registry = ProviderPolicyRegistry(
-            policies=tuple(policies),
-            revision=snapshot.policies.revision,
-        )
-        if validated_registry != snapshot.policies:
-            raise ValueError("snapshot policy registry drifted")
-
-        observations: list[FactObservation] = []
-        slots: set[tuple[str, str]] = set()
-        evidence_bytes = 0
-        evaluation_at = _utc_datetime(
-            snapshot.evaluation_at,
-            "PRIVATE_DELIVERY_EVIDENCE_SNAPSHOT_INVALID",
-            whole_second=False,
-        )
-        purge_checked_at = _utc_datetime(
-            snapshot.purge_checked_at,
-            "PRIVATE_DELIVERY_EVIDENCE_SNAPSHOT_INVALID",
-            whole_second=False,
-        )
-        _validate_digest(snapshot.store_revision)
-        _validate_digest(snapshot.evidence_revision)
-        _validate_digest(snapshot.snapshot_id)
-        if snapshot.outcome_revision is not None:
-            _validate_digest(snapshot.outcome_revision)
-        for observation in snapshot.observations:
-            _validate_observation_shape(observation)
-            evidence_bytes += len(observation.value.canonical_json)
-            if evidence_bytes > MAX_PRIVATE_DELIVERY_EVIDENCE_BYTES:
-                raise ValueError("snapshot evidence bytes exceed the bound")
-            validated_observation = replace(
-                observation,
-                key=replace(observation.key),
-                value=replace(observation.value),
-                provenance=replace(observation.provenance),
-            )
-            if validated_observation != observation:
-                raise ValueError("snapshot observation identity drifted")
-            validated_registry.validate_observation(validated_observation)
-            if (
-                not validated_observation.retained_at(purge_checked_at)
-                or validated_observation.retrieved_at > purge_checked_at
-                or validated_observation.source_slot in slots
-            ):
-                raise ValueError("snapshot observation is not retained")
-            slots.add(validated_observation.source_slot)
-            observations.append(validated_observation)
-
-        normalized = tuple(
-            sorted(
-                observations,
-                key=lambda item: (
-                    item.key.key_id,
-                    item.provenance.provider_id,
-                    item.observation_id,
-                ),
-            )
-        )
-        if normalized != snapshot.observations:
-            raise ValueError("snapshot observation order drifted")
-        expected_evidence_revision = _fact_contract_digest(
-            {"observation_ids": [item.observation_id for item in normalized]},
-            prefix="active-evidence",
-        )
-        if snapshot.evidence_revision != expected_evidence_revision:
-            raise ValueError("snapshot evidence revision drifted")
-        snapshot_payload: dict[str, object] = {
-            "contract_version": snapshot.contract_version,
-            "policy_registry_revision": validated_registry.revision,
-            "store_revision": snapshot.store_revision,
-            "evidence_revision": expected_evidence_revision,
-            "evaluation_at": _utc_iso(evaluation_at),
-            "purge_checked_at": _utc_iso(purge_checked_at),
-        }
-        if snapshot.outcome_revision is not None:
-            snapshot_payload["outcome_revision"] = snapshot.outcome_revision
-        expected_snapshot_id = _fact_contract_digest(
-            snapshot_payload,
-            prefix="evidence-snapshot",
-        )
-        if snapshot.snapshot_id != expected_snapshot_id:
-            raise ValueError("snapshot identity drifted")
-    except PrivateDeliveryError:
-        raise
-    except Exception:
+        validate_evidence_snapshot_integrity(snapshot)
+    except (TypeError, ValueError):
         raise PrivateDeliveryError(
             "PRIVATE_DELIVERY_EVIDENCE_SNAPSHOT_INVALID"
         ) from None
@@ -1991,6 +1763,7 @@ def _validate_readiness_shape(value: object) -> TripReadiness:
             value.composed_state_digest,
             value.kernel_report_digest,
             value.canonical_lodging_digest,
+            value.lodging_evidence_assessment_id,
             value.evidence_binding_digest,
             value.evidence_snapshot_id,
             value.readiness_id,
@@ -2053,22 +1826,6 @@ def _canonical_json_bytes(value: object) -> bytes:
 def _digest_json(value: object, *, prefix: str) -> str:
     payload = prefix.encode("ascii") + b"\n" + _canonical_json_bytes(value)
     return hashlib.sha256(payload).hexdigest()
-
-
-def _fact_contract_digest(value: object, *, prefix: str) -> str:
-    """Match the evidence kernel's stable identity encoding."""
-
-    try:
-        encoded = json.dumps(
-            {"prefix": prefix, "payload": value},
-            ensure_ascii=False,
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    except Exception:
-        raise ValueError("fact contract identity is invalid") from None
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _validate_digest(value: object) -> None:

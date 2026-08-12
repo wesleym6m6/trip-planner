@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Mapping
 
+from .evidence_integrity import validate_evidence_snapshot_integrity
 from .facts import (
     AuthorizedProviderResult,
     EvidencePersistence,
@@ -27,12 +28,14 @@ from .facts import (
     FactKind,
     FactObservation,
     FactValue,
+    GOOGLE_MAPS_NON_EEA_POLICY_PROFILE,
     ProviderProvenance,
     ProviderRequest,
     ProviderResult,
     ProviderResultStatus,
     _GOOGLE_PLACE_IDENTITY_AUTHORIZATION_TOKEN,
     _authorize_google_place_identity_result,
+    google_maps_policy_registry,
 )
 from .models import EvidenceState
 
@@ -67,6 +70,43 @@ _LANGUAGE_RE = re.compile(
     r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
 )
 _DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+_BUILTIN_GOOGLE_PLACE_ID_POLICY = google_maps_policy_registry(
+    GOOGLE_MAPS_NON_EEA_POLICY_PROFILE
+).policy(_GOOGLE_PLACE_ID_POLICY)
+_BUILTIN_GOOGLE_PLACE_ID_POLICY_PROJECTION = (
+    "google-place-id-v1",
+    "google-places",
+    "google-places",
+    "v1",
+    "google-maps-non-eea-2026-06-10",
+    ("place_identity",),
+    ("provider_place_id",),
+    ("refresh-place-id", "resolve-place"),
+    "indefinite_id",
+    31_622_400,
+    None,
+    (
+        "basis_observation_id",
+        "basis_provider_place_id",
+        "basis_snapshot_id",
+        "basis_value_digest",
+        "expected_locality",
+        "expected_name",
+        "expected_primary_types",
+        "field_mask",
+        "language_code",
+        "latitude",
+        "longitude",
+        "page_size",
+        "provider_place_id",
+        "radius_m",
+        "region_code",
+        "text_query",
+    ),
+    ("Google Maps",),
+    _BUILTIN_GOOGLE_PLACE_ID_POLICY.policy_digest,
+)
+_MAX_ENDPOINT_BATCH = 4096
 
 
 class PlaceIdentityReviewStatus(str, Enum):
@@ -1116,6 +1156,13 @@ def build_google_place_identity_request(
             "INVALID_PROVIDER_REQUEST",
             "snapshot must be an exact EvidenceSnapshot.",
         )
+    try:
+        validate_evidence_snapshot_integrity(snapshot)
+    except (TypeError, ValueError):
+        raise FactContractError(
+            "CACHE_CORRUPTED",
+            "The evidence snapshot failed exact integrity verification.",
+        ) from None
     policies = snapshot.policies
     policy = policies.policy(_GOOGLE_PLACE_ID_POLICY)
     if (
@@ -1467,60 +1514,263 @@ def extract_fresh_google_place_endpoint(
 ) -> PlaceEndpointIdentity:
     """Require one fresh, unconflicted place ID before Routes work begins."""
 
+    binding, outcomes = _extract_fresh_google_place_endpoint_batch(
+        snapshot,
+        (location_id,),
+    )
+    outcome = outcomes[0]
+    code = outcome[1]
+    if code != "VERIFIED":
+        messages = {
+            "PENDING_REVIEW": (
+                "A fresh Google place identity is required for this endpoint."
+            ),
+            "STALE_EVIDENCE": (
+                "The Google place identity is older than its refresh window."
+            ),
+            "CONFLICT_DETECTED": (
+                "Conflicting Google place identities cannot define an endpoint."
+            ),
+            "UNTRUSTED_PROVENANCE": (
+                "Endpoint identity differs from reviewed Google ID evidence."
+            ),
+        }
+        raise FactContractError(code, messages[code])
+    location = outcome[0]
+    provider_place_id = outcome[3]
+    observation_id = outcome[4]
+    value_digest = outcome[5]
+    valid_until = outcome[6]
+    endpoint_id = outcome[7]
+    if not (
+        type(location) is str
+        and type(provider_place_id) is str
+        and type(observation_id) is str
+        and type(value_digest) is str
+        and type(valid_until) is datetime
+        and type(endpoint_id) is str
+    ):
+        raise FactContractError(
+            "CACHE_CORRUPTED",
+            "The endpoint projection is internally inconsistent.",
+        )
+    return PlaceEndpointIdentity(
+        location_id=location,
+        provider_id=_GOOGLE_PROVIDER,
+        provider_place_id=provider_place_id,
+        observation_id=observation_id,
+        value_digest=value_digest,
+        valid_until=valid_until,
+        snapshot_id=binding[4],
+        endpoint_id=endpoint_id,
+        _token=_PLACE_ENDPOINT_TOKEN,
+    )
+
+
+def _extract_fresh_google_place_endpoint_batch(
+    snapshot: EvidenceSnapshot,
+    location_ids: tuple[str, ...],
+) -> tuple[tuple, tuple[tuple, ...]]:
+    """Safely resolve a bounded batch from one detached snapshot projection.
+
+    Every call performs its own raw-snapshot integrity projection.  It never
+    accepts a caller-provided validation receipt and never calls snapshot or
+    observation methods while resolving.
+    """
+
     if type(snapshot) is not EvidenceSnapshot:
         raise FactContractError(
             "INVALID_PROVIDER_REQUEST",
             "snapshot must be an exact EvidenceSnapshot.",
         )
-    location = _text(location_id, "location_id", maximum=256)
-    key = _identity_key(location)
-    resolution = snapshot.resolve(key)
-    if resolution.evidence_state is EvidenceState.UNVERIFIED:
+    if type(location_ids) is not tuple or len(location_ids) > _MAX_ENDPOINT_BATCH:
         raise FactContractError(
-            "PENDING_REVIEW",
-            "A fresh Google place identity is required for this endpoint.",
+            "INVALID_PROVIDER_REQUEST",
+            "location_ids must be an exact bounded tuple.",
         )
-    if resolution.evidence_state is EvidenceState.STALE:
+    normalized_locations: list[str] = []
+    for item in location_ids:
+        if type(item) is not str:
+            raise FactContractError(
+                "INVALID_PROVIDER_REQUEST",
+                "location_ids must contain exact text.",
+            )
+        normalized_locations.append(_text(item, "location_id", maximum=256))
+    locations = tuple(sorted(set(normalized_locations)))
+    try:
+        projection = validate_evidence_snapshot_integrity(snapshot)
+    except (TypeError, ValueError):
         raise FactContractError(
-            "STALE_EVIDENCE",
-            "The Google place identity is older than its refresh window.",
-        )
-    if resolution.evidence_state is EvidenceState.CONFLICTED:
-        raise FactContractError(
-            "CONFLICT_DETECTED",
-            "Conflicting Google place identities cannot define an endpoint.",
-        )
-    selected = resolution.selected
-    if (
-        resolution.evidence_state is not EvidenceState.VERIFIED
-        or selected is None
-        or not resolution.supports_travel_ready_use
-    ):
-        raise FactContractError(
-            "PENDING_REVIEW",
-            "The place identity is not ready for provider endpoint use.",
-        )
-    policy = snapshot.policies.policy(
-        selected.provenance.retention_policy_id
+            "CACHE_CORRUPTED",
+            "The evidence snapshot failed exact integrity verification.",
+        ) from None
+    (
+        _contract_version,
+        policy_revision,
+        store_revision,
+        evidence_revision,
+        outcome_revision,
+        snapshot_id,
+        evaluation_at,
+        purge_checked_at,
+        policies,
+        observations,
+    ) = projection
+    binding = (
+        policy_revision,
+        store_revision,
+        evidence_revision,
+        outcome_revision,
+        snapshot_id,
+        evaluation_at,
+        purge_checked_at,
     )
-    if (
-        policy.persistence is not EvidencePersistence.INDEFINITE_ID
-        or selected.provenance.provider_id != _GOOGLE_PROVIDER
-    ):
-        raise FactContractError(
-            "UNTRUSTED_PROVENANCE",
-            "Endpoint identity is outside the Google place ID policy.",
-        )
-    return PlaceEndpointIdentity(
-        location_id=location,
-        provider_id=_GOOGLE_PROVIDER,
-        provider_place_id=selected.value.payload["provider_place_id"],
-        observation_id=selected.observation_id,
-        value_digest=selected.value.value_digest,
-        valid_until=selected.valid_until,
-        snapshot_id=snapshot.snapshot_id,
-        _token=_PLACE_ENDPOINT_TOKEN,
+    identity_policy = next(
+        (item for item in policies if item[0] == _GOOGLE_PLACE_ID_POLICY),
+        None,
     )
+    trusted_policy = (
+        identity_policy == _BUILTIN_GOOGLE_PLACE_ID_POLICY_PROJECTION
+    )
+    outcomes: list[tuple] = []
+    for location in locations:
+        key_id = _fact_contract_digest(
+            {
+                "contract_version": "fact-query/v1",
+                "kind": "place_identity",
+                "subject_ids": [location],
+                "qualifiers": [
+                    ["identity_provider", _GOOGLE_PROVIDER]
+                ],
+            },
+            prefix="fact-key",
+        )
+        if not trusted_policy:
+            outcomes.append(
+                (
+                    location,
+                    "UNTRUSTED_PROVENANCE",
+                    key_id,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+            continue
+        visible = tuple(
+            item
+            for item in observations
+            if item[2][4] == key_id
+            and item[2][0] == "place_identity"
+            and item[2][1] == (location,)
+            and item[2][2]
+            == (("identity_provider", _GOOGLE_PROVIDER),)
+            and item[5] <= evaluation_at
+            and (item[7] is None or evaluation_at < item[7])
+        )
+        if not visible:
+            outcomes.append(
+                (location, "PENDING_REVIEW", key_id, None, None, None, None, None)
+            )
+            continue
+        ordered = tuple(
+            sorted(
+                visible,
+                key=lambda item: (item[5], item[4][0], item[1]),
+                reverse=True,
+            )
+        )
+        fresh = tuple(
+            item
+            for item in ordered
+            if item[5] <= evaluation_at < item[6]
+        )
+        comparable = fresh or ordered
+        if len({item[3][3] for item in comparable}) > 1:
+            outcomes.append(
+                (
+                    location,
+                    "CONFLICT_DETECTED",
+                    key_id,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+            continue
+        if not fresh:
+            outcomes.append(
+                (location, "STALE_EVIDENCE", key_id, None, None, None, None, None)
+            )
+            continue
+        selected = fresh[0]
+        provenance = selected[4]
+        value = selected[3]
+        try:
+            payload = json.loads(value[2].decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise FactContractError(
+                "CACHE_CORRUPTED",
+                "The endpoint projection is internally inconsistent.",
+            ) from None
+        provider_place_id = payload.get("provider_place_id")
+        if (
+            selected[8] != 1.0
+            or selected[7] is not None
+            or value[0] != "place_identity"
+            or value[1] != "place-identity/v1"
+            or type(provider_place_id) is not str
+            or provenance[0] != _GOOGLE_PROVIDER
+            or provenance[1] != _GOOGLE_PROVIDER
+            or provenance[2] != "v1"
+            or provenance[4] != _GOOGLE_PLACE_ID_POLICY
+            or provenance[5] != provider_place_id
+            or provenance[6] is not None
+            or provenance[7] is not None
+            or provenance[8] != ((_GOOGLE_ATTRIBUTION, None),)
+        ):
+            outcomes.append(
+                (
+                    location,
+                    "UNTRUSTED_PROVENANCE",
+                    key_id,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+            continue
+        endpoint_id = _digest(
+            {
+                "location_id": location,
+                "provider_id": _GOOGLE_PROVIDER,
+                "provider_place_id": provider_place_id,
+                "observation_id": selected[1],
+                "value_digest": value[3],
+                "valid_until": _utc_iso(selected[6]),
+                "snapshot_id": snapshot_id,
+            },
+            prefix="place-endpoint-identity",
+        )
+        outcomes.append(
+            (
+                location,
+                "VERIFIED",
+                key_id,
+                provider_place_id,
+                selected[1],
+                value[3],
+                selected[6],
+                endpoint_id,
+            )
+        )
+    return binding, tuple(outcomes)
 
 
 def _identity_provider_result(
@@ -2156,6 +2406,17 @@ def _digest(value: Any, *, prefix: str) -> str:
     return hashlib.sha256(
         f"trip-planner.{prefix}/v1\0".encode("ascii") + encoded
     ).hexdigest()
+
+
+def _fact_contract_digest(value: Any, *, prefix: str) -> str:
+    encoded = json.dumps(
+        {"prefix": prefix, "payload": value},
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _require_digest(value: Any, name: str) -> None:
